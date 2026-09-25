@@ -6,6 +6,16 @@ application mobile.
 
 Adresse de référence : `http://localhost:5000/saambiz/v1`
 
+**Nouveau sur le projet ?** Commencez par [`DEMARRAGE.md`](DEMARRAGE.md) : les
+cinq dépôts, comment les cloner côte à côte, et les pièges qui coûtent le plus
+de temps. [`CLAUDE.md`](CLAUDE.md) en tient la version longue. Les deux vivent
+ici parce que ce dépôt sert de point d'entrée — les quatre autres ne portent
+que leur propre application.
+
+**Vous déployez sur Render ?** [`DEPLOIEMENT-RENDER.md`](DEPLOIEMENT-RENDER.md)
+donne les variables à renseigner et les deux réglages sans lesquels le service
+démarre sans avoir migré la base.
+
 > Ce fichier contenait auparavant un `.env` complet, secrets en clair compris.
 > Aucun secret ne doit revenir ici : la configuration se décrit dans
 > [`.env.example`](.env.example), avec des valeurs d'exemple uniquement.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Fait Maison API — Déploiement zero-downtime (mise à jour)
+#  SaamBiz API — Déploiement zero-downtime (mise à jour)
 #  Usage : bash deploy/deploy.sh [--mode docker|pm2]
 #  À lancer depuis la racine du projet sur le VPS
 # ============================================================
 set -euo pipefail
 
-APP_DIR="/var/www/fait-maison-backend"
+APP_DIR="${APP_DIR:-/var/www/saambiz-backend}"
 MODE="${DEPLOY_MODE:-docker}"   # docker | pm2
 
 # Parse --mode flag
@@ -58,7 +58,7 @@ elif [[ "$MODE" == "pm2" ]]; then
     pm2 reload ecosystem.config.js --env production --update-env
 
     echo "[deploy] Statut PM2 :"
-    pm2 status fait-maison-backend
+    pm2 status saambiz-backend
 
 else
     echo "[deploy] ERREUR : mode inconnu '${MODE}'. Utiliser 'docker' ou 'pm2'."

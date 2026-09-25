@@ -23,7 +23,7 @@ const VALIDE = {
   JWT_SECRET: 'a'.repeat(40),
   JWT_REFRESH_SECRET: 'b'.repeat(40),
   JWT_RESET_SECRET: 'c'.repeat(40),
-  CORS_ORIGIN: 'https://saambiz.sn',
+  CORS_ORIGIN: 'https://saambiz.com',
 };
 
 describe('config/security — contrôles de démarrage', () => {
@@ -97,21 +97,21 @@ describe('config/security — contrôles de démarrage', () => {
 
     test('accepte plusieurs origines séparées par des virgules', () => {
       const { corsConfig } = chargerSecurite({
-        ...VALIDE, CORS_ORIGIN: 'https://saambiz.sn, https://app.saambiz.sn',
+        ...VALIDE, CORS_ORIGIN: 'https://saambiz.com, https://app.saambiz.com',
       });
-      expect(verdict(corsConfig, 'https://saambiz.sn')).toBe(true);
-      expect(verdict(corsConfig, 'https://app.saambiz.sn')).toBe(true);
+      expect(verdict(corsConfig, 'https://saambiz.com')).toBe(true);
+      expect(verdict(corsConfig, 'https://app.saambiz.com')).toBe(true);
     });
 
     test('refuse une origine absente de la liste', () => {
-      const { corsConfig } = chargerSecurite({ ...VALIDE, CORS_ORIGIN: 'https://saambiz.sn' });
+      const { corsConfig } = chargerSecurite({ ...VALIDE, CORS_ORIGIN: 'https://saambiz.com' });
       expect(verdict(corsConfig, 'https://mechant.example')).toBe(false);
     });
 
     test('accepte une requête sans origine (appel serveur à serveur)', () => {
       // curl, un autre service, une application mobile native : seul un
       // navigateur envoie systématiquement une origine.
-      const { corsConfig } = chargerSecurite({ ...VALIDE, CORS_ORIGIN: 'https://saambiz.sn' });
+      const { corsConfig } = chargerSecurite({ ...VALIDE, CORS_ORIGIN: 'https://saambiz.com' });
       expect(verdict(corsConfig, undefined)).toBe(true);
     });
 
@@ -131,7 +131,7 @@ describe('config/security — contrôles de démarrage', () => {
     test('refuse localhost en production', () => {
       // La tolérance ci-dessus ne doit jamais suivre en production, où elle
       // ouvrirait l'API à toute page servie depuis la machine d'un visiteur.
-      const { corsConfig } = chargerSecurite({ ...VALIDE, CORS_ORIGIN: 'https://saambiz.sn' });
+      const { corsConfig } = chargerSecurite({ ...VALIDE, CORS_ORIGIN: 'https://saambiz.com' });
       expect(verdict(corsConfig, 'http://localhost:5173')).toBe(false);
     });
   });
@@ -154,9 +154,9 @@ describe('config/security — contrôles de démarrage', () => {
       // mail d'une victime sans jamais déclencher la limite.
       const { otpRateLimitConfig } = chargerSecurite(VALIDE);
       const cle = otpRateLimitConfig.keyGenerator({
-        body: { email: 'Victime@Saambiz.SN' }, ip: '9.9.9.9',
+        body: { email: 'Victime@Saambiz.COM' }, ip: '9.9.9.9',
       });
-      expect(cle).toBe('otp:victime@saambiz.sn');
+      expect(cle).toBe('otp:victime@saambiz.com');
     });
 
     test('les limites sont actives en production', () => {

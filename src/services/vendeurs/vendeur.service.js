@@ -14,7 +14,7 @@ const { MODELES_VITRINE } = require('../vitrine/vitrine.service');
 // Domaine qui sert les vitrines. Le vendeur voit l'adresse de son site dans
 // son tableau de bord, la partage sur WhatsApp et l'imprime sur ses cartes :
 // elle ne peut pas dépendre du navigateur qui affiche la page.
-const VITRINE_BASE_URL = (process.env.VITRINE_BASE_URL || 'https://saambiz.sn').replace(/\/+$/, '');
+const VITRINE_BASE_URL = (process.env.VITRINE_BASE_URL || 'https://saambiz.com').replace(/\/+$/, '');
 
 // Chemins du site principal qu'une boutique ne doit pas pouvoir masquer.
 const SLUGS_RESERVES = [

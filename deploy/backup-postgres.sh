@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Fait Maison API — Sauvegarde PostgreSQL
+#  SaamBiz API — Sauvegarde PostgreSQL
 #  Usage   : bash deploy/backup-postgres.sh
-#  Cron    : 0 2 * * * /var/www/fait-maison-backend/deploy/backup-postgres.sh >> /var/log/fait-maison-backup.log 2>&1
+#  Cron    : 0 2 * * * /var/www/saambiz-backend/deploy/backup-postgres.sh >> /var/log/saambiz-backup.log 2>&1
+#
+#  APP_DIR est surchargeable : APP_DIR=/chemin/autre bash deploy/backup-postgres.sh
 #
 #  Fonctionnement :
 #   • Docker Compose → pg_dump via le conteneur postgres
@@ -12,10 +14,9 @@
 # ============================================================
 set -euo pipefail
 
-APP_DIR="/var/www/fait-maison-backend"
+APP_DIR="${APP_DIR:-/var/www/saambiz-backend}"
 BACKUP_DIR="${APP_DIR}/backups"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_FILE="${BACKUP_DIR}/fait_maison_${TIMESTAMP}.sql.gz"
 KEEP_DAYS=7
 
 # Charger les variables d'environnement depuis .env
@@ -24,12 +25,27 @@ if [ -f "${APP_DIR}/.env" ]; then
     # shellcheck disable=SC1090
     source <(grep -E '^(DB_|PGPASSWORD)' "${APP_DIR}/.env" | sed 's/ *= */=/')
     set +o allexport
+else
+    # Sans .env, les identifiants viendraient de valeurs par défaut et le dump
+    # échouerait sur une base inexistante — ou, pire, réussirait sur une autre.
+    # Ce script tournant en cron, personne ne lit sa sortie : on s'arrête net.
+    echo "[backup] ERREUR : ${APP_DIR}/.env introuvable." >&2
+    echo "[backup] Ajustez APP_DIR — ce chemin pointait encore sur" >&2
+    echo "[backup] /var/www/fait-maison-backend, l'ancien nom du projet." >&2
+    exit 1
 fi
 
-DB_NAME="${DB_NAME:-fait_maison}"
-DB_USER="${DB_USER:-faitmaison_user}"
+DB_NAME="${DB_NAME:?DB_NAME absent de ${APP_DIR}/.env}"
+DB_USER="${DB_USER:?DB_USER absent de ${APP_DIR}/.env}"
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-5432}"
+
+# Le préfixe des fichiers dérive du nom de la base, il ne le répète pas en dur.
+# Il était figé à « fait_maison_ » : la purge ci-dessous ne retrouvait donc
+# aucune des sauvegardes réellement écrites, et le disque se remplissait sans
+# que rien ne le signale.
+PREFIXE="${DB_NAME}"
+BACKUP_FILE="${BACKUP_DIR}/${PREFIXE}_${TIMESTAMP}.sql.gz"
 
 mkdir -p "${BACKUP_DIR}"
 
@@ -55,8 +71,8 @@ SIZE=$(du -sh "${BACKUP_FILE}" | cut -f1)
 echo "[backup] Sauvegarde créée : ${BACKUP_FILE} (${SIZE})"
 
 # Purger les sauvegardes de plus de KEEP_DAYS jours
-find "${BACKUP_DIR}" -name "fait_maison_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
-REMAINING=$(find "${BACKUP_DIR}" -name "fait_maison_*.sql.gz" | wc -l)
+find "${BACKUP_DIR}" -name "${PREFIXE}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
+REMAINING=$(find "${BACKUP_DIR}" -name "${PREFIXE}_*.sql.gz" | wc -l)
 echo "[backup] Sauvegardes conservées : ${REMAINING}"
 
 echo "[backup] $(date '+%Y-%m-%d %H:%M:%S') — Terminé"

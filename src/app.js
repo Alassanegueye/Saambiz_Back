@@ -126,7 +126,7 @@ const apiRouter = express.Router();
 apiRouter.use('/auth', rateLimit(authRateLimitConfig));
 apiRouter.use('/auth', authRoutes);
 
-// Le site public d'une boutique — saambiz.sn/b/<slug>.
+// Le site public d'une boutique — saambiz.com/b/<slug>.
 // Monté avant le limiteur par compte : ses visiteurs n'ont pas de compte,
 // `cleParUtilisateur` retomberait sur l'IP et une boutique un peu visitée
 // depuis une connexion partagée bloquerait ses propres clients. Chaque route

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Fait Maison API — Setup initial VPS Ubuntu 22.04 / 24.04
+#  SaamBiz API — Setup initial VPS Ubuntu 22.04 / 24.04
 #  Usage  : sudo bash deploy/setup-server.sh --domain api.example.com
 #  Lancer UNE SEULE FOIS après le premier login root sur le VPS
 # ============================================================
@@ -8,9 +8,9 @@ set -euo pipefail
 
 # ── Paramètres configurables ─────────────────────────────────────────────────
 APP_USER="nodeapp"
-APP_DIR="/var/www/fait-maison-backend"
+APP_DIR="${APP_DIR:-/var/www/saambiz-backend}"
 NODE_VERSION="22"
-DOMAIN="${DOMAIN:-YOUR_DOMAIN}"   # passer via : DOMAIN=api.faitmaison.com sudo bash setup-server.sh
+DOMAIN="${DOMAIN:-YOUR_DOMAIN}"   # passer via : DOMAIN=api.saambiz.com sudo bash setup-server.sh
 
 # Parse --domain flag
 while [[ $# -gt 0 ]]; do
@@ -70,9 +70,9 @@ echo "==> [8/9] Configuration Nginx"
 cp "$(dirname "$0")/nginx-websocket-map.conf" /etc/nginx/conf.d/websocket-map.conf
 
 # Copier et activer le site
-cp "$(dirname "$0")/nginx.conf" /etc/nginx/sites-available/fait-maison-backend
-sed -i "s/YOUR_DOMAIN/${DOMAIN}/g" /etc/nginx/sites-available/fait-maison-backend
-ln -sf /etc/nginx/sites-available/fait-maison-backend /etc/nginx/sites-enabled/fait-maison-backend
+cp "$(dirname "$0")/nginx.conf" /etc/nginx/sites-available/saambiz-backend
+sed -i "s/YOUR_DOMAIN/${DOMAIN}/g" /etc/nginx/sites-available/saambiz-backend
+ln -sf /etc/nginx/sites-available/saambiz-backend /etc/nginx/sites-enabled/saambiz-backend
 rm -f /etc/nginx/sites-enabled/default
 
 # Test syntaxe Nginx avant rechargement
@@ -111,5 +111,5 @@ echo "   6. pm2 save && pm2 startup (suivre les instructions)"
 echo ""
 echo " Sauvegardes automatiques (cron, optionnel) :"
 echo "   crontab -e"
-echo "   0 2 * * * ${APP_DIR}/deploy/backup-postgres.sh >> /var/log/fait-maison-backup.log 2>&1"
+echo "   0 2 * * * ${APP_DIR}/deploy/backup-postgres.sh >> /var/log/saambiz-backup.log 2>&1"
 echo "============================================"

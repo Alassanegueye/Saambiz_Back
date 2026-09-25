@@ -10,8 +10,8 @@ if (!resend) {
   logger.warn('[RESEND] RESEND_API_KEY non défini — envoi d\'e-mails désactivé.');
 }
 // Expéditeur des e-mails transactionnels. En production, MAIL_FROM doit
-// pointer sur un domaine vérifié chez Resend (ex. noreply@saambiz.sn).
-const FROM = process.env.MAIL_FROM || 'SaamBiz <noreply@saambiz.sn>';
+// pointer sur un domaine vérifié chez Resend (ex. noreply@saambiz.com).
+const FROM = process.env.MAIL_FROM || 'SaamBiz <noreply@saambiz.com>';
 const isProd = process.env.NODE_ENV === 'production';
 
 /**

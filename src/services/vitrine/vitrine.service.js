@@ -1,7 +1,7 @@
 // services/vitrine/vitrine.service.js
 //
 // La vitrine : le site web public d'une boutique, servi sur
-// saambiz.sn/b/<slug>. Tout ici est accessible SANS COMPTE — c'est le point
+// saambiz.com/b/<slug>. Tout ici est accessible SANS COMPTE — c'est le point
 // de la fonctionnalité : le client d'un vendeur arrive par un lien WhatsApp
 // ou un QR code, voit le catalogue et commande, sans rien installer. Ce
 // n'est qu'ensuite qu'on lui propose l'application, pour suivre la boutique

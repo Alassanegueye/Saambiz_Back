@@ -76,7 +76,7 @@ const Boutique = sequelize.define('Boutique', {
     type: DataTypes.DECIMAL(11, 8),
     allowNull: true,
   },
-  // ── Vitrine web publique — saambiz.sn/b/<slug> ──────────────────────
+  // ── Vitrine web publique — saambiz.com/b/<slug> ──────────────────────
   // Le vendeur ne choisit pas un site entier parmi des maquettes : il règle
   // un moteur unique. Une seule base de code à tenir, et un vendeur qui gère
   // sa boutique depuis son téléphone n'a pas à comparer des templates.

@@ -79,13 +79,13 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5188,http://localhost:5190,http://localhost:5199,http://localhost:5173,http://localhost:4173}
 
       # Admin par défaut créé par le seed (login du dashboard) — à changer en prod
-      ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@saambiz.sn}
+      ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@saambiz.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminSaamBiz2026!}
 
       # ── Services externes optionnels (vides = désactivés) ──
       # Email — Resend
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      MAIL_FROM:      ${MAIL_FROM:-SaamBiz <noreply@saambiz.sn>}
+      MAIL_FROM:      ${MAIL_FROM:-SaamBiz <noreply@saambiz.com>}
 
       # Cloudinary (upload images)
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}

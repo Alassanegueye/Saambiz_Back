@@ -2,7 +2,7 @@
 --  Migration SaamBiz — la vitrine web des boutiques
 --
 --  Chaque vendeur dispose désormais d'un vrai site pour sa boutique,
---  ouvert au public sans compte : saambiz.sn/b/<slug>. Ses clients y
+--  ouvert au public sans compte : saambiz.com/b/<slug>. Ses clients y
 --  commandent directement, puis sont invités à installer l'application
 --  pour suivre la boutique et recevoir ses notifications.
 --

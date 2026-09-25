@@ -1,0 +1,94 @@
+name: Backend — tests et déploiement
+
+# Deux temps :
+#   • sur toute branche et toute pull request → contrôle qualité
+#   • sur main uniquement → migrations puis vérification de santé
+#
+# Le job de déploiement échoue si /health ne répond pas 200 : mieux vaut une
+# alerte rouge qu'un service qui redémarre en boucle sans que personne ne le voie.
+
+# Ce fichier vivait à la racine du dossier de travail `jendal/`, hors des cinq
+# dépôts — donc dans aucun : GitHub ne lit `.github/workflows/` qu'à la racine
+# d'un dépôt, et cette CI n'a jamais démarré. Les filtres `paths: Backend/**`
+# et le `working-directory: Backend` datent de cette organisation en
+# monodépôt ; ici, le dépôt EST le backend.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  qualite:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+        env:
+          # Les secrets de test n'ont aucune valeur réelle : ils servent
+          # uniquement à faire passer les contrôles de démarrage de
+          # config/security.js, qui exige trois secrets distincts.
+          NODE_ENV: test
+          JWT_SECRET: ci_acces_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          JWT_REFRESH_SECRET: ci_refresh_bbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          JWT_RESET_SECRET: ci_reset_cccccccccccccccccccccccccccccc
+          CORS_ORIGIN: http://localhost:5190
+
+      - name: Vérifier que l'image se construit
+        run: docker build -t saambiz-backend:ci .
+
+  deploiement:
+    name: Déploiement
+    needs: qualite
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Déployer sur le serveur
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            git pull --ff-only
+            cd Backend
+
+            # Reconstruction puis démarrage. Le bootstrap du conteneur
+            # applique les migrations SQL avant de lancer le serveur : c'est
+            # là que les nouvelles colonnes arrivent, `sync()` ne les crée pas
+            # sur une table existante.
+            docker compose -f docker-compose.prod.yml up -d --build
+
+      - name: Vérifier la santé du service
+        run: |
+          echo "Attente du démarrage…"
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              "${{ secrets.HEALTH_URL }}" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Service en ligne (tentative $i)"
+              exit 0
+            fi
+            echo "  tentative $i : $code"
+            sleep 6
+          done
+          echo "::error::/health n'a jamais répondu 200 — déploiement considéré en échec"
+          exit 1
