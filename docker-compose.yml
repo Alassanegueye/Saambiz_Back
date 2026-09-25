@@ -1,0 +1,109 @@
+# ============================================================
+#  SaamBiz API — Docker Compose DÉVELOPPEMENT (clé en main)
+#  Usage : docker compose up --build   (ou : npm run docker:dev)
+#
+#  Aucune base à créer, aucune migration ni seed à lancer : au démarrage
+#  le conteneur backend crée les tables (sequelize.sync), applique les
+#  migrations SQL du dossier migrations/ (colonnes ajoutées après coup,
+#  que sync ne sait pas créer) puis exécute le seed idempotent
+#  (menus + admin + catégories) via bootstrap.js.
+#
+#  Les valeurs ci-dessous sont des DÉFAUTS DE DÉVELOPPEMENT sûrs.
+#  Elles peuvent être surchargées par un fichier .env à la racine
+#  du dossier Backend (docker compose le lit automatiquement).
+#  Les services externes (Cloudinary, Orange, Resend, Firebase)
+#  sont optionnels : vides = fonctionnalités désactivées, pas de crash.
+# ============================================================
+
+services:
+
+  # ─────────────────────────────────────────
+  # Base de données PostgreSQL (créée automatiquement)
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: saambiz_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-saambiz}
+      POSTGRES_USER:     ${DB_USER:-saambiz_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-saambiz_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-saambiz_user} -d ${DB_NAME:-saambiz}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Backend Node.js — prépare la base puis démarre le serveur
+  # ─────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saambiz_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Port hôte déterministe (5000) → port interne du conteneur (3000).
+      # Découplé de la variable PORT applicative pour ne pas dépendre du .env.
+      - "${HOST_PORT:-5000}:3000"
+    # 1) bootstrap : schéma + migrations + seed  2) démarrage du serveur
+    command: sh -c "node src/seed/bootstrap.js && node src/server.js"
+    environment:
+      NODE_ENV:  ${NODE_ENV:-development}
+      PORT:      3000
+      HOST:      0.0.0.0
+
+      # Base de données — pointe vers le service postgres ci-dessus
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-saambiz}
+      DB_USER:     ${DB_USER:-saambiz_user}
+      DB_PASSWORD: ${DB_PASSWORD:-saambiz_pass}
+
+      # JWT — défauts de DÉVELOPPEMENT (≥ 32 caractères). À CHANGER en prod.
+      JWT_SECRET:         ${JWT_SECRET:-dev_jwt_secret_change_me_min_32_caracteres_0001}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_jwt_refresh_secret_change_me_min_32_chars_0002}
+      JWT_EXPIRES_IN:     ${JWT_EXPIRES_IN:-1h}
+
+      # CORS — origines autorisées du dashboard (Vite dev 5173 / preview 4173)
+      # Origines des trois interfaces du projet en développement :
+      # 5188 administration · 5190 espace vendeur · 5199 site vitrine.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5188,http://localhost:5190,http://localhost:5199,http://localhost:5173,http://localhost:4173}
+
+      # Admin par défaut créé par le seed (login du dashboard) — à changer en prod
+      ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@saambiz.sn}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminSaamBiz2026!}
+
+      # ── Services externes optionnels (vides = désactivés) ──
+      # Email — Resend
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM:      ${MAIL_FROM:-SaamBiz <noreply@saambiz.sn>}
+
+      # Cloudinary (upload images)
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY:    ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+
+      # Orange Money
+      ORANGE_CLIENT_ID:      ${ORANGE_CLIENT_ID:-}
+      ORANGE_CLIENT_SECRET:  ${ORANGE_CLIENT_SECRET:-}
+      ORANGE_MERCHANT_KEY:   ${ORANGE_MERCHANT_KEY:-}
+      ORANGE_API_BASE:       ${ORANGE_API_BASE:-}
+      ORANGE_WEBHOOK_SECRET: ${ORANGE_WEBHOOK_SECRET:-}
+      ORANGE_RETURN_URL:     ${ORANGE_RETURN_URL:-}
+      ORANGE_CANCEL_URL:     ${ORANGE_CANCEL_URL:-}
+      ORANGE_NOTIF_URL:      ${ORANGE_NOTIF_URL:-}
+
+      # Firebase FCM (notifications push)
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+
+volumes:
+  postgres_data:

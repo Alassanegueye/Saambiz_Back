@@ -1,0 +1,102 @@
+# ============================================================
+#  SaamBiz API — Docker Compose PRODUCTION
+#  Usage : docker compose -f docker-compose.prod.yml up -d --build
+#
+#  Prérequis :
+#   • Fichier .env rempli (copie de .env.example)
+#   • Certificats Nginx / Let's Encrypt installés sur l'hôte
+#   • Répertoire /var/www/saambiz-backend existant sur le VPS
+# ============================================================
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: saambiz_postgres_prod
+    restart: unless-stopped
+    # Aucune valeur par défaut ici, contrairement au fichier de développement :
+    # `:?` fait échouer `docker compose up` si la variable manque au `.env`.
+    # Un défaut aurait fait tourner la base de production sur un mot de passe
+    # écrit en clair dans un fichier versionné — donc public.
+    environment:
+      POSTGRES_DB:          ${DB_NAME:?DB_NAME manquant dans .env}
+      POSTGRES_USER:        ${DB_USER:?DB_USER manquant dans .env}
+      POSTGRES_PASSWORD:    ${DB_PASSWORD:?DB_PASSWORD manquant dans .env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Scripts d'init optionnels (ex: création d'extension pgcrypto)
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
+    # PAS d'exposition du port en production — accessible uniquement via le réseau Docker
+    expose:
+      - "5432"
+    networks:
+      - saambiz_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Backend Node.js ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saambiz-backend:latest
+    container_name: saambiz_backend_prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # En production : Nginx écoute sur 443 et proxifie vers 127.0.0.1:3000
+    # On publie uniquement sur 127.0.0.1 (loopback) pour que Nginx seul y accède
+    ports:
+      - "127.0.0.1:3000:3000"
+    # 1) bootstrap : schéma + migrations + seed  2) démarrage du serveur
+    #
+    # Sans cette ligne, le conteneur part sur le CMD du Dockerfile
+    # (`node src/server.js`) et les migrations SQL ne sont JAMAIS appliquées en
+    # production : `sequelize.sync()` crée les tables absentes mais aucune des
+    # colonnes ajoutées à une table existante. Un déploiement se terminait donc
+    # en succès, /health répondait 200, et les routes touchant une colonne
+    # récente échouaient sur « column … does not exist ».
+    command: sh -c "node src/seed/bootstrap.js && node src/server.js"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT:     3000
+      HOST:     0.0.0.0
+      DB_HOST:  postgres
+      DB_PORT:  5432
+    networks:
+      - saambiz_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    # Limites ressources (adapter selon le VPS)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+networks:
+  saambiz_network:
+    driver: bridge
+    internal: false
+
+volumes:
+  postgres_data:
+    driver: local

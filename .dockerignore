@@ -1,0 +1,51 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.gitattributes
+*.md
+docs/
+uploads/
+logs/
+backups/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker (évite de copier les Dockerfiles eux-mêmes via COPY .)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Certificats & clés
+*.pem
+*.key
+*.crt
+*.p12
+
+# IDE / éditeurs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Coverage / tests
+coverage/
+.nyc_output/
+*.test.js
+*.spec.js
+__tests__/
+
+# Cache
+.cache/
+.eslintcache
+.npm/
+
+# Scripts de déploiement (pas nécessaires dans le conteneur)
+deploy/
+
+*.sqlite
