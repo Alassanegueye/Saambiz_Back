@@ -106,7 +106,22 @@ const HOST = process.env.HOST || '0.0.0.0';
     });
 
   } catch (err) {
-    logger.error('Erreur lors du démarrage', { message: err.message, stack: err.stack });
+    // `cible` dit à QUELLE base on a tenté de se connecter. Sans elle, un
+    // SequelizeConnectionRefusedError arrive avec un message vide et une pile
+    // qui ne nomme aucune adresse : on cherche du côté du réseau ou du mot de
+    // passe alors que la cause est une variable d'environnement absente.
+    logger.error('Erreur lors du démarrage', {
+      message: err.message || err.name,
+      cible: sequelize.cible,
+      stack: err.stack,
+    });
+    if (err.name === 'SequelizeConnectionRefusedError') {
+      logger.error(
+        `[DB] Connexion refusée par ${sequelize.cible}. `
+        + 'Vérifiez DATABASE_URL — sur Render, prenez « Internal Database URL » '
+        + 'et assurez-vous que le service et la base sont dans la même région.',
+      );
+    }
     process.exit(1);
   }
 })();
