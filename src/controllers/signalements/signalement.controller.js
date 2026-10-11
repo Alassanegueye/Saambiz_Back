@@ -1,7 +1,7 @@
 const { validationResult } = require('express-validator');
 const SignalementService = require('../../services/signalements/signalement.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
-const { ValidationError, NotFoundError } = require('../../errors/AppError');
+const { ValidationError } = require('../../errors/AppError');
 
 class SignalementController {
 
@@ -17,10 +17,7 @@ class SignalementController {
     // La cible peut avoir disparu entre l'affichage et le signalement.
     const result = await SignalementService
       .signalerContenu(signaleurId, { type, cibleId, raison, description })
-      .catch((err) => {
-        if (err.message.includes('introuvable')) throw new NotFoundError(err.message);
-        throw err;
-      });
+      ;
 
     return res.status(201).json({ success: true, ...result });
   });

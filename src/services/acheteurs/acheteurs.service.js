@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const { Op, Sequelize, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
 const includeVendeurActif = require('../../utils/includeVendeurActif');
+const { NotFoundError, BadRequestError } = require('../../errors/AppError');
 
 const LIMIT = 15;
 
@@ -225,7 +226,7 @@ class AcheteurService {
 
       if (!produit) {
         logger.info("❌ Produit introuvable");
-        throw new Error('Produit non trouvé ou vendeur inactif');
+        throw new NotFoundError('Produit non trouvé ou vendeur inactif');
       }
 
       logger.info("✅ Produit trouvé");
@@ -234,17 +235,17 @@ class AcheteurService {
         produit.vendeur.boutiques?.[0]?.telephone ||
         produit.vendeur.telephone;
 
-      logger.info("📞 Téléphone brut:", tel);
+      // Le numéro lui-même ne va pas dans les journaux : c'est une donnée
+      // personnelle du vendeur, et les journaux sont lus par plus de monde.
+      logger.debug("contacterVendeurWhatsapp : téléphone présent", { present: Boolean(tel) });
 
-      if (!tel) throw new Error('Téléphone vendeur non disponible');
+      if (!tel) throw new NotFoundError('Téléphone vendeur non disponible');
 
       tel = tel.replace(/[^0-9+]/g, '');
 
       if (!tel.startsWith('221')) {
         tel = '221' + tel;
       }
-
-      logger.info("📞 Téléphone final:", tel);
 
       const message = `
 Bonjour ${produit.vendeur.nom || ''} ${produit.vendeur.prenom || ''},
@@ -326,7 +327,7 @@ Merci.
 
       if (!boutique) {
         logger.info("❌ Boutique introuvable");
-        throw new Error('Boutique introuvable');
+        throw new NotFoundError('Boutique introuvable');
       }
 
       const { limit, offset } = paginate(page);
@@ -402,7 +403,7 @@ Merci.
         { model: ProduitImage, as: 'images', attributes: ['id', 'url', 'ordre'] }
       ]
     });
-    if (!produit) throw new Error('Produit introuvable');
+    if (!produit) throw new NotFoundError('Produit introuvable');
     return { produit };
   }
 
@@ -424,7 +425,7 @@ Merci.
         { model: Favori, as: 'favoris', attributes: ['id'] }
       ]
     });
-    if (!boutique) throw new Error('Boutique introuvable');
+    if (!boutique) throw new NotFoundError('Boutique introuvable');
 
     return { boutique, nombreFavoris: boutique.favoris.length, nombreAbonnes: boutique.favoris.length };
   }
@@ -762,7 +763,7 @@ Merci.
       longitude < -180 || longitude > 180 ||
       rayonKm <= 0 || rayonKm > 500
     ) {
-      throw new Error('Coordonnées GPS ou rayon invalides');
+      throw new BadRequestError('Coordonnées GPS ou rayon invalides');
     }
 
     const distance = Sequelize.literal(`

@@ -1,5 +1,5 @@
 const { Produit, Categorie, Boutique, Abonnement, Message, Paiement, Favori, Utilisateur, ProduitImage, Commande } = require('../../models');
-const { uploadImage, deleteImage } = require('../../middlewares/uploadService');
+const { uploadImage, deleteImage } = require('../stockage/upload.service');
 const sequelize = require('../../config/db');
 const NotificationService = require('../notifications/notification.service');
 const { appliquerDefautsBoutique, genererSlugUnique } = require('../../utils/boutiqueDefaults');
@@ -165,6 +165,11 @@ class VendeurService {
   static async getNombreProduits(vendeurId) {
     const nombreProduits = await Produit.count({ where: { vendeurId } });
     return { nombreProduits };
+  }
+
+  /** La boutique du vendeur, sans ses produits — `null` s'il n'en a pas encore. */
+  static async trouverBoutique(vendeurId) {
+    return Boutique.findOne({ where: { vendeurId } });
   }
 
   // -------------------- MA BOUTIQUE --------------------

@@ -3,31 +3,14 @@ const CommandeService = require('../../services/commandes/commande.service');
 const PaiementService = require('../../services/paiement/paiement.service');
 const DemandeRetourService = require('../../services/commandes/demandeRetour.service');
 const AccueilService = require('../../services/acheteurs/accueil.service');
-const { Produit, Categorie } = require('../../models');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { BadRequestError, ForbiddenError } = require('../../errors/AppError');
 
-/**
- * Un achat est le signal le plus fort dont on dispose : il pèse dix fois plus
- * qu'une simple consultation dans les propositions de l'accueil. On remonte la
- * catégorie de chaque produit commandé, sans jamais bloquer la commande.
- */
-async function nourrirAffinites(acheteurId, items) {
-  try {
-    const ids = (items || []).map((i) => i.produitId).filter(Boolean);
-    if (!ids.length) return;
-    const produits = await Produit.findAll({
-      where: { id: ids },
-      include: [{ model: Categorie, as: 'categorie', attributes: ['nom'], required: false }],
-    });
-    for (const p of produits) {
-      const nom = p.categorie?.nom || null;
-      if (nom) await AccueilService.enregistrerAffinite(acheteurId, nom, 'achat');
-    }
-  } catch {
-    // Personnalisation best-effort.
-  }
-}
+// Un achat est le signal le plus fort dont on dispose pour les propositions de
+// l'accueil. Le calcul (catégorie de chaque produit) vit dans AccueilService :
+// ce contrôleur interrogeait auparavant les modèles lui-même.
+const nourrirAffinites = (acheteurId, items) =>
+  AccueilService.enregistrerAffinitesAchat(acheteurId, items);
 
 // -------------------- ACHETEUR : créer une commande --------------------
 exports.creerCommande = asyncHandler(async (req, res) => {

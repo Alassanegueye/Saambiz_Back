@@ -20,7 +20,7 @@
 // la dernière étape est un aperçu, pas une validation.
 
 const { Boutique, Produit } = require('../../models');
-const { uploadImage } = require('../../middlewares/uploadService');
+const { uploadImage } = require('../stockage/upload.service');
 const LogoAnalyseService = require('./logo.analyse.service');
 const { genererSlugUnique } = require('../../utils/boutiqueDefaults');
 const { BadRequestError, NotFoundError } = require('../../errors/AppError');

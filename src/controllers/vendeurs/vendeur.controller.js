@@ -144,8 +144,7 @@ class VendeurController {
     // La proposition complète accompagne l'analyse : l'application affiche
     // ainsi la mise en page et les textes retenus dès cet écran, sans un
     // second aller-retour sur une connexion mobile.
-    const { Boutique } = require('../../models');
-    const boutique = await Boutique.findOne({ where: { vendeurId: req.user.id } });
+    const boutique = await VendeurService.trouverBoutique(req.user.id);
 
     const proposition = AssistantService.composerProposition({
       nomBoutique: boutique?.nom,

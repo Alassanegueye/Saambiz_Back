@@ -40,6 +40,32 @@ class CommandeService {
     return 1000;
   }
 
+  /**
+   * Charge et verrouille (FOR UPDATE) un lot de produits en UNE requête.
+   *
+   * Avant : un `findByPk` verrouillé par article, dans l'ordre du panier.
+   * Deux défauts :
+   *   - N allers-retours vers la base pour un panier de N articles ;
+   *   - un risque d'interblocage : la commande A verrouille P1 puis P2, la
+   *     commande B (même produits, autre ordre) P2 puis P1, et PostgreSQL
+   *     tue l'une des deux.
+   * Trier par identifiant donne à toutes les transactions le même ordre de
+   * verrouillage, ce qui supprime ce cas.
+   *
+   * @returns {Promise<Map<string, Produit>>} produits indexés par id
+   */
+  static async _verrouillerProduits(ids, transaction) {
+    const uniques = [...new Set(ids.filter(Boolean))];
+    if (uniques.length === 0) return new Map();
+    const produits = await Produit.findAll({
+      where: { id: uniques },
+      order: [['id', 'ASC']],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    return new Map(produits.map((p) => [p.id, p]));
+  }
+
   // Décrémente le stock des produits d'une commande (dans une transaction)
   static async _decrementerStock(commande, transaction) {
     const lignes = await LigneCommande.findAll({
@@ -47,14 +73,15 @@ class CommandeService {
       transaction,
     });
 
+    // Verrou pessimiste pour éviter la survente en cas de commandes simultanées
+    const produits = await CommandeService._verrouillerProduits(
+      lignes.map((l) => l.produitId),
+      transaction,
+    );
+
     for (const ligne of lignes) {
       if (!ligne.produitId) continue;
-
-      // Verrou pessimiste pour éviter la survente en cas de commandes simultanées
-      const produit = await Produit.findByPk(ligne.produitId, {
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
+      const produit = produits.get(ligne.produitId);
       if (!produit) continue;
 
       if (produit.quantite < ligne.quantite) {
@@ -79,12 +106,14 @@ class CommandeService {
       transaction,
     });
 
+    const produits = await CommandeService._verrouillerProduits(
+      lignes.map((l) => l.produitId),
+      transaction,
+    );
+
     for (const ligne of lignes) {
       if (!ligne.produitId) continue;
-      const produit = await Produit.findByPk(ligne.produitId, {
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
+      const produit = produits.get(ligne.produitId);
       if (!produit) continue;
       produit.quantite += ligne.quantite;
       if (produit.quantite > 0) produit.disponible = true;
@@ -124,21 +153,36 @@ class CommandeService {
       let vendeurId = null;
       let montantProduits = 0;
 
+      // Validation de forme d'abord : inutile de verrouiller des lignes en
+      // base pour un panier qu'on va refuser de toute façon.
       for (const item of items) {
-        const quantite = parseInt(item.quantite, 10);
-        if (!item.produitId || !quantite || quantite < 1) {
+        const quantite = parseInt(item?.quantite, 10);
+        if (!item?.produitId || !quantite || quantite < 1) {
           throw new BadRequestError('Chaque article doit avoir un produitId et une quantité valide.');
         }
+      }
 
-        const produit = await Produit.findByPk(item.produitId, {
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        });
+      const produits = await CommandeService._verrouillerProduits(
+        items.map((i) => i.produitId),
+        t,
+      );
+
+      // Quantité déjà demandée par produit dans CE panier. Sans ce cumul, un
+      // même produit présent sur deux lignes (2 + 2 pour un stock de 3)
+      // passait le contrôle ligne par ligne et le stock devenait négatif.
+      const dejaDemande = new Map();
+
+      for (const item of items) {
+        const quantite = parseInt(item.quantite, 10);
+
+        const produit = produits.get(item.produitId);
         if (!produit) throw new BadRequestError(`Produit introuvable : ${item.produitId}`);
         if (!produit.disponible) throw new BadRequestError(`Le produit "${produit.nom}" n'est pas disponible.`);
-        if (produit.quantite < quantite) {
+        const cumul = (dejaDemande.get(produit.id) || 0) + quantite;
+        if (produit.quantite < cumul) {
           throw new BadRequestError(`Stock insuffisant pour "${produit.nom}" (reste ${produit.quantite}).`);
         }
+        dejaDemande.set(produit.id, cumul);
 
         // Une commande = un seul vendeur (on refuse le panier multi-boutiques)
         if (vendeurId === null) {
@@ -213,9 +257,11 @@ class CommandeService {
       }, { transaction: t });
 
       // 4) Créer les lignes
-      for (const l of lignesData) {
-        await LigneCommande.create({ ...l, commandeId: commande.id }, { transaction: t });
-      }
+      // Un seul INSERT pour toutes les lignes (le modèle n'a pas de hook).
+      await LigneCommande.bulkCreate(
+        lignesData.map((l) => ({ ...l, commandeId: commande.id })),
+        { transaction: t, validate: true },
+      );
 
       // 5) Réserver le stock immédiatement si paiement à la livraison
       if (!paiementEnLigne) {

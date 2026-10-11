@@ -6,6 +6,7 @@ const ConfigService = require('../config/config.service');
 const { sendAbonnementConfirme } = require('../resend.service');
 const { sendPushToUsers } = require('../push.service');
 const { v4: uuidv4 } = require('uuid');
+const { NotFoundError } = require('../../errors/AppError');
 
 class PaiementService {
 
@@ -86,7 +87,7 @@ class PaiementService {
       }
 
       if (!paiement) {
-        throw new Error("Paiement introuvable — transactionId ou orderId inconnu");
+        throw new NotFoundError("Paiement introuvable — transactionId ou orderId inconnu");
       }
 
       // Idempotence : si déjà traité, ne rien faire

@@ -13,7 +13,7 @@ const { jwtConfig, bcryptConfig } = require('../config/security');
 // l'utilisateur n'existe pas (voir AuthService.login).
 const HASH_FACTICE = bcrypt.hashSync('mot_de_passe_factice_anti_timing', 12);
 const sequelize = require('../config/db');
-const { uploadImage } = require('../middlewares/uploadService');
+const { uploadImage } = require('./stockage/upload.service');
 const { appliquerDefautsBoutique, genererSlugUnique } = require('../utils/boutiqueDefaults');
 
 class AuthService {

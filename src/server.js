@@ -9,25 +9,10 @@ const startJobs = require('./jobs');
 // Charger toutes les associations de modèles
 require('./models/index');
 
-// Imports explicites pour s'assurer que Sequelize crée toutes les tables
-require('./models/utilisateur.model');
-require('./models/boutique.model');
-require('./models/produit.model');
-require('./models/categorie.model');
-require('./models/abonnement.model');
-require('./models/paiement.model');
-require('./models/userOtp.model');
-require('./models/favori.model');
-require('./models/message.model');
-require('./models/promotion.model');
-require('./models/notification.model');
-require('./models/signalement.model');
-require('./models/tokenBlacklist.model');
-require('./models/configApp.model');
-require('./models/produitImage.model');
-require('./models/demandeRetour.model');
-require('./models/auditLog.model');
-require('./models/avis.model');
+// Les modèles sont tous chargés par models/index.js ci-dessus : la liste
+// d'imports « explicites » qui suivait était redondante, et incomplète
+// (ligneCommande, refreshToken, boutique… y manquaient sans dommage, preuve
+// qu'elle ne servait à rien).
 
 const PORT = process.env.PORT || 3000;
 // MED-06 : adresse bind configurable via env (127.0.0.1 derrière un proxy, 0.0.0.0 en direct)

@@ -1,4 +1,5 @@
 const { Categorie, Produit } = require('../../models');
+const { NotFoundError } = require('../../errors/AppError');
 
 class CategorieService {
 
@@ -21,7 +22,7 @@ class CategorieService {
         }
       ]
     });
-    if (!categorie) throw new Error('Catégorie introuvable');
+    if (!categorie) throw new NotFoundError('Catégorie introuvable');
     return { categorie };
   }
 }

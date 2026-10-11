@@ -109,6 +109,7 @@ const adminManagementRoutes = require('./routes/adminManagement.route');
 const commandeRoutes = require('./routes/commandes/commande.route');
 const avisRoutes = require('./routes/avis/avis.route');
 const vitrineRoutes = require('./routes/vitrine/vitrine.route');
+const configPubliqueRoutes = require('./routes/config/configPublique.route');
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -132,6 +133,12 @@ apiRouter.use('/auth', authRoutes);
 // depuis une connexion partagée bloquerait ses propres clients. Chaque route
 // de la vitrine porte le plafond qui lui convient (voir vitrine.route.js).
 apiRouter.use('/vitrine', vitrineRoutes);
+
+// Réglages publics (`/prix-abonnement`, `/app/config`). Montés sur le routeur
+// d'API : ils répondent donc aussi sous `/saambiz/v1/…`, alors qu'ils
+// n'existaient auparavant que sans version. Les anciennes adresses restent
+// servies par l'alias `/saambiz` plus bas.
+apiRouter.use('/', configPubliqueRoutes);
 
 // Limiteur par compte pour tout ce qui suit. Le limiteur global compte par IP :
 // derrière une sortie internet partagée — un cybercafé, une boutique — les
@@ -167,43 +174,6 @@ app.use('/saambiz', (req, res, next) => {
   res.set('Link', '</saambiz/v1>; rel="successor-version"');
   next();
 }, apiRouter);
-
-// Route publique pour le prix de l'abonnement (vendeurs et front)
-app.get('/saambiz/prix-abonnement', async (req, res) => {
-  try {
-    const ConfigService = require('./services/config/config.service');
-    const prix = await ConfigService.getPrixAbonnement();
-    return res.status(200).json({ prix, devise: 'FCFA' });
-  } catch {
-    return res.status(200).json({ prix: 2000, devise: 'FCFA' });
-  }
-});
-
-// Route publique : configuration de l'app mobile (version minimale, maintenance)
-// Permet de forcer la mise à jour ou d'afficher un écran de maintenance côté mobile.
-app.get('/saambiz/app/config', async (req, res) => {
-  try {
-    const ConfigService = require('./services/config/config.service');
-    const [minAndroid, minIos, maintenance] = await Promise.all([
-      ConfigService.getConfig('min_version_android').catch(() => null),
-      ConfigService.getConfig('min_version_ios').catch(() => null),
-      ConfigService.getConfig('maintenance').catch(() => null),
-    ]);
-    return res.status(200).json({
-      minVersionAndroid: minAndroid?.valeur || '1.0.0',
-      minVersionIos: minIos?.valeur || '1.0.0',
-      maintenance: maintenance?.valeur === 'true' || maintenance?.valeur === true,
-      message: maintenance?.description || null,
-    });
-  } catch {
-    return res.status(200).json({
-      minVersionAndroid: '1.0.0',
-      minVersionIos: '1.0.0',
-      maintenance: false,
-      message: null,
-    });
-  }
-});
 
 // LOW-08 : health check
 app.get('/health', async (req, res) => {

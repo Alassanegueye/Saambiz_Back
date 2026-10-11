@@ -14,7 +14,16 @@ const options = {
   dialect: 'postgres',
   logging: false,
   dialectOptions,
-  pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+  // Pool réglable par l'environnement (standard SIGN). La bonne taille
+  // dépend de l'hébergement : une base Render « starter » accepte peu de
+  // connexions, et chaque worker PM2 ouvre son propre pool — 4 workers × 10
+  // connexions saturent vite une petite instance. Défauts inchangés.
+  pool: {
+    max: Number(process.env.DB_POOL_MAX) || 10,
+    min: Number(process.env.DB_POOL_MIN) || 0,
+    acquire: Number(process.env.DB_POOL_ACQUIRE_MS) || 30000,
+    idle: Number(process.env.DB_POOL_IDLE_MS) || 10000,
+  },
   define: { freezeTableName: true },
 };
 
@@ -45,6 +54,30 @@ if (EN_PRODUCTION && !urlFournie && !hoteFourni) {
     + "Sans eux la connexion viserait localhost, où rien n'écoute. "
     + "Renseignez DATABASE_URL avec l'adresse interne de votre base "
     + '(Render, Railway, Neon…).',
+  );
+}
+
+// Un hôte local en production est toujours une erreur de configuration : chez
+// un hébergeur managé, la base est un service distinct, joignable par son
+// adresse interne. `localhost` y désigne le conteneur applicatif lui-même, où
+// aucun PostgreSQL ne tourne.
+//
+// Le cas vient de la recopie du .env de développement dans le tableau de bord
+// de l'hébergeur : DB_HOST=localhost passait le contrôle ci-dessus — il n'est
+// pas vide — et l'on obtenait un refus de connexion sans rapport apparent avec
+// une variable mal réglée. Même logique que CORS_ORIGIN, qui refuse déjà une
+// origine locale en production.
+const _hoteEffectif = urlFournie
+  ? (() => { try { return new URL(urlFournie).hostname; } catch { return ''; } })()
+  : hoteFourni;
+
+if (EN_PRODUCTION && /^(localhost|127\.0\.0\.1|::1|\[::1\])$/.test(_hoteEffectif)) {
+  throw new Error(
+    `[DB] La base est déclarée sur « ${_hoteEffectif} » en production. `
+    + "Chez un hébergeur, localhost désigne le conteneur de l'application, "
+    + 'où aucun PostgreSQL ne tourne. Supprimez DB_HOST / DB_PORT / DB_NAME / '
+    + "DB_USER / DB_PASSWORD et renseignez DATABASE_URL avec l'adresse interne "
+    + 'de votre base.',
   );
 }
 

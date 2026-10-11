@@ -1,5 +1,5 @@
 const {
-  Produit, Boutique, Utilisateur, Favori, Avis, PreferenceClient,
+  Produit, Boutique, Utilisateur, Favori, Avis, PreferenceClient, Categorie,
 } = require('../../models');
 const { Op, Sequelize, fn, col } = require('sequelize');
 const logger = require('../../utils/logger');
@@ -114,6 +114,68 @@ class AccueilService {
       await pref.update({ affinites });
     } catch (err) {
       logger.error('accueil.enregistrerAffinite', { message: err.message });
+    }
+  }
+
+  /**
+   * Plusieurs catégories d'un coup — une seule lecture, une seule écriture.
+   *
+   * Une commande de cinq produits appelait `enregistrerAffinite` cinq fois à
+   * la suite : dix requêtes, et cinq lecture-modification-écriture sur la
+   * même ligne. Ici l'érosion n'est appliquée qu'une fois, ce qui correspond
+   * à la réalité : un achat est UN geste, pas cinq.
+   */
+  static async enregistrerAffinites(utilisateurId, categories, type = 'vue') {
+    const uniques = [...new Set((categories || []).filter(Boolean))];
+    if (!utilisateurId || uniques.length === 0) return;
+    try {
+      const pref = await this._preferences(utilisateurId);
+      const affinites = { ...(pref.affinites || {}) };
+      Object.keys(affinites).forEach((cle) => {
+        affinites[cle] = Math.round(affinites[cle] * DECROISSANCE * 100) / 100;
+      });
+      for (const categorie of uniques) {
+        affinites[categorie] = (affinites[categorie] || 0) + (POIDS[type] || 1);
+      }
+      await pref.update({ affinites });
+    } catch (err) {
+      logger.error('accueil.enregistrerAffinites', { message: err.message });
+    }
+  }
+
+  /**
+   * Affinités issues d'un achat : la catégorie de chaque produit commandé.
+   * Déplacé depuis le contrôleur de commandes, qui interrogeait lui-même les
+   * modèles (une route ne doit parler qu'aux services).
+   */
+  static async enregistrerAffinitesAchat(acheteurId, items) {
+    try {
+      const ids = [...new Set((items || []).map((i) => i?.produitId).filter(Boolean))];
+      if (!acheteurId || !ids.length) return;
+      const produits = await Produit.findAll({
+        where: { id: ids },
+        attributes: ['id'],
+        include: [{ model: Categorie, as: 'categorie', attributes: ['nom'], required: false }],
+      });
+      await this.enregistrerAffinites(
+        acheteurId,
+        produits.map((p) => p.categorie?.nom),
+        'achat',
+      );
+    } catch (err) {
+      // Personnalisation best-effort : ne bloque jamais une commande.
+      logger.error('accueil.enregistrerAffinitesAchat', { message: err.message });
+    }
+  }
+
+  /** Affinité pour la catégorie d'une boutique (abonnement à ses nouveautés). */
+  static async enregistrerAffiniteBoutique(utilisateurId, boutiqueId, type = 'abonnement') {
+    try {
+      if (!utilisateurId || !boutiqueId) return;
+      const boutique = await Boutique.findByPk(boutiqueId, { attributes: ['categorie'] });
+      await this.enregistrerAffinite(utilisateurId, boutique?.categorie, type);
+    } catch (err) {
+      logger.error('accueil.enregistrerAffiniteBoutique', { message: err.message });
     }
   }
 

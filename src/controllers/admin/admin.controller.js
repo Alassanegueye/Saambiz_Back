@@ -232,7 +232,7 @@ exports.tousLesPaiements = asyncHandler(async (req, res) => {
 });
 
 exports.paiementsEchoues = asyncHandler(async (req, res) => {
-  const result = await AdminService.paiementsEchoues();
+  const result = await AdminService.paiementsEchoues(req.query);
   return res.status(200).json(result);
 });
 

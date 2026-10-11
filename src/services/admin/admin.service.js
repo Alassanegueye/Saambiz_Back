@@ -1,5 +1,6 @@
 const { Utilisateur, Produit, Categorie, Abonnement, Paiement, Boutique, Signalement, Notification, Commande, LigneCommande } = require('../../models');
 const logger = require('../../utils/logger');
+const { paginate, metaPagination } = require('../../utils/paginate');
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
 const { BadRequestError, ForbiddenError, ConflictError, NotFoundError } = require('../../errors/AppError');
@@ -423,10 +424,12 @@ static async creerCategorie(data) {
 
   // ======================== PAIEMENTS ========================
 
-  static async tousLesPaiements({ statut, page = 1, limit = 20 }) {
+  // `paginate` borne `limit` à 100 : ces routes prenaient la valeur de la
+  // requête telle quelle, et `?limit=1000000` chargeait toute la table.
+  static async tousLesPaiements({ statut, page = 1, limit = 20 } = {}) {
     const where = {};
     if (statut) where.statut = statut;
-    const offset = (page - 1) * limit;
+    const p = paginate(page, limit);
     const { count, rows } = await Paiement.findAndCountAll({
       where,
       include: [{
@@ -434,22 +437,39 @@ static async creerCategorie(data) {
         attributes: ['id', 'nom', 'prenom', 'email']
       }],
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset
+      limit: p.limit,
+      offset: p.offset,
     });
-    return { message: 'Liste des paiements', total: count, page: parseInt(page), paiements: rows };
+    return {
+      message: 'Liste des paiements',
+      total: count,
+      page: p.page,
+      paiements: rows,
+      pagination: { ...metaPagination(count, p.page, p.limit), totalPages: Math.ceil(count / p.limit) },
+    };
   }
 
-  static async paiementsEchoues() {
-    const paiements = await Paiement.findAll({
+  // Paginé lui aussi : les échecs s'accumulent (chaque tentative Orange Money
+  // abandonnée en crée un) et la liste était renvoyée en entier.
+  static async paiementsEchoues({ page = 1, limit = 20 } = {}) {
+    const p = paginate(page, limit);
+    const { count, rows } = await Paiement.findAndCountAll({
       where: { statut: 'failed' },
       include: [{
         model: Utilisateur, as: 'utilisateur',
         attributes: ['id', 'nom', 'prenom', 'email']
       }],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: p.limit,
+      offset: p.offset,
     });
-    return { message: 'Paiements échoués', paiements };
+    return {
+      message: 'Paiements échoués',
+      total: count,
+      page: p.page,
+      paiements: rows,
+      pagination: { ...metaPagination(count, p.page, p.limit), totalPages: Math.ceil(count / p.limit) },
+    };
   }
 
   // ======================== ABONNEMENT MANUEL ========================
@@ -563,7 +583,10 @@ static async creerCategorie(data) {
     const where = {};
     if (statut) where.statut = statut;
 
-    const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    // Borne haute à 100 (voir utils/paginate) ; `page` et `limit` arrivent
+    // de la requête sans contrôle.
+    ({ page, limit } = paginate(page, limit));
+    const offset = (page - 1) * limit;
 
     const { rows, count } = await Commande.findAndCountAll({
       where,

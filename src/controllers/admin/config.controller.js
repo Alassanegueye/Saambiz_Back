@@ -1,7 +1,7 @@
 const ConfigService = require('../../services/config/config.service');
 const AuditService = require('../../services/audit.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
-const { BadRequestError, NotFoundError, ConflictError } = require('../../errors/AppError');
+const { BadRequestError } = require('../../errors/AppError');
 
 /** Le prix de l'abonnement est stocké en texte : il doit rester un entier positif. */
 function validerPrix(cle, valeur) {
@@ -24,11 +24,7 @@ exports.ajouterConfig = asyncHandler(async (req, res) => {
   validerPrix(cle, valeur);
 
   const result = await ConfigService
-    .ajouterConfig({ cle, valeur: String(valeur), description, adminId: req.user.id })
-    .catch((err) => {
-      if (err.message.includes('existe déjà')) throw new ConflictError(err.message);
-      throw err;
-    });
+    .ajouterConfig({ cle, valeur: String(valeur), description, adminId: req.user.id });
   return res.status(201).json(result);
 });
 
@@ -40,11 +36,7 @@ exports.modifierConfig = asyncHandler(async (req, res) => {
   validerPrix(cle, valeur);
 
   const result = await ConfigService
-    .modifierConfig({ cle, valeur: String(valeur), description, adminId: req.user.id })
-    .catch((err) => {
-      if (err.message.includes('introuvable')) throw new NotFoundError(err.message);
-      throw err;
-    });
+    .modifierConfig({ cle, valeur: String(valeur), description, adminId: req.user.id });
 
   AuditService.enregistrer({ adminId: req.user.id, action: 'modifier_config', cible: 'config', cibleId: cle, details: { valeur } }).catch(() => {});
   return res.status(200).json(result);

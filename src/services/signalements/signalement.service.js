@@ -1,4 +1,5 @@
 const { Signalement, Produit, Boutique } = require('../../models');
+const { NotFoundError } = require('../../errors/AppError');
 
 class SignalementService {
 
@@ -6,10 +7,10 @@ class SignalementService {
     // Vérifier que la cible existe
     if (type === 'produit') {
       const produit = await Produit.findByPk(cibleId);
-      if (!produit) throw new Error('Produit introuvable');
+      if (!produit) throw new NotFoundError('Produit introuvable');
     } else if (type === 'boutique') {
       const boutique = await Boutique.findByPk(cibleId);
-      if (!boutique) throw new Error('Boutique introuvable');
+      if (!boutique) throw new NotFoundError('Boutique introuvable');
     }
 
     const signalement = await Signalement.create({

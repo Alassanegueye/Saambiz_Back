@@ -5,9 +5,10 @@ const bcrypt = require('bcryptjs');
 const { randomInt, randomUUID } = require('crypto');
 const { Op } = require('sequelize');
 const sequelize = require('../config/db');
-const { uploadImage } = require('../middlewares/uploadService');
+const { uploadImage } = require('./stockage/upload.service');
 const { bcryptConfig } = require('../config/security');
 const AuditService = require('./audit.service');
+const { NotFoundError, TooManyRequestsError } = require('../errors/AppError');
 
 // HIGH-04 : protection brute-force OTP par email (en mémoire — Redis recommandé en prod)
 const _otpAttempts = new Map();
@@ -20,7 +21,7 @@ function _checkOtpLimit(email) {
   if (entry && now >= entry.resetAt) { _otpAttempts.delete(email); entry = null; }
   if (entry && entry.count >= OTP_MAX_ATTEMPTS) {
     const restantMin = Math.ceil((entry.resetAt - now) / 60000);
-    throw new Error(`Trop de tentatives OTP. Réessayez dans ${restantMin} minute(s).`);
+    throw new TooManyRequestsError(`Trop de tentatives OTP. Réessayez dans ${restantMin} minute(s).`);
   }
   if (!entry) { _otpAttempts.set(email, { count: 1, resetAt: now + OTP_WINDOW_MS }); }
   else { entry.count++; }
@@ -37,7 +38,7 @@ class AccountService {
         { model: Boutique, as: 'boutiques', required: false }
       ]
     });
-    if (!utilisateur) throw new Error('Utilisateur introuvable');
+    if (!utilisateur) throw new NotFoundError('Utilisateur introuvable');
     return utilisateur;
   }
 
@@ -45,7 +46,7 @@ class AccountService {
     const t = await sequelize.transaction();
     try {
       const utilisateur = await Utilisateur.findByPk(userId, { transaction: t });
-      if (!utilisateur) throw new Error('Utilisateur introuvable');
+      if (!utilisateur) throw new NotFoundError('Utilisateur introuvable');
 
       const { nom, prenom, email, telephone, adresse, ville } = data;
 
@@ -84,7 +85,7 @@ class AccountService {
 
   static async changePassword(userId, ancienMdp, nouveauMdp) {
     const utilisateur = await Utilisateur.findByPk(userId);
-    if (!utilisateur) throw new Error('Utilisateur introuvable');
+    if (!utilisateur) throw new NotFoundError('Utilisateur introuvable');
 
     const valid = await bcrypt.compare(ancienMdp, utilisateur.mot_de_passe);
     if (!valid) return { success: false, message: 'Ancien mot de passe incorrect' };

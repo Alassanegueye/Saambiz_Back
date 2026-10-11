@@ -1,6 +1,5 @@
 const CategorieService = require('../../services/categories/categorie.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
-const { NotFoundError } = require('../../errors/AppError');
 
 class CategorieController {
 
@@ -11,12 +10,10 @@ class CategorieController {
 
   static getCategorieById = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    // Le service signale l'absence par un message : on le traduit en 404 ici
-    // plutôt que de laisser passer un 500 pour une simple erreur de saisie.
-    const result = await CategorieService.getCategorieById(id).catch((err) => {
-      if (err.message === 'Catégorie introuvable') throw new NotFoundError(err.message);
-      throw err;
-    });
+    // Le service lève lui-même un NotFoundError : le 404 part tel quel vers
+    // errorHandler. L'ancienne traduction comparait le texte du message, et
+    // une simple reformulation côté service redonnait un 500.
+    const result = await CategorieService.getCategorieById(id);
     return res.status(200).json({ success: true, ...result });
   });
 }

@@ -85,12 +85,7 @@ class AcheteurController {
 
     // Le service échoue si le produit n'existe pas ou si le vendeur n'a pas
     // renseigné de téléphone — dans les deux cas il n'y a rien à joindre.
-    const whatsappUrl = await AcheteurService.contacterVendeurWhatsapp(id).catch((err) => {
-      if (err.message.includes('non trouvé') || err.message.includes('Téléphone')) {
-        throw new NotFoundError(err.message);
-      }
-      throw err;
-    });
+    const whatsappUrl = await AcheteurService.contacterVendeurWhatsapp(id);
 
     return res.status(200).json({
       success: true,
@@ -116,19 +111,13 @@ class AcheteurController {
 
   // 8. DÉTAIL PRODUIT
   static getDetailProduit = asyncHandler(async (req, res) => {
-    const result = await AcheteurService.getDetailProduit(req.params.id).catch((err) => {
-      if (err.message === 'Produit introuvable') throw new NotFoundError(err.message);
-      throw err;
-    });
+    const result = await AcheteurService.getDetailProduit(req.params.id);
     return res.status(200).json({ success: true, ...result });
   });
 
   // 9. DÉTAIL BOUTIQUE
   static getDetailBoutique = asyncHandler(async (req, res) => {
-    const result = await AcheteurService.getDetailBoutique(req.params.id).catch((err) => {
-      if (err.message === 'Boutique introuvable') throw new NotFoundError(err.message);
-      throw err;
-    });
+    const result = await AcheteurService.getDetailBoutique(req.params.id);
     return res.status(200).json({ success: true, ...result });
   });
 
@@ -220,10 +209,7 @@ class AcheteurController {
       throw new BadRequestError('ID de boutique invalide');
     }
 
-    const result = await AcheteurService.getProduitsByBoutique(boutiqueId, page).catch((err) => {
-      if (err.message === 'Boutique introuvable') throw new NotFoundError(err.message);
-      throw err;
-    });
+    const result = await AcheteurService.getProduitsByBoutique(boutiqueId, page);
 
     if (!result?.produits?.length) {
       throw new NotFoundError(
