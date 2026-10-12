@@ -107,6 +107,30 @@ const HOST = process.env.HOST || '0.0.0.0';
         + 'et assurez-vous que le service et la base sont dans la même région.',
       );
     }
+
+    // Un refus d'identifiants est la seule panne de démarrage qui prouve que
+    // tout le reste est juste : pour en arriver là, la résolution DNS, le
+    // réseau et la poignée de main TLS ont réussi. Inutile donc de chercher du
+    // côté de la région ou de l'adresse interne — la chaîne est bonne sauf sur
+    // deux champs.
+    //
+    // PostgreSQL répond « password authentication failed » aussi bien pour un
+    // mot de passe faux que pour un rôle inexistant : il ne distingue pas les
+    // deux cas, afin de ne pas révéler quels comptes existent. Le message ne
+    // dit donc pas « vérifiez le mot de passe » mais bien les deux champs.
+    if (/password authentication failed/i.test(err.message || '')) {
+      logger.error(
+        `[DB] ${sequelize.cible} a accepté la connexion puis refusé les `
+        + "identifiants. L'hôte, le port, la base et le réseau sont donc "
+        + "corrects : seuls l'utilisateur ou le mot de passe de DATABASE_URL "
+        + 'sont en cause (PostgreSQL renvoie le même message dans les deux '
+        + 'cas). Recopiez « Internal Database URL » en entier depuis la page '
+        + 'de la base, sans reconstruire la chaîne à la main : une base '
+        + "recréée change d'identifiant d'hôte ET de mot de passe, et une "
+        + 'sélection partielle tronque le mot de passe sans rien casser '
+        + "d'autre.",
+      );
+    }
     process.exit(1);
   }
 })();
