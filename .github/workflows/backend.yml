@@ -69,7 +69,17 @@ jobs:
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
             git pull --ff-only
-            cd Backend
+
+            # Pas de `cd Backend` ici : ce dépôt EST le backend, le Dockerfile
+            # et les fichiers compose sont à sa racine. Ce `cd` était le dernier
+            # reliquat de l'organisation en monodépôt décrite en haut de fichier
+            # — les filtres `paths:` l'avaient perdu, pas lui. Selon ce que
+            # contient DEPLOY_PATH il faisait échouer le déploiement de deux
+            # façons : « cd: Backend: No such file or directory », ou, si un
+            # dossier Backend/ de l'ancienne arborescence traînait encore sur le
+            # serveur, un build lancé dans un contexte sans Dockerfile —
+            # « failed to read dockerfile: open Dockerfile: no such file or
+            # directory ».
 
             # Reconstruction puis démarrage. Le bootstrap du conteneur
             # applique les migrations SQL avant de lancer le serveur : c'est

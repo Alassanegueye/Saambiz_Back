@@ -15,10 +15,23 @@ backups/
 Thumbs.db
 desktop.ini
 
-# Docker (évite de copier les Dockerfiles eux-mêmes via COPY .)
-Dockerfile*
+# Docker
+# « Dockerfile » et « .dockerignore » ne sont volontairement PAS listés ici.
+#
+# Les exclure n'empêche pas le build avec le CLI Docker : il transmet le
+# Dockerfile hors du contexte, donc ce fichier ne peut pas le masquer (vérifié
+# — `docker build .` réussit à la racine du dépôt avec « Dockerfile* » exclu).
+#
+# Mais les hébergeurs managés n'utilisent pas le CLI Docker : ils appellent
+# BuildKit directement, et selon la façon dont le contexte et le Dockerfile y
+# sont montés, ce fichier peut être appliqué avant la lecture du Dockerfile —
+# le build échoue alors sur « failed to read dockerfile: open Dockerfile: no
+# such file or directory », sans que rien ne désigne .dockerignore.
+#
+# Ne pas les exclure coûte 3 ko dans l'image. Les exclure risque un
+# déploiement cassé sur un moteur qu'on ne maîtrise pas. Le choix est vite
+# fait.
 docker-compose*.yml
-.dockerignore
 
 # Certificats & clés
 *.pem
