@@ -176,13 +176,31 @@ app.use('/saambiz', (req, res, next) => {
 }, apiRouter);
 
 // LOW-08 : health check
+//
+// `commit` porte la révision réellement en cours d'exécution. Render pose
+// RENDER_GIT_COMMIT sur chaque service ; ailleurs, GIT_COMMIT fait l'affaire.
+//
+// Sans ce champ, un déploiement n'est pas vérifiable : sonder /health juste
+// après l'avoir déclenché renvoie 200 — mais c'est l'ANCIENNE instance qui
+// répond, celle qui tourne encore pendant que la nouvelle se construit. La CI
+// passait donc au vert sans avoir rien prouvé, et un build cassé ressemblait
+// trait pour trait à un déploiement réussi. Comparer ce champ au SHA poussé
+// lève l'ambiguïté.
 app.get('/health', async (req, res) => {
+  const commit = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || null;
   try {
     const sequelize = require('./config/db');
     await sequelize.authenticate();
-    return res.status(200).json({ status: 'ok', uptime: process.uptime(), env: process.env.NODE_ENV });
+    return res.status(200).json({
+      status: 'ok',
+      uptime: process.uptime(),
+      env: process.env.NODE_ENV,
+      commit,
+    });
   } catch {
-    return res.status(503).json({ status: 'error', message: 'DB inaccessible' });
+    // Le commit est renvoyé même en panne de base : c'est précisément quand le
+    // service est dégradé qu'on veut savoir quelle version est en ligne.
+    return res.status(503).json({ status: 'error', message: 'DB inaccessible', commit });
   }
 });
 

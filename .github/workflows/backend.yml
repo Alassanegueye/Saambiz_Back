@@ -2,10 +2,19 @@ name: Backend — tests et déploiement
 
 # Deux temps :
 #   • sur toute branche et toute pull request → contrôle qualité
-#   • sur main uniquement → migrations puis vérification de santé
+#   • sur main uniquement → déploiement Render, puis vérification que c'est
+#     bien le commit poussé qui tourne
 #
-# Le job de déploiement échoue si /health ne répond pas 200 : mieux vaut une
-# alerte rouge qu'un service qui redémarre en boucle sans que personne ne le voie.
+# Le déploiement passe par le Deploy Hook de Render et non par SSH : l'hôte est
+# géré, il n'y a pas de serveur où se connecter. L'ancien job utilisait
+# appleboy/ssh-action avec un secret DEPLOY_HOST de VPS, et échouait sur
+# « error: missing server host » depuis le passage à Render.
+#
+# Pourquoi déclencher depuis la CI plutôt que de laisser l'auto-déploiement de
+# Render faire : Render déploie dès le push, sans attendre les tests. Un commit
+# cassé partait donc en production, et la CI le signalait après coup. En
+# coupant Auto-Deploy côté Render et en appelant le hook ici, l'ordre est
+# garanti — tests verts, puis déploiement.
 
 # Ce fichier vivait à la racine du dossier de travail `jendal/`, hors des cinq
 # dépôts — donc dans aucun : GitHub ne lit `.github/workflows/` qu'à la racine
@@ -16,6 +25,12 @@ on:
   push:
     branches: [main]
   pull_request:
+
+env:
+  # Adresse publique du service : aucun secret, elle figure déjà dans les
+  # bundles des interfaces. En dur ici, elle reste lisible dans les logs de la
+  # CI — ce qu'on veut quand on cherche pourquoi une vérification a échoué.
+  URL_SANTE: https://saambiz-back-uj2z.onrender.com/health
 
 jobs:
   qualite:
@@ -50,55 +65,59 @@ jobs:
         run: docker build -t saambiz-backend:ci .
 
   deploiement:
-    name: Déploiement
+    name: Déploiement Render
     needs: qualite
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Déployer sur le serveur
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            git pull --ff-only
-
-            # Pas de `cd Backend` ici : ce dépôt EST le backend, le Dockerfile
-            # et les fichiers compose sont à sa racine. Ce `cd` était le dernier
-            # reliquat de l'organisation en monodépôt décrite en haut de fichier
-            # — les filtres `paths:` l'avaient perdu, pas lui. Selon ce que
-            # contient DEPLOY_PATH il faisait échouer le déploiement de deux
-            # façons : « cd: Backend: No such file or directory », ou, si un
-            # dossier Backend/ de l'ancienne arborescence traînait encore sur le
-            # serveur, un build lancé dans un contexte sans Dockerfile —
-            # « failed to read dockerfile: open Dockerfile: no such file or
-            # directory ».
-
-            # Reconstruction puis démarrage. Le bootstrap du conteneur
-            # applique les migrations SQL avant de lancer le serveur : c'est
-            # là que les nouvelles colonnes arrivent, `sync()` ne les crée pas
-            # sur une table existante.
-            docker compose -f docker-compose.prod.yml up -d --build
-
-      - name: Vérifier la santé du service
+      - name: Déclencher le déploiement Render
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          echo "Attente du démarrage…"
-          for i in $(seq 1 20); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' \
-              "${{ secrets.HEALTH_URL }}" || echo 000)
-            if [ "$code" = "200" ]; then
-              echo "Service en ligne (tentative $i)"
+          set -e
+          # Un secret absent donnait jusqu'ici une erreur illisible du côté de
+          # l'outil appelé. On le dit explicitement, avec la marche à suivre.
+          if [ -z "$HOOK" ]; then
+            echo "::error::Le secret RENDER_DEPLOY_HOOK est absent. Render → service backend → Settings → Deploy Hook, puis GitHub → Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+          echo "Appel du Deploy Hook…"
+          # -f pour que curl échoue sur un statut HTTP d'erreur : sans lui, un
+          # hook révoqué renvoie 401 et le job passerait au vert.
+          reponse=$(curl -fsS -X POST "$HOOK")
+          echo "Render a répondu : $reponse"
+
+      - name: Attendre que le commit poussé soit en ligne
+        run: |
+          set -e
+          cible="${{ github.sha }}"
+          echo "Commit attendu : $cible"
+          echo "Sonde          : $URL_SANTE"
+          echo ""
+
+          # Une construction d'image Docker sur Render prend plusieurs minutes :
+          # 60 tentatives espacées de 15 s laissent 15 minutes.
+          #
+          # On compare le champ `commit` de /health au SHA poussé. Se contenter
+          # du code 200 ne prouverait rien : pendant toute la construction,
+          # c'est l'ancienne instance qui répond — et elle répond 200.
+          for i in $(seq 1 60); do
+            corps=$(curl -fsS --max-time 20 "$URL_SANTE" 2>/dev/null || true)
+            vu=$(printf '%s' "$corps" | jq -r '.commit // empty' 2>/dev/null || true)
+
+            if [ "$vu" = "$cible" ]; then
+              echo ""
+              echo "En ligne sur $cible (tentative $i)"
+              echo "Réponse : $corps"
               exit 0
             fi
-            echo "  tentative $i : $code"
-            sleep 6
+
+            echo "  tentative $i/60 — commit en ligne : ${vu:-(indisponible)}"
+            sleep 15
           done
-          echo "::error::/health n'a jamais répondu 200 — déploiement considéré en échec"
+
+          echo ""
+          echo "::error::Le commit $cible n'est jamais apparu sur $URL_SANTE après 15 minutes. Consultez les logs de build du service dans Render."
           exit 1
