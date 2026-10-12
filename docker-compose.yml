@@ -71,12 +71,20 @@ services:
       # JWT — défauts de DÉVELOPPEMENT (≥ 32 caractères). À CHANGER en prod.
       JWT_SECRET:         ${JWT_SECRET:-dev_jwt_secret_change_me_min_32_caracteres_0001}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_jwt_refresh_secret_change_me_min_32_chars_0002}
+      # Secret dédié aux liens de réinitialisation du mot de passe. Absent de
+      # cette liste, le conteneur retombait silencieusement sur JWT_SECRET
+      # (le .env n'est pas copié dans l'image, voir .dockerignore).
+      JWT_RESET_SECRET:   ${JWT_RESET_SECRET:-dev_jwt_reset_secret_change_me_min_32_chars_0003}
       JWT_EXPIRES_IN:     ${JWT_EXPIRES_IN:-1h}
 
       # CORS — origines autorisées du dashboard (Vite dev 5173 / preview 4173)
       # Origines des trois interfaces du projet en développement :
       # 5188 administration · 5190 espace vendeur · 5199 site vitrine.
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5188,http://localhost:5190,http://localhost:5199,http://localhost:5173,http://localhost:4173}
+
+      # Adresse publique des sites de boutique (liens et QR codes).
+      VITRINE_BASE_URL: ${VITRINE_BASE_URL:-http://localhost:5199}
+      LOG_LEVEL:        ${LOG_LEVEL:-info}
 
       # Admin par défaut créé par le seed (login du dashboard) — à changer en prod
       ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@saambiz.com}

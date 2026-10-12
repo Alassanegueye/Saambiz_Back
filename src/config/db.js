@@ -6,8 +6,26 @@ const { Sequelize } = require('sequelize');
 // propre autorité : sans ça, la connexion échoue sur « self signed
 // certificate in certificate chain » alors que le chiffrement fonctionne.
 const EN_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Render pose lui-même RENDER=true sur chaque service. On s'en sert pour
+// appliquer les contrôles d'hébergement MÊME si NODE_ENV a été oublié dans le
+// tableau de bord : c'est exactement le cas qui produisait un
+// « SequelizeConnectionRefusedError localhost:5432 » sans autre explication,
+// puisque ces contrôles ne s'activaient qu'avec NODE_ENV=production.
+const SUR_RENDER = process.env.RENDER === 'true';
+const SUR_HEBERGEUR = EN_PRODUCTION || SUR_RENDER;
+
+if (SUR_RENDER && !EN_PRODUCTION) {
+  // eslint-disable-next-line no-console -- le logger dépend de la config ; on
+  // écrit directement pour que l'avertissement sorte dans les logs Render.
+  console.warn(
+    '[CONFIG] NODE_ENV ne vaut pas « production » sur Render. Ajoutez '
+    + 'NODE_ENV=production dans Environment : sans lui, le SSL vers la base, '
+    + 'les contrôles CORS et le masquage des erreurs restent désactivés.',
+  );
+}
 const dialectOptions = {
-  ssl: EN_PRODUCTION ? { require: true, rejectUnauthorized: false } : false,
+  ssl: SUR_HEBERGEUR ? { require: true, rejectUnauthorized: false } : false,
 };
 
 const options = {
@@ -48,7 +66,7 @@ const hoteFourni = (process.env.DB_HOST || '').trim();
 // obtient alors un `SequelizeConnectionRefusedError` nu, qui ne dit ni quelle
 // adresse a été tentée ni quelle variable manque, et l'on cherche du côté du
 // réseau ou du mot de passe pendant que la cause est une variable vide.
-if (EN_PRODUCTION && !urlFournie && !hoteFourni) {
+if (SUR_HEBERGEUR && !urlFournie && !hoteFourni) {
   throw new Error(
     '[DB] Ni DATABASE_URL ni DB_HOST ne sont définis en production. '
     + "Sans eux la connexion viserait localhost, où rien n'écoute. "
@@ -71,7 +89,7 @@ const _hoteEffectif = urlFournie
   ? (() => { try { return new URL(urlFournie).hostname; } catch { return ''; } })()
   : hoteFourni;
 
-if (EN_PRODUCTION && /^(localhost|127\.0\.0\.1|::1|\[::1\])$/.test(_hoteEffectif)) {
+if (SUR_HEBERGEUR && /^(localhost|127\.0\.0\.1|::1|\[::1\])$/.test(_hoteEffectif)) {
   throw new Error(
     `[DB] La base est déclarée sur « ${_hoteEffectif} » en production. `
     + "Chez un hébergeur, localhost désigne le conteneur de l'application, "

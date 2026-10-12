@@ -28,9 +28,9 @@ const options = {
     },
     servers: [
       { url: 'http://localhost:5000/saambiz/v1', description: 'Développement local' },
-      { url: 'https://saambiz-backend.onrender.com/saambiz/v1', description: 'Production' },
+      { url: 'https://saambiz-back-uj2z.onrender.com/saambiz/v1', description: 'Production' },
       {
-        url: 'https://saambiz-backend.onrender.com/saambiz',
+        url: 'https://saambiz-back-uj2z.onrender.com/saambiz',
         description: 'Alias historique sans version — déprécié, conservé pour les applications mobiles installées',
       },
     ],
