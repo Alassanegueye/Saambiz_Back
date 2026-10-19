@@ -31,6 +31,17 @@ app.use(helmet({
 }));
 app.use(cors(corsConfig));
 
+// Pictogramme des emails (en-tête des templates/mail) : servi publiquement,
+// avant le limiteur de requêtes. Helmet pose « Cross-Origin-Resource-Policy:
+// same-origin », qui empêcherait les webmails de l'afficher : on l'ouvre ici.
+app.use(
+  '/email',
+  express.static(require('path').join(__dirname, '..', 'public', 'email'), {
+    maxAge: '7d',
+    setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
+  })
+);
+
 // LOW-03 : X-Request-ID pour le tracing distribué
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || randomUUID();

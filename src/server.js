@@ -5,6 +5,7 @@ const app = require('./app');
 const logger = require('./utils/logger');
 const { initSocket } = require('./services/socket.service');
 const startJobs = require('./jobs');
+const migrate = require('./seed/migrate');
 
 // Charger toutes les associations de modèles
 require('./models/index');
@@ -32,6 +33,19 @@ const HOST = process.env.HOST || '0.0.0.0';
         ? 'DB connectée (mode production — schéma non altéré)'
         : 'DB synchronisée (création des tables manquantes)'
     );
+
+    // Migrations SQL en attente (colonnes ajoutées à des tables existantes,
+    // que sync() n'ajoute jamais). Sans elles, une colonne déclarée dans un
+    // modèle mais absente en base (categorie.specifications…) fait échouer
+    // chaque requête en « Requête invalide pour la base de données » (400).
+    // Chaque fichier n'est appliqué qu'une fois (table migration_appliquee).
+    if (process.env.SKIP_MIGRATIONS !== 'true') {
+      try {
+        await migrate();
+      } catch (err) {
+        logger.error('[migrate] Migrations non appliquées au démarrage', { message: err.message });
+      }
+    }
 
     // Serveur HTTP explicite (au lieu de app.listen) pour pouvoir brancher Socket.IO dessus
     const httpServer = http.createServer(app);

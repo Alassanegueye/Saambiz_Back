@@ -117,7 +117,12 @@ class InscriptionService {
     const enProduction = process.env.NODE_ENV === 'production';
 
     try {
-      await sendVerificationEmail({ to: adresse, nom: prenom || '', code });
+      await sendVerificationEmail({
+        to: adresse,
+        nom: prenom || '',
+        code,
+        minutes: Math.round(VALIDITE_CODE_MS / 60000),
+      });
     } catch (err) {
       logger.error('[inscription] envoi du code impossible', { message: err.message });
       throw new BadRequestError(
