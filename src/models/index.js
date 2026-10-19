@@ -25,6 +25,7 @@ const DemandeRetour = require('./demandeRetour.model');
 const AuditLog = require('./auditLog.model');
 const Avis = require('./avis.model');
 const PreferenceClient = require('./preferenceClient.model');
+const BoutiqueCategorie = require('./boutiqueCategorie.model');
 
 // ===================== ASSOCIATIONS EXISTANTES =====================
 
@@ -36,6 +37,20 @@ Produit.belongsTo(Utilisateur, { foreignKey: 'vendeurId', as: 'vendeur' });
 
 Categorie.hasMany(Produit, { foreignKey: 'categorieId', as: 'produits' });
 Produit.belongsTo(Categorie, { foreignKey: 'categorieId', as: 'categorie' });
+
+// Catégories d'une boutique : 1 à 3, dont une principale (boutique_categorie).
+// `boutique.categorie` (texte) reste renseigné avec le nom de la principale,
+// pour les écrans qui le lisent encore.
+Boutique.belongsToMany(Categorie, {
+  through: BoutiqueCategorie, foreignKey: 'boutiqueId', otherKey: 'categorieId', as: 'categories',
+});
+Categorie.belongsToMany(Boutique, {
+  through: BoutiqueCategorie, foreignKey: 'categorieId', otherKey: 'boutiqueId', as: 'boutiques',
+});
+Boutique.hasMany(BoutiqueCategorie, { foreignKey: 'boutiqueId', as: 'liensCategories' });
+BoutiqueCategorie.belongsTo(Boutique, { foreignKey: 'boutiqueId', as: 'boutique' });
+Categorie.hasMany(BoutiqueCategorie, { foreignKey: 'categorieId', as: 'liensBoutiques' });
+BoutiqueCategorie.belongsTo(Categorie, { foreignKey: 'categorieId', as: 'categorie' });
 
 Utilisateur.hasMany(Abonnement, { foreignKey: 'utilisateurId', as: 'abonnements' });
 Abonnement.belongsTo(Utilisateur, { foreignKey: 'utilisateurId', as: 'utilisateur' });
@@ -160,5 +175,5 @@ module.exports = {
   Signalement, TokenBlacklist, RefreshToken, ConfigApp, DeviceToken,
   Menu, Permission,
   ProduitImage, DemandeRetour, AuditLog, Avis, PreferenceClient,
-  VerificationEmail,
+  VerificationEmail, BoutiqueCategorie,
 };

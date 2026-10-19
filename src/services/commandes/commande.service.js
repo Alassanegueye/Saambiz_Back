@@ -54,6 +54,21 @@ class CommandeService {
    *
    * @returns {Promise<Map<string, Produit>>} produits indexés par id
    */
+  /**
+   * Options choisies par le client pour une ligne (taille, parfum…) :
+   * texte court uniquement, dix au plus. Rien de choisi = null.
+   */
+  static _options(options) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) return null;
+    const propres = {};
+    for (const [cle, valeur] of Object.entries(options).slice(0, 10)) {
+      const k = String(cle).trim().slice(0, 40);
+      const v = String(valeur ?? '').trim().slice(0, 80);
+      if (k && v) propres[k] = v;
+    }
+    return Object.keys(propres).length ? propres : null;
+  }
+
   static async _verrouillerProduits(ids, transaction) {
     const uniques = [...new Set(ids.filter(Boolean))];
     if (uniques.length === 0) return new Map();
@@ -211,6 +226,7 @@ class CommandeService {
           prixUnitaire,
           quantite,
           sousTotal,
+          options: CommandeService._options(item.options),
         });
       }
 

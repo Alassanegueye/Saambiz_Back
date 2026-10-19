@@ -58,6 +58,12 @@ exports.registerSchema = Joi.object({
   slogan:           Joi.string().max(255).optional().allow(''),
   localisation:     Joi.string().max(255).optional().allow(''),
   categorie:        Joi.string().max(100).optional().allow(''),
+  // 1 à 3 catégories (identifiants, slugs ou noms) — tableau, ou chaîne
+  // JSON / liste séparée par des virgules quand le formulaire est multipart.
+  categories:       Joi.alternatives(
+    Joi.array().items(Joi.string().max(100)).max(3),
+    Joi.string().max(400).allow(''),
+  ).optional(),
   telephoneBoutique: Joi.string().optional().allow(''),
 }).options({ allowUnknown: false });
 

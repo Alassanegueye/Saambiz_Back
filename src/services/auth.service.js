@@ -15,6 +15,7 @@ const HASH_FACTICE = bcrypt.hashSync('mot_de_passe_factice_anti_timing', 12);
 const sequelize = require('../config/db');
 const { uploadImage } = require('./stockage/upload.service');
 const { appliquerDefautsBoutique, genererSlugUnique } = require('../utils/boutiqueDefaults');
+const CategorieBoutiqueService = require('./categories/categorieBoutique.service');
 
 class AuthService {
 
@@ -151,6 +152,13 @@ class AuthService {
             logo: logoUrl,
             vendeurId: utilisateur.id
           }, { transaction: t });
+
+          // 1 à 3 catégories ; l'ancien champ `categorie` seul reste accepté.
+          await CategorieBoutiqueService.definir(
+            boutiqueCreated,
+            { categories: boutique.categories, categorie: boutique.categorie },
+            { transaction: t },
+          );
         }
       }
 

@@ -3,6 +3,8 @@ const { uploadImage, deleteImage } = require('../stockage/upload.service');
 const sequelize = require('../../config/db');
 const NotificationService = require('../notifications/notification.service');
 const { appliquerDefautsBoutique, genererSlugUnique } = require('../../utils/boutiqueDefaults');
+const CategorieBoutiqueService = require('../categories/categorieBoutique.service');
+const { validerAttributs } = require('../categories/specifications');
 const { Op, fn, col } = require('sequelize');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
 
@@ -65,11 +67,11 @@ class VendeurService {
       let imageUrl = null;
       if (image?.buffer) imageUrl = await uploadImage(image.buffer);
 
-      // attributs peut arriver en JSON string via multipart/form-data
-      let attributsParsed = attributs;
-      if (typeof attributs === 'string' && attributs.trim()) {
-        try { attributsParsed = JSON.parse(attributs); } catch { attributsParsed = null; }
-      }
+      // Caractéristiques vérifiées selon les spécifications de la catégorie
+      // (tailles, pointures, contenance…). Un ancien client qui n'envoie pas
+      // `attributs` du tout n'est pas bloqué ; dès qu'il les envoie, les
+      // champs obligatoires de la catégorie s'appliquent.
+      const attributsParsed = await VendeurService._verifierAttributs(categorieId, attributs, t);
 
       const produit = await Produit.create({
         nom, description, prix, prix_promo: prix_promo || null,
@@ -94,6 +96,25 @@ class VendeurService {
     }
   }
 
+  /**
+   * Catégorie active obligatoire ; caractéristiques vérifiées selon ses
+   * spécifications quand elles sont transmises.
+   * @returns {object|null|undefined} attributs normalisés
+   */
+  static async _verifierAttributs(categorieId, attributs, transaction) {
+    if (!categorieId) throw new BadRequestError('Choisissez une catégorie');
+    const categorie = await Categorie.findOne({
+      where: { id: categorieId, active: true },
+      attributes: ['id', 'specifications'],
+      transaction,
+    });
+    if (!categorie) throw new BadRequestError('Catégorie inconnue ou masquée');
+    if (attributs === undefined) return undefined;
+    if (attributs === null || attributs === '') return null;
+    const valeurs = validerAttributs(categorie.specifications || [], attributs);
+    return Object.keys(valeurs).length ? valeurs : null;
+  }
+
   // -------------------- MODIFIER PRODUIT --------------------
   // HIGH-01 : whitelist stricte des champs modifiables
   static async modifierProduit(vendeurId, produitId, updates) {
@@ -110,6 +131,14 @@ class VendeurService {
       const safeUpdates = {};
       for (const field of PRODUIT_FIELDS) {
         if (updates[field] !== undefined) safeUpdates[field] = updates[field];
+      }
+
+      if (updates.attributs !== undefined) {
+        safeUpdates.attributs = await VendeurService._verifierAttributs(
+          safeUpdates.categorieId || produit.categorieId, updates.attributs, t,
+        );
+      } else if (safeUpdates.categorieId) {
+        await VendeurService._verifierAttributs(safeUpdates.categorieId, undefined, t);
       }
 
       // Upload image si fournie (vient du middleware multer, pas du body)
@@ -182,7 +211,11 @@ class VendeurService {
     });
     if (!boutique) throw new NotFoundError('Boutique introuvable');
     const totalVues = boutique.produits.reduce((acc, p) => acc + (p.vues || 0), 0);
-    return { boutique, stats: { totalVues, nombreProduits: boutique.produits.length } };
+    const categories = await CategorieBoutiqueService.lister(boutique.id);
+    return {
+      boutique: { ...boutique.toJSON(), categories },
+      stats: { totalVues, nombreProduits: boutique.produits.length },
+    };
   }
 
   // -------------------- CRÉER BOUTIQUE --------------------
@@ -204,8 +237,15 @@ class VendeurService {
     safeData = appliquerDefautsBoutique(safeData);
     if (!safeData.slug) safeData.slug = await genererSlugUnique(safeData.nom);
 
-    const boutique = await Boutique.create({ ...safeData, vendeurId });
-    return { boutique };
+    // Boutique et catégories ensemble : une boutique sans catégorie
+    // n'apparaîtrait dans aucun filtre de l'accueil.
+    const boutique = await sequelize.transaction(async (transaction) => {
+      const creee = await Boutique.create({ ...safeData, vendeurId }, { transaction });
+      await CategorieBoutiqueService.definir(creee, data, { transaction });
+      return creee;
+    });
+    const categories = await CategorieBoutiqueService.lister(boutique.id);
+    return { boutique: { ...boutique.toJSON(), categories } };
   }
 
   // -------------------- MODIFIER BOUTIQUE --------------------
@@ -222,8 +262,13 @@ class VendeurService {
     if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer);
     if (files.banniere?.buffer) safeData.banniere = await uploadImage(files.banniere.buffer);
 
-    await boutique.update(safeData);
-    return { boutique };
+    await sequelize.transaction(async (transaction) => {
+      await boutique.update(safeData, { transaction });
+      // `categories` (1 à 3) ou l'ancien `categorie` seul ; absent = inchangé.
+      await CategorieBoutiqueService.definir(boutique, data, { transaction });
+    });
+    const categories = await CategorieBoutiqueService.lister(boutique.id);
+    return { boutique: { ...boutique.toJSON(), categories } };
   }
 
   // ══════════════════════════════════════════════════════════════════

@@ -8,6 +8,8 @@ const creerCommandeSchema = Joi.object({
         'number.min': 'La quantité doit être au moins 1',
         'any.required': 'La quantité est requise',
       }),
+      // Options choisies (taille, parfum, format…) : { libellé: valeur }.
+      options: Joi.object().pattern(Joi.string().max(40), Joi.string().max(80).allow('')).max(10).optional().allow(null),
     })
   ).min(1).required().messages({
     'array.min': 'La commande doit contenir au moins un article',

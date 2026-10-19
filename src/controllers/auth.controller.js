@@ -41,7 +41,7 @@ exports.verifierCodeInscription = asyncHandler(async (req, res) => {
 exports.inscriptionUser = asyncHandler(async (req, res) => {
   const {
     nom, prenom, email, mot_de_passe, adresse, telephone, role,
-    nomBoutique, description, localisation, categorie, slogan,
+    nomBoutique, description, localisation, categorie, categories, slogan,
     telephoneBoutique, jetonEmail
   } = req.body;
 
@@ -50,7 +50,7 @@ exports.inscriptionUser = asyncHandler(async (req, res) => {
 
   let boutique = null;
   if (role === 'Vendeur' && nomBoutique) {
-    boutique = { nom: nomBoutique, description, localisation, categorie, slogan, telephone: telephoneBoutique, logo };
+    boutique = { nom: nomBoutique, description, localisation, categorie, categories, slogan, telephone: telephoneBoutique, logo };
   }
 
   const result = await AuthService.register({ nom, prenom, email, mot_de_passe, adresse, telephone, photoProfil, role, boutique, jetonEmail });

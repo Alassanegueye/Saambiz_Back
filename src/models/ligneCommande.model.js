@@ -47,6 +47,11 @@ const LigneCommande = sequelize.define('LigneCommande', {
     validate: { min: 1 },
   },
 
+  // Options choisies par le client : { Taille: 'XL', Parfum: 'Bissap' }.
+  options: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+  },
   sousTotal: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,

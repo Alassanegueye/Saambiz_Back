@@ -258,8 +258,21 @@ exports.modifierCategorie = asyncHandler(async (req, res) => {
 });
 
 exports.supprimerCategorie = asyncHandler(async (req, res) => {
-  const result = await AdminService.supprimerCategorie(req.params.id);
+  // `remplacerPar` (query ou corps) : catégorie qui reprend produits et boutiques.
+  const remplacerPar = req.query.remplacerPar || req.body?.remplacerPar || null;
+  const result = await AdminService.supprimerCategorie(req.params.id, { remplacerPar });
+  tracer(req, 'supprimer_categorie', 'categorie', req.params.id);
   return res.status(200).json(result);
+});
+
+exports.listerCategories = asyncHandler(async (req, res) => {
+  const result = await AdminService.listerCategories();
+  return res.status(200).json({ success: true, ...result });
+});
+
+exports.reordonnerCategories = asyncHandler(async (req, res) => {
+  const result = await AdminService.reordonnerCategories(req.body?.ids);
+  return res.status(200).json({ success: true, ...result });
 });
 
 // -------------------- NOTIFICATION BROADCAST --------------------

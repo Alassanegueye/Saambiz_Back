@@ -103,6 +103,7 @@ const messageRoutes = require('./routes/messagerie/message.route');
 const promotionRoutes = require('./routes/promotions/promotion.route');
 const notificationRoutes = require('./routes/notifications/notification.route');
 const categorieRoutes = require('./routes/categories/categorie.route');
+const catalogueRoutes = require('./routes/catalogue/catalogue.route');
 const signalementRoutes = require('./routes/signalements/signalement.route');
 const deviceTokenRoutes = require('./routes/deviceToken.route');
 const adminManagementRoutes = require('./routes/adminManagement.route');
@@ -161,6 +162,8 @@ apiRouter.use('/messages', limiteParCompte, messageRoutes);
 apiRouter.use('/promotions', limiteParCompte, promotionRoutes);
 apiRouter.use('/notifications', limiteParCompte, notificationRoutes);
 apiRouter.use('/categories', limiteParCompte, categorieRoutes);
+// Catalogue public (invités compris) : produits, fiche, promotions, boutique.
+apiRouter.use('/catalogue', limiteParCompte, catalogueRoutes);
 apiRouter.use('/signalements', limiteParCompte, signalementRoutes);
 apiRouter.use('/device-token', limiteParCompte, deviceTokenRoutes);
 

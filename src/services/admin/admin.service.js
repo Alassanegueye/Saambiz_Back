@@ -1,5 +1,6 @@
 const { Utilisateur, Produit, Categorie, Abonnement, Paiement, Boutique, Signalement, Notification, Commande, LigneCommande } = require('../../models');
 const logger = require('../../utils/logger');
+const CategorieAdminService = require('../categories/categorieAdmin.service');
 const { paginate, metaPagination } = require('../../utils/paginate');
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
@@ -139,38 +140,10 @@ class AdminService {
     };
   }
 
-  // 7. Créer une catégorie
-static async creerCategorie(data) {
-  try {
-    const { nom, description } = data;
-
-    // Vérifier si la catégorie existe déjà
-    const existe = await Categorie.findOne({
-      where: { nom }
-    });
-
-    if (existe) {
-      return {
-        message: "Cette catégorie existe déjà",
-      };
-    }
-
-    // Création
-    const categorie = await Categorie.create({
-      nom,
-      description
-    });
-
-    return {
-      message: "Catégorie créée avec succès",
-      categorie
-    };
-
-  } catch (error) {
-    console.error("Erreur creerCategorie :", error);
-    throw error;
+  // 7. Créer une catégorie — logique dans CategorieAdminService
+  static async creerCategorie(data) {
+    return CategorieAdminService.creer(data);
   }
-}
 
   // 8. Suspendre un vendeur
   static async suspendreVendeur(vendeurId) {
@@ -515,25 +488,20 @@ static async creerCategorie(data) {
 
   // ======================== CATÉGORIES ========================
 
-  static async modifierCategorie(categorieId, data) {
-    const categorie = await Categorie.findByPk(categorieId);
-    if (!categorie) throw new NotFoundError('Catégorie introuvable');
-    const { nom, description } = data;
-    if (nom && nom !== categorie.nom) {
-      const existe = await Categorie.findOne({ where: { nom } });
-      if (existe) throw new ConflictError('Ce nom de catégorie est déjà utilisé');
-    }
-    await categorie.update({ nom: nom || categorie.nom, description: description ?? categorie.description });
-    return { message: 'Catégorie modifiée avec succès', categorie };
+  static async listerCategories() {
+    return CategorieAdminService.lister();
   }
 
-  static async supprimerCategorie(categorieId) {
-    const categorie = await Categorie.findByPk(categorieId);
-    if (!categorie) throw new NotFoundError('Catégorie introuvable');
-    const nbProduits = await Produit.count({ where: { categorieId } });
-    if (nbProduits > 0) throw new ConflictError(`Impossible de supprimer : ${nbProduits} produit(s) utilisent cette catégorie`);
-    await categorie.destroy();
-    return { message: 'Catégorie supprimée avec succès' };
+  static async modifierCategorie(categorieId, data) {
+    return CategorieAdminService.modifier(categorieId, data);
+  }
+
+  static async supprimerCategorie(categorieId, options = {}) {
+    return CategorieAdminService.supprimer(categorieId, options);
+  }
+
+  static async reordonnerCategories(ids) {
+    return CategorieAdminService.reordonner(ids);
   }
 
   // ======================== NOTIFICATION BROADCAST ========================

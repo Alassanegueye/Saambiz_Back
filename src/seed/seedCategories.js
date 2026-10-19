@@ -1,33 +1,34 @@
-// Seed des catégories génériques de la marketplace Jëndal.
-// Marketplace généraliste : tout vendeur, tout type de produit.
-// Réutilisable par runSeed.js ou lançable seul : `node src/seed/seedCategories.js`
+// Seed des catégories SaamBiz — un seul niveau (voir src/constants/categories.js).
+// Réutilisable par runSeed.js / bootstrap.js ou lançable seul :
+//   `node src/seed/seedCategories.js`
+//
+// Idempotent et respectueux du dashboard : une catégorie déjà présente
+// (même slug, ou même nom) n'est jamais modifiée — l'admin a pu la renommer,
+// la masquer ou la réordonner. Seules les catégories absentes sont créées.
 require('dotenv').config();
+const { Op } = require('sequelize');
 const { sequelize, Categorie } = require('../models');
-
-const DEFAULT_CATEGORIES = [
-  { nom: 'Mode & Vêtements',       description: 'Vêtements, chaussures et accessoires de mode' },
-  { nom: 'Beauté & Cosmétiques',   description: 'Soins, maquillage, parfums et produits de beauté' },
-  { nom: 'Électronique',           description: 'Téléphones, accessoires et appareils électroniques' },
-  { nom: 'Maison & Déco',          description: 'Décoration, meubles et articles pour la maison' },
-  { nom: 'Alimentation',           description: 'Produits alimentaires, boissons et épicerie' },
-  { nom: 'Sport & Loisirs',        description: 'Équipements de sport, loisirs et plein air' },
-  { nom: 'Enfants & Bébé',         description: 'Vêtements, jouets et articles pour enfants et bébés' },
-  { nom: 'Bijoux & Accessoires',   description: 'Bijoux, montres et accessoires' },
-  { nom: 'Artisanat & Fait main',  description: 'Créations artisanales et produits faits main' },
-  { nom: 'Santé & Bien-être',      description: 'Produits de santé, hygiène et bien-être' },
-  { nom: 'Services',               description: 'Prestations et services proposés par les vendeurs' },
-  { nom: 'Autres',                 description: 'Produits divers ne rentrant dans aucune autre catégorie' },
-];
+const { REFERENTIEL_CATEGORIES } = require('../constants/categories');
+const { SPECIFICATIONS_CATEGORIES } = require('../constants/specificationsCategories');
 
 async function seedCategories() {
-  for (const c of DEFAULT_CATEGORIES) {
-    await Categorie.findOrCreate({ where: { nom: c.nom }, defaults: c });
+  let creees = 0;
+  for (const c of REFERENTIEL_CATEGORIES) {
+    const existe = await Categorie.findOne({
+      where: { [Op.or]: [{ slug: c.slug }, { nom: c.nom }] },
+      paranoid: false, // supprimée par l'admin : on ne la recrée pas
+    });
+    if (existe) continue;
+    await Categorie.create({
+      ...c, active: true, specifications: SPECIFICATIONS_CATEGORIES[c.slug] || [],
+    });
+    creees += 1;
   }
-  return DEFAULT_CATEGORIES.length;
+  return creees;
 }
 
 module.exports = seedCategories;
-module.exports.DEFAULT_CATEGORIES = DEFAULT_CATEGORIES;
+module.exports.DEFAULT_CATEGORIES = REFERENTIEL_CATEGORIES;
 
 // Exécution directe
 if (require.main === module) {
@@ -35,7 +36,7 @@ if (require.main === module) {
     try {
       await sequelize.authenticate();
       const n = await seedCategories();
-      console.log(`[SEED] ${n} catégories initialisées.`);
+      console.log(`[SEED] ${n} catégorie(s) créée(s), ${REFERENTIEL_CATEGORIES.length} au référentiel.`);
       process.exit(0);
     } catch (e) {
       console.error(e);

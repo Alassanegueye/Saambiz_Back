@@ -70,6 +70,29 @@ class VitrineService {
   }
 
   /** Forme publique d'un produit, prix déjà résolu pour l'affichage. */
+  /**
+   * Libellés des variantes (« Pointures disponibles ») et caractéristiques
+   * informatives (« État : Neuf ») tirées des spécifications de la
+   * catégorie. Sans spécifications (listes), rien n'est ajouté.
+   */
+  static _caracteristiques(attributs, specifications) {
+    if (!Array.isArray(specifications) || !specifications.length) return {};
+    const valeurs = attributs || {};
+    const libelles = {};
+    const caracteristiques = [];
+    for (const s of specifications) {
+      libelles[s.cle] = s.libelle;
+      const v = valeurs[s.cle];
+      if (s.type === 'variantes' || v == null || v === '' || v === false) continue;
+      let texte;
+      if (s.type === 'oui_non') texte = 'Oui';
+      else if (s.type === 'nombre') texte = s.unite ? `${v} ${s.unite}` : String(v);
+      else texte = String(v);
+      caracteristiques.push({ cle: s.cle, libelle: s.libelle, valeur: texte });
+    }
+    return { libelles, caracteristiques };
+  }
+
   static _exposerProduit(produit) {
     const p = produit.get ? produit.get({ plain: true }) : produit;
     const prix = parseFloat(p.prix);
@@ -95,6 +118,7 @@ class VitrineService {
       stockFaible: p.quantite > 0 && p.quantite <= 3,
       categorieId: p.categorieId,
       categorie: p.categorie ? { id: p.categorie.id, nom: p.categorie.nom } : null,
+      ...VitrineService._caracteristiques(p.attributs, p.categorie?.specifications),
       nouveaute: p.createdAt ? (Date.now() - new Date(p.createdAt).getTime()) < 14 * 864e5 : false,
     };
   }
@@ -335,7 +359,9 @@ class VitrineService {
       where: { id: produitId, ...VitrineService._filtreCatalogue(boutique.vendeurId) },
       attributes: ATTRIBUTS_PRODUIT,
       include: [
-        { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] },
+        // Les spécifications donnent les libellés (« Pointures disponibles »)
+        // et la liste des caractéristiques affichées sur la fiche.
+        { model: Categorie, as: 'categorie', attributes: ['id', 'nom', 'specifications'] },
         { model: ProduitImage, as: 'images', attributes: ['id', 'url', 'ordre'] },
       ],
       order: [[{ model: ProduitImage, as: 'images' }, 'ordre', 'ASC']],

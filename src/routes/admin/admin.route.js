@@ -278,6 +278,15 @@ router.put('/abonnement/:id/revoquer',
   adminController.revoquerAbonnement);
 
 // -------------------- CATÉGORIES --------------------
+// Catégories : liste complète (masquées comprises, avec leur usage) et ordre.
+// `/categories/ordre` est déclaré avant `/categorie/:id` par lisibilité ; les
+// préfixes diffèrent de toute façon.
+router.get('/categories',
+  requirePermission('CATEGORIES', 'view'),
+  adminController.listerCategories);
+router.put('/categories/ordre',
+  requirePermission('CATEGORIES', 'update'),
+  adminController.reordonnerCategories);
 router.put('/categorie/:id',
   requirePermission('CATEGORIES', 'update'),
   adminController.modifierCategorie);

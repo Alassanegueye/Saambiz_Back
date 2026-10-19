@@ -1,6 +1,9 @@
 const {
-  Produit, Boutique, Utilisateur, Favori, Avis, PreferenceClient, Categorie,
+  Produit, Boutique, Utilisateur, Favori, Avis, PreferenceClient, Categorie, BoutiqueCategorie,
 } = require('../../models');
+const CategorieService = require('../categories/categorie.service');
+const CategorieBoutiqueService = require('../categories/categorieBoutique.service');
+const CatalogueService = require('../catalogue/catalogue.service');
 const { Op, Sequelize, fn, col } = require('sequelize');
 const logger = require('../../utils/logger');
 
@@ -50,6 +53,21 @@ class AccueilService {
     return pref;
   }
 
+  /**
+   * Centres d'intérêt → noms actuels des catégories actives. Accepte des
+   * identifiants, des slugs, des noms ou les anciens libellés de
+   * l'application ; ce qui ne correspond à rien est écarté.
+   */
+  static async _normaliserInterets(valeurs) {
+    const propres = (Array.isArray(valeurs) ? valeurs : [])
+      .filter((v) => typeof v === 'string' && v.trim())
+      .map((v) => v.trim())
+      .slice(0, 24);
+    if (!propres.length) return [];
+    const categories = await CategorieBoutiqueService.resoudre(propres);
+    return categories.map((c) => c.nom);
+  }
+
   static async getPreferences(utilisateurId) {
     const pref = await this._preferences(utilisateurId);
     return {
@@ -71,7 +89,7 @@ class AccueilService {
     const champs = {};
 
     if (Array.isArray(interets)) {
-      champs.interets = interets.filter((i) => typeof i === 'string').slice(0, 12);
+      champs.interets = (await this._normaliserInterets(interets)).slice(0, 12);
       // Les centres d'intérêt déclarés amorcent les affinités, sinon un
       // nouveau client verrait un accueil totalement générique.
       const affinites = { ...(pref.affinites || {}) };
@@ -210,6 +228,10 @@ class AccueilService {
    */
   static async construire({ utilisateur, interetsInvite = [], latitude, longitude }) {
     const utilisateurId = utilisateur?.id || null;
+    // L'invité transmet ses choix tels que l'application les connaît —
+    // identifiants, slugs, ou anciens libellés ('Mode') : on les ramène aux
+    // noms actuels des catégories.
+    interetsInvite = await this._normaliserInterets(interetsInvite);
 
     let interets = interetsInvite;
     let affinites = {};
@@ -237,8 +259,14 @@ class AccueilService {
     const categoriesRetenues = categories.length ? categories : interets.slice(0, 6);
 
     const [
+      listeCategories, promotions, nouveautes,
       abonnements, pourVous, proches, meilleures, nouvelles, aDecouvrir,
     ] = await Promise.all([
+      CategorieService.getAllCategories().then((r) => r.categories),
+      // Produits au format du catalogue : mêmes cartes, même fiche, avec la
+      // fin de promotion pour le compte à rebours.
+      CatalogueService.promotions({ limit: 12 }).then((r) => r.produits),
+      CatalogueService.lister({ tri: 'recents', limit: 12 }).then((r) => r.produits),
       this._sectionAbonnements(utilisateurId),
       this._boutiquesParCategories(categoriesRetenues, utilisateurId),
       this._boutiquesProches(position.latitude, position.longitude),
@@ -249,7 +277,19 @@ class AccueilService {
 
     const sections = [];
 
-    // Les boutiques suivies passent devant tout le reste : c'est la
+    // Les promotions en cours : le premier carrousel, ce qui donne une
+    // raison d'ouvrir l'application même sans rien chercher.
+    if (promotions.length) {
+      sections.push({
+        cle: 'promotions',
+        titre: 'Promotions du moment',
+        type: 'produits',
+        elements: promotions,
+      });
+    }
+    // Des produits dès l'ouverture, même pour un invité sans préférence :
+    // un accueil fait seulement de boutiques paraissait vide.
+    // Les boutiques suivies passent juste après : c'est la
     // demande explicite du client, pas une suggestion de notre part.
     if (abonnements.produits.length) {
       sections.push({
@@ -257,6 +297,14 @@ class AccueilService {
         titre: 'Chez les boutiques que vous suivez',
         type: 'produits',
         elements: abonnements.produits,
+      });
+    }
+    if (nouveautes.length) {
+      sections.push({
+        cle: 'nouveautes',
+        titre: 'Nouveautés',
+        type: 'produits',
+        elements: nouveautes,
       });
     }
     if (pourVous.length) {
@@ -304,6 +352,8 @@ class AccueilService {
 
     return {
       invite: !utilisateurId,
+      // Rangée de catégories en tête d'accueil (ordre fixé par l'admin).
+      categories: listeCategories,
       interets: categoriesRetenues,
       positionConnue: position.latitude != null,
       sections: this._rotationDuJour(sections, utilisateurId),
@@ -318,15 +368,20 @@ class AccueilService {
    * et le client, pour que l'accueil respire sans devenir imprévisible.
    */
   static _rotationDuJour(sections, utilisateurId) {
-    if (sections.length <= 3) return sections;
+    // Les rangées de produits (promotions, boutiques suivies, nouveautés)
+    // gardent leur place en tête ; seules les rangées de boutiques tournent,
+    // la première (la plus pertinente) restant fixe.
+    const produits = sections.filter((x) => x.type === 'produits');
+    const boutiques = sections.filter((x) => x.type !== 'produits');
+    if (boutiques.length <= 2) return [...produits, ...boutiques];
 
     const jour = Math.floor(Date.now() / 86400000);
     const graine = (utilisateurId || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const decalage = (jour + graine) % (sections.length - 2);
+    const decalage = (jour + graine) % (boutiques.length - 1);
 
-    const tete = sections.slice(0, 2);
-    const reste = sections.slice(2);
-    return [...tete, ...reste.slice(decalage), ...reste.slice(0, decalage)];
+    const tete = boutiques.slice(0, 1);
+    const reste = boutiques.slice(1);
+    return [...produits, ...tete, ...reste.slice(decalage), ...reste.slice(0, decalage)];
   }
 
   // ==========================================================
@@ -380,38 +435,39 @@ class AccueilService {
     });
     if (!boutiques.length) return { produits: [] };
 
-    const parVendeur = new Map(boutiques.map((b) => [b.vendeurId, b]));
+    const vendeurIds = [...new Set(boutiques.map((b) => b.vendeurId))];
     const produits = await Produit.findAll({
-      where: { vendeurId: { [Op.in]: [...parVendeur.keys()] }, disponible: true },
+      where: { vendeurId: { [Op.in]: vendeurIds }, disponible: true, statut: 'approuve' },
+      include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom', 'slug', 'icone', 'specifications'] }],
       order: [['createdAt', 'DESC']],
       limit: 12,
     });
 
-    return {
-      produits: produits.map((p) => {
-        const brut = p.toJSON();
-        const boutique = parVendeur.get(brut.vendeurId);
-        return {
-          id: brut.id,
-          nom: brut.nom,
-          prix: brut.prix,
-          image: brut.image,
-          boutique: boutique ? { id: boutique.id, nom: boutique.nom, logo: boutique.logo } : null,
-        };
-      }),
-    };
+    return { produits: await CatalogueService._enrichir(produits) };
   }
 
-  /** Boutiques dont la catégorie correspond aux affinités du client. */
+  /** Identifiants des boutiques rangées dans ces catégories (par nom). */
+  static async _liensParNoms(noms) {
+    if (!noms.length) return [];
+    const categories = await Categorie.findAll({
+      where: { nom: { [Op.in]: noms }, active: true },
+      attributes: ['id', 'nom'],
+    });
+    if (!categories.length) return [];
+    const nomParId = new Map(categories.map((c) => [c.id, c.nom]));
+    const liens = await BoutiqueCategorie.findAll({
+      where: { categorieId: { [Op.in]: [...nomParId.keys()] } },
+      attributes: ['boutiqueId', 'categorieId'],
+    });
+    return liens.map((l) => ({ boutiqueId: l.boutiqueId, nom: nomParId.get(l.categorieId) }));
+  }
+
+  /** Boutiques rangées dans les catégories pour lesquelles le client a une affinité. */
   static async _boutiquesParCategories(categories, utilisateurId) {
     if (!categories.length) return [];
 
-    const base = this._boutiqueVisible;
-    const boutiques = await Boutique.findAll({
-      ...base,
-      where: { ...base.where, categorie: { [Op.in]: categories } },
-      limit: 20,
-    });
+    const liens = await this._liensParNoms(categories);
+    if (!liens.length) return [];
 
     // Déjà suivies : inutile de les reproposer dans « pour vous ».
     let dejaSuivies = new Set();
@@ -422,23 +478,93 @@ class AccueilService {
       dejaSuivies = new Set(favoris.map((f) => f.boutiqueId));
     }
 
+    const ids = [...new Set(liens.map((l) => l.boutiqueId))].filter((id) => !dejaSuivies.has(id));
+    if (!ids.length) return [];
+
+    const base = this._boutiqueVisible;
+    const boutiques = await Boutique.findAll({
+      ...base,
+      where: { ...base.where, id: { [Op.in]: ids } },
+      order: Sequelize.literal('RANDOM()'),
+      limit: 40,
+    });
+    const parId = new Map(boutiques.map((b) => [b.id, b]));
+
     // On respecte l'ordre des affinités : la catégorie la plus forte
-    // d'abord, puis une par une, pour éviter un bloc monocatégorie.
+    // d'abord, puis une par une, pour éviter un bloc monocatégorie. Une
+    // boutique rangée dans deux catégories n'apparaît qu'une fois.
     const parCategorie = new Map(categories.map((c) => [c, []]));
-    boutiques
-      .filter((b) => !dejaSuivies.has(b.id))
-      .forEach((b) => parCategorie.get(b.categorie)?.push(b));
+    liens.forEach((l) => {
+      const b = parId.get(l.boutiqueId);
+      if (b) parCategorie.get(l.nom)?.push(b);
+    });
 
     const melange = [];
+    const vues = new Set();
     let reste = true;
     for (let i = 0; reste && melange.length < 12; i++) {
       reste = false;
       for (const cat of categories) {
-        const liste = parCategorie.get(cat) || [];
-        if (liste[i]) { melange.push(liste[i]); reste = true; }
+        const b = (parCategorie.get(cat) || [])[i];
+        if (!b) continue;
+        reste = true;
+        if (!vues.has(b.id)) { vues.add(b.id); melange.push(b); }
       }
     }
     return melange.slice(0, 12).map((b) => this._formater(b));
+  }
+
+  /**
+   * Page d'une catégorie : ses boutiques, les plus proches d'abord si la
+   * position est connue, sinon les plus récentes.
+   */
+  static async boutiquesDeCategorie(idOuSlug, { page = 1, limit = 20, latitude, longitude } = {}) {
+    const categorie = await CategorieService.trouver(idOuSlug);
+    const taille = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+    const numero = Math.max(parseInt(page, 10) || 1, 1);
+
+    const liens = await BoutiqueCategorie.findAll({
+      where: { categorieId: categorie.id }, attributes: ['boutiqueId'],
+    });
+    const ids = liens.map((l) => l.boutiqueId);
+    const enTete = {
+      id: categorie.id, nom: categorie.nom, slug: categorie.slug,
+      description: categorie.description, icone: categorie.icone, image: categorie.image,
+    };
+    if (!ids.length) {
+      return { categorie: enTete, boutiques: [], pagination: { page: numero, limit: taille, total: 0 } };
+    }
+
+    const base = this._boutiqueVisible;
+    const where = { ...base.where, id: { [Op.in]: ids } };
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const positionValide = !isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+
+    const options = { ...base, where, limit: taille, offset: (numero - 1) * taille, distinct: true };
+    if (positionValide) {
+      // Coordonnées validées ci-dessus avant interpolation dans le littéral.
+      const distance = Sequelize.literal(`CASE WHEN "Boutique"."latitude" IS NULL THEN NULL ELSE
+        6371 * acos(LEAST(1, GREATEST(-1,
+          cos(radians(${lat})) * cos(radians(CAST("Boutique"."latitude" AS float))) *
+          cos(radians(CAST("Boutique"."longitude" AS float)) - radians(${lng})) +
+          sin(radians(${lat})) * sin(radians(CAST("Boutique"."latitude" AS float)))
+        ))) END`);
+      options.attributes = { include: [[distance, 'distance']] };
+      options.order = [[Sequelize.literal('distance'), 'ASC NULLS LAST'], ['createdAt', 'DESC']];
+    } else {
+      options.order = [['createdAt', 'DESC']];
+    }
+
+    const { rows, count } = await Boutique.findAndCountAll(options);
+    return {
+      categorie: enTete,
+      boutiques: rows.map((b) => {
+        const d = b.get('distance');
+        return this._formater(b, d != null ? { distanceKm: Math.round(Number(d) * 10) / 10 } : {});
+      }),
+      pagination: { page: numero, limit: taille, total: count },
+    };
   }
 
   /** Boutiques les plus proches, si la position est connue. */
@@ -528,13 +654,12 @@ class AccueilService {
    */
   static async _aDecouvrir(categoriesConnues) {
     const base = this._boutiqueVisible;
+    const connues = [...new Set((await this._liensParNoms(categoriesConnues)).map((l) => l.boutiqueId))];
     const boutiques = await Boutique.findAll({
       ...base,
       where: {
         ...base.where,
-        ...(categoriesConnues.length
-          ? { categorie: { [Op.notIn]: categoriesConnues } }
-          : {}),
+        ...(connues.length ? { id: { [Op.notIn]: connues } } : {}),
       },
       order: Sequelize.literal('RANDOM()'),
       limit: 8,
