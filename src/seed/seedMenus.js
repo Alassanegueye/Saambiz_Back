@@ -12,9 +12,7 @@ const DEFAULT_MENUS = [
   { name: 'Abonnements',     code: 'ABONNEMENTS',   path: '/abonnements',   icon: 'card',      ordre: 8 },
   { name: 'Modération',      code: 'MODERATION',    path: '/moderation',    icon: 'check',     ordre: 9 },
   { name: 'Validation vendeurs', code: 'VALIDATION_VENDEURS', path: '/validation-vendeurs', icon: 'verified', ordre: 10 },
-  { name: 'Signalements',    code: 'SIGNALEMENTS',  path: '/signalements',  icon: 'report',    ordre: 11 },
   { name: 'Administrateurs', code: 'ADMINS',        path: '/admins',        icon: 'admin',     ordre: 12 },
-  { name: 'Menus',           code: 'MENUS',         path: '/menus',         icon: 'menu',      ordre: 13 },
   { name: 'Configuration',   code: 'CONFIG',        path: '/config',        icon: 'settings',  ordre: 14 },
 ];
 
