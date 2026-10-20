@@ -4,13 +4,18 @@ const { sendPushToUsers } = require('../push.service');
 
 class NotificationService {
 
-  static async creerNotification({ utilisateurId, titre, message, type }) {
+  /**
+   * @param {object} p
+   * @param {string} [p.image] logo de la boutique concernée (push uniquement)
+   * @param {object} [p.data]  données jointes au push
+   */
+  static async creerNotification({ utilisateurId, titre, message, type, image, data = {} }) {
     const notification = await Notification.create({ utilisateurId, titre, message, type });
     try {
       getIO().to('user:' + utilisateurId).emit('notification:new', notification);
     } catch (_) { /* Socket.IO pas encore initialisé — on ignore silencieusement */ }
     // Push FCM best-effort (ne bloque pas si Firebase non configuré)
-    sendPushToUsers(utilisateurId, { title: titre, body: message, data: { type } }).catch(() => {});
+    sendPushToUsers(utilisateurId, { title: titre, body: message, data: { type, ...data }, image }).catch(() => {});
     return notification;
   }
 
@@ -18,7 +23,7 @@ class NotificationService {
    * Notifie une liste d'utilisateurs : persiste en base, émet en temps réel (Socket.IO)
    * et envoie un push FCM. Best-effort sur le temps réel et le push.
    */
-  static async notifierUtilisateurs(userIds, titre, message, type, data = {}) {
+  static async notifierUtilisateurs(userIds, titre, message, type, data = {}, { image } = {}) {
     const ids = [...new Set((Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean))];
     if (!ids.length) return { destinataires: 0 };
 
@@ -32,7 +37,7 @@ class NotificationService {
     } catch (_) { /* Socket.IO indisponible */ }
 
     // Push FCM groupé
-    sendPushToUsers(ids, { title: titre, body: message, data: { type, ...data } }).catch(() => {});
+    sendPushToUsers(ids, { title: titre, body: message, data: { type, ...data }, image }).catch(() => {});
 
     return { destinataires: ids.length };
   }
@@ -46,7 +51,8 @@ class NotificationService {
       attributes: ['acheteurId'],
     });
     const ids = abonnes.map(a => a.acheteurId);
-    return this.notifierUtilisateurs(ids, titre, message, type, { boutiqueId, ...data });
+    const boutique = await Boutique.findByPk(boutiqueId, { attributes: ['logo'] });
+    return this.notifierUtilisateurs(ids, titre, message, type, { boutiqueId, ...data }, { image: boutique?.logo });
   }
 
   /**
@@ -56,7 +62,7 @@ class NotificationService {
   static async notifierAbonnesDuVendeur(vendeurId, titre, message, type, data = {}) {
     const boutiques = await Boutique.findAll({
       where: { vendeurId },
-      attributes: ['id'],
+      attributes: ['id', 'logo'],
     });
     if (!boutiques.length) return { destinataires: 0 };
 
@@ -66,7 +72,8 @@ class NotificationService {
       attributes: ['acheteurId'],
     });
     const ids = abonnes.map(a => a.acheteurId);
-    return this.notifierUtilisateurs(ids, titre, message, type, data);
+    // Le push porte le logo de la boutique, pas celui de SaamBiz.
+    return this.notifierUtilisateurs(ids, titre, message, type, { boutiqueId: boutiques[0].id, ...data }, { image: boutiques[0].logo });
   }
 
   static async mesNotifications(userId) {

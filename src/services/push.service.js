@@ -25,9 +25,11 @@ try {
 /**
  * Envoie une notification push à un ou plusieurs utilisateurs via leurs device tokens FCM.
  * @param {string|string[]} utilisateurIds
- * @param {{ title: string, body: string, data?: Record<string,string> }} payload
+ * @param {{ title: string, body: string, data?: Record<string,string>, image?: string }} payload
+ *   `image` : URL https d'une image affichée dans la notification — le logo
+ *   de la boutique quand la notification vient d'une boutique.
  */
-async function sendPushToUsers(utilisateurIds, { title, body, data = {} }) {
+async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }) {
   if (!fcmReady) return;
 
   const ids = Array.isArray(utilisateurIds) ? utilisateurIds : [utilisateurIds];
@@ -42,14 +44,22 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {} }) {
   const tokens = rows.map(r => r.token);
 
   // data doit être Record<string,string> pour FCM
+  const imageUrl = /^https:\/\//.test(image || '') ? image : undefined;
   const safeData = Object.fromEntries(
-    Object.entries(data).map(([k, v]) => [k, String(v)])
+    Object.entries({ ...data, ...(imageUrl && { image: imageUrl }) })
+      .filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => [k, String(v)])
   );
 
   try {
     const response = await getMessaging().sendEachForMulticast({
-      notification: { title, body },
+      notification: { title, body, ...(imageUrl && { imageUrl }) },
       data: safeData,
+      // Le logo accompagne la notification sur Android comme sur iOS.
+      ...(imageUrl && {
+        android: { notification: { imageUrl } },
+        apns: { payload: { aps: { 'mutable-content': 1 } }, fcmOptions: { imageUrl } },
+      }),
       tokens
     });
 

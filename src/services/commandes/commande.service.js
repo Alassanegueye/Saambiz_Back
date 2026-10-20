@@ -1,10 +1,9 @@
 // services/commandes/commande.service.js
-const { Commande, LigneCommande, Produit, Utilisateur } = require('../../models');
+const { Commande, LigneCommande, Produit, Utilisateur, Boutique } = require('../../models');
 const sequelize = require('../../config/db');
 const ConfigService = require('../config/config.service');
 const NotificationService = require('../notifications/notification.service');
-const { sendPushToUsers } = require('../push.service');
-const { sendNouvelleCommandeEmail } = require('../resend.service');
+const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resend.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 
 // Transitions de statut autorisées (qui mène où) — le vendeur fait avancer la commande
@@ -288,6 +287,8 @@ class CommandeService {
 
       // 6) Notifier le vendeur (hors transaction)
       CommandeService._notifierVendeurNouvelleCommande(commande).catch(() => {});
+      // Le client reçoit un accusé de réception au nom de la boutique.
+      CommandeService._emailClient(commande, 'recue').catch(() => {});
 
       return await CommandeService.getCommandeComplete(commande.id);
 
@@ -507,11 +508,53 @@ class CommandeService {
 
   // -------------------- NOTIFICATIONS --------------------
 
-  static async _notifierUtilisateur(utilisateurId, titre, message) {
+  /**
+   * Notification dans l'application + push. `image` : logo de la boutique
+   * quand la notification parle au client d'une boutique. (Le push part
+   * depuis NotificationService : un second envoi ici doublait chaque push.)
+   */
+  static async _notifierUtilisateur(utilisateurId, titre, message, { image } = {}) {
     await NotificationService.creerNotification({
-      utilisateurId, titre, message, type: 'commande',
+      utilisateurId, titre, message, type: 'commande', image,
     });
-    sendPushToUsers(utilisateurId, { title: titre, body: message, data: { type: 'commande' } }).catch(() => {});
+  }
+
+  /** Identité de la boutique d'un vendeur, pour les messages au client. */
+  static async _boutiqueDuVendeur(vendeurId) {
+    const b = await Boutique.findOne({
+      where: { vendeurId },
+      attributes: ['nom', 'logo', 'telephone', 'whatsapp', 'vitrineAccent'],
+    });
+    return b
+      ? { nom: b.nom, logo: b.logo, telephone: b.whatsapp || b.telephone, couleur: b.vitrineAccent }
+      : { nom: 'Votre boutique', logo: null, telephone: null };
+  }
+
+  /**
+   * Email au client, au logo et au nom de la boutique. Compte acheteur ou
+   * client sans compte (commande passée sur le site de la boutique) : on
+   * écrit à l'adresse connue, s'il y en a une.
+   */
+  static async _emailClient(commande, etape, messagePerso = null) {
+    const complete = await Commande.findByPk(commande.id, {
+      include: [
+        { model: LigneCommande, as: 'lignes', attributes: ['nomProduit', 'quantite', 'sousTotal'] },
+        { model: Utilisateur, as: 'acheteur', attributes: ['email', 'prenom', 'nom'] },
+      ],
+    });
+    if (!complete) return;
+    const to = complete.acheteur?.email || complete.clientEmail;
+    if (!to) return;
+    const boutique = await CommandeService._boutiqueDuVendeur(complete.vendeurId);
+    await sendCommandeClientEmail({
+      to,
+      etape,
+      boutique,
+      nomClient: complete.acheteur?.prenom || complete.clientPrenom || '',
+      commande: complete,
+      lignes: complete.lignes || [],
+      messagePerso,
+    });
   }
 
   static async _notifierVendeurNouvelleCommande(commande, paiementConfirme = false) {
@@ -521,12 +564,11 @@ class CommandeService {
     Utilisateur.findByPk(commande.vendeurId).then(vendeur => vendeur && sendNouvelleCommandeEmail({ to: vendeur.email, nom: `${vendeur.prenom || ''} ${vendeur.nom || ''}`.trim(), referenceCommande: commande.referenceCommande, montantTotal: commande.montantTotal })).catch(() => {});
   }
 
+  /**
+   * Le client est prévenu de chaque étape au nom de la boutique : push au
+   * logo de la boutique (s'il a un compte) et email (s'il a une adresse).
+   */
   static async _notifierAcheteurStatut(commande, messagePerso = null) {
-    // Commande passée sans compte, depuis le site d'une boutique : il n'y a
-    // personne à notifier dans l'application. Le client suit sa commande avec
-    // sa référence et son numéro, et le vendeur l'appelle.
-    if (!commande.acheteurId) return;
-
     const libelles = {
       confirmee: 'Votre commande est confirmée.',
       en_preparation: 'Votre commande est en préparation.',
@@ -536,10 +578,18 @@ class CommandeService {
       annulee: 'Votre commande a été annulée.',
     };
     const message = messagePerso || libelles[commande.statut] || `Statut : ${commande.statut}`;
+
+    CommandeService._emailClient(commande, commande.statut, messagePerso).catch(() => {});
+
+    // Commande passée sans compte : personne à notifier dans l'application.
+    if (!commande.acheteurId) return;
+
+    const boutique = await CommandeService._boutiqueDuVendeur(commande.vendeurId);
     await CommandeService._notifierUtilisateur(
       commande.acheteurId,
-      `Commande ${commande.referenceCommande}`,
+      `${boutique.nom} — Commande ${commande.referenceCommande}`,
       message,
+      { image: boutique.logo },
     );
   }
 }

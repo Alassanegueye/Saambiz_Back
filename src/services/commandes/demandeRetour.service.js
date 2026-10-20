@@ -1,8 +1,7 @@
 // services/commandes/demandeRetour.service.js
 // Workflow de retour / remboursement d'une commande livrée
-const { DemandeRetour, Commande, Utilisateur } = require('../../models');
+const { DemandeRetour, Commande, Utilisateur, Boutique } = require('../../models');
 const NotificationService = require('../notifications/notification.service');
-const { sendPushToUsers } = require('../push.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -94,6 +93,7 @@ class DemandeRetourService {
         commande.acheteurId,
         'Retour accepté',
         `Votre demande de retour pour la commande ${commande.referenceCommande} a été acceptée. Vous serez remboursé.`,
+        commande.vendeurId,
       );
     } else {
       demande.statut = 'refusee';
@@ -104,6 +104,7 @@ class DemandeRetourService {
         commande.acheteurId,
         'Retour refusé',
         `Votre demande de retour pour la commande ${commande.referenceCommande} a été refusée.${reponseAdmin ? ' Motif : ' + reponseAdmin : ''}`,
+        commande.vendeurId,
       );
     }
 
@@ -111,11 +112,17 @@ class DemandeRetourService {
   }
 
   // -------------------- NOTIFICATION --------------------
-  static async _notifierAcheteur(acheteurId, titre, message) {
+  static async _notifierAcheteur(acheteurId, titre, message, vendeurId = null) {
+    // Au nom de la boutique : son logo accompagne le push. (Le push part
+    // depuis NotificationService : un second envoi ici le doublait.)
+    let image;
+    if (vendeurId) {
+      const b = await Boutique.findOne({ where: { vendeurId }, attributes: ['logo'] });
+      image = b?.logo || undefined;
+    }
     await NotificationService.creerNotification({
-      utilisateurId: acheteurId, titre, message, type: 'commande',
+      utilisateurId: acheteurId, titre, message, type: 'commande', image,
     });
-    sendPushToUsers(acheteurId, { title: titre, body: message, data: { type: 'commande' } }).catch(() => {});
   }
 }
 

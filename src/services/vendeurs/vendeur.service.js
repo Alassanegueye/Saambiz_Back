@@ -450,6 +450,14 @@ class VendeurService {
 
     // ── Publication et caisse ────────────────────────────────────────
     if (data.active !== undefined) maj.vitrineActive = !!data.active;
+    // Ouverture depuis le tableau de bord web, sans passer par l'assistant
+    // de l'application : le site part avec la mise en page par défaut, aux
+    // informations de la boutique ; le vendeur l'ajuste ensuite.
+    if (maj.vitrineActive && !boutique.vitrineConfiguree) {
+      maj.vitrineConfiguree = true;
+      if (!boutique.vitrineCreeeLe) maj.vitrineCreeeLe = new Date();
+      if (!boutique.slug && !maj.slug) maj.slug = await genererSlugUnique(boutique.nom);
+    }
     if (data.commande !== undefined) maj.vitrineCommande = !!data.commande;
     if (data.paiementLivraison !== undefined) maj.vitrinePaiementLivraison = !!data.paiementLivraison;
 

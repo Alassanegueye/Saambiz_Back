@@ -10,6 +10,15 @@ const Boutique = sequelize.define('Boutique', {
   nom: {
     type: DataTypes.STRING,
     allowNull: false,
+    validate: {
+      // « 2Frères », « @boutique », « -Promo » : refusés. La majuscule
+      // initiale, elle, est posée automatiquement (voir utils/formatNoms).
+      commenceParUneLettre(valeur) {
+        if (typeof valeur === 'string' && !/^\p{L}/u.test(valeur.trim())) {
+          throw new Error('Le nom de la boutique doit commencer par une lettre.');
+        }
+      },
+    },
   },
   // Identifiant lisible pour l'URL publique de la boutique (ex: /boutique/mode-dakar)
   slug: {

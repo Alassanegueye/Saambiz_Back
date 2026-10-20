@@ -23,7 +23,11 @@ function traduireSequelize(err) {
     case 'SequelizeValidationError':
       return {
         status: 422,
-        message: 'Certaines informations sont invalides.',
+        // Une seule erreur : son message est écrit pour l'utilisateur
+        // (« Le nom de la boutique doit commencer par une lettre. »).
+        message: err.errors?.length === 1 && err.errors[0].message
+          ? err.errors[0].message
+          : 'Certaines informations sont invalides.',
         details: err.errors?.map((e) => ({ champ: e.path, message: e.message })),
       };
 

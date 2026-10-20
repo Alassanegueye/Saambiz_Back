@@ -42,7 +42,7 @@ function versTexte(html) {
  * Envoi générique — base de tous les helpers.
  * @param {{ to: string|string[], subject: string, html: string, text?: string, attachments?: Array }} opts
  */
-async function sendEmail({ to, subject, html, text, attachments = [] }) {
+async function sendEmail({ to, subject, html, text, attachments = [], nomExpediteur }) {
   if (!resend) {
     // Plus de « succès » silencieux : sur Render le serveur tourne avec
     // NODE_ENV=development, si bien que l'ancienne garde (production
@@ -57,8 +57,14 @@ async function sendEmail({ to, subject, html, text, attachments = [] }) {
     content: att.content   // Buffer ou base64
   }));
 
+  // Au nom d'une boutique : « Chez awa via SaamBiz <noreply@…> ». L'adresse
+  // reste celle du domaine vérifié ; seul le nom affiché change.
+  const adresse = (FROM.match(/<([^>]+)>/) || [null, FROM])[1];
+  const nomPropre = String(nomExpediteur || '').replace(/["<>\r\n]/g, '').trim().slice(0, 60);
+  const from = nomPropre ? `${nomPropre} via SaamBiz <${adresse}>` : FROM;
+
   const payload = {
-    from: FROM,
+    from,
     to,
     subject,
     html,
@@ -175,6 +181,16 @@ async function sendNouvelleCommandeEmail({ to, nom, referenceCommande, montantTo
   });
 }
 
+/**
+ * Email au client d'une boutique (commande reçue, puis chaque étape), au
+ * logo et au nom de la boutique.
+ */
+async function sendCommandeClientEmail({ to, etape, boutique, nomClient, commande, lignes, messagePerso }) {
+  const template = require('../templates/mail/commandeClient.template');
+  const { objet, html } = template({ etape, boutique, nomClient, commande, lignes, messagePerso });
+  return sendEmail({ to, subject: objet, html, nomExpediteur: boutique.nom });
+}
+
 /** État du service, pour /health : des indications, jamais la clé. */
 function etatEmail() {
   return {
@@ -194,6 +210,7 @@ async function sendAccesUtilisateurEmail({ to, prenom, nom, email, password, rol
 }
 
 module.exports = {
+  sendCommandeClientEmail,
   sendAccesUtilisateurEmail,
   etatEmail,
   sendEmail,

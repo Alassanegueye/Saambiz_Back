@@ -216,10 +216,18 @@ class AdminService {
     const boutique = await Boutique.findByPk(boutiqueId);
     if (!boutique) throw new NotFoundError('Boutique introuvable');
     const maj = { vitrineActive: Boolean(active) };
-    // Une boutique créée avant les sites peut n'avoir aucune adresse.
-    if (maj.vitrineActive && !boutique.slug) {
-      const { genererSlugUnique } = require('../../utils/boutiqueDefaults');
-      maj.slug = await genererSlugUnique(boutique.nom);
+    if (maj.vitrineActive) {
+      // Une boutique créée avant les sites peut n'avoir aucune adresse.
+      if (!boutique.slug) {
+        const { genererSlugUnique } = require('../../utils/boutiqueDefaults');
+        maj.slug = await genererSlugUnique(boutique.nom);
+      }
+      // Site jamais composé : il part avec la mise en page par défaut, et le
+      // vendeur le retrouve ensuite dans « Mon site » pour l'ajuster.
+      if (!boutique.vitrineConfiguree) {
+        maj.vitrineConfiguree = true;
+        if (!boutique.vitrineCreeeLe) maj.vitrineCreeeLe = new Date();
+      }
     }
     await boutique.update(maj);
     const base = (process.env.VITRINE_BASE_URL || 'https://saambiz.com').replace(/\/+$/, '');

@@ -42,8 +42,37 @@ const entete = () => `
       </tr></table>
     </div>`;
 
-/** Email complet autour d'un contenu HTML déjà échappé. */
-const miseEnPage = (contenu, { titre = 'SaamBiz', apercu = '' } = {}) => `<!DOCTYPE html>
+/** Initiale d'une boutique sans logo, sur une pastille. */
+const pastilleInitiale = (nom) => `
+          <div style="width:48px;height:48px;border-radius:12px;background:#FFFFFF;color:${NAVY};font-size:22px;font-weight:bold;text-align:center;line-height:48px;${POLICE}">${echapper(String(nom || '?').trim().charAt(0).toUpperCase())}</div>`;
+
+/**
+ * Bandeau d'un email envoyé AU NOM d'une boutique (commande d'un client) :
+ * le logo et le nom de la boutique, pas ceux de SaamBiz. Sans logo, une
+ * pastille avec son initiale.
+ */
+const enteteBoutique = ({ nom, logo, couleur }) => {
+  const fond = /^#[0-9A-Fa-f]{6}$/.test(couleur || '') ? couleur : NAVY;
+  const visuel = /^https:\/\//.test(logo || '')
+    ? `<img src="${echapper(logo)}" width="48" height="48" alt="${echapper(nom)}" style="display:block;width:48px;height:48px;border:0;border-radius:12px;object-fit:cover;background:#FFFFFF" />`
+    : pastilleInitiale(nom);
+  return `
+    <div style="background:${fond};padding:20px 24px">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+        <td style="vertical-align:middle;padding-right:14px">${visuel}</td>
+        <td style="vertical-align:middle">
+          <div style="color:#FFFFFF;font-size:20px;font-weight:bold;${POLICE}">${echapper(nom)}</div>
+        </td>
+      </tr></table>
+    </div>`;
+};
+
+/**
+ * Email complet autour d'un contenu HTML déjà échappé.
+ * Avec `boutique` ({ nom, logo, couleur }), l'email porte l'identité de la
+ * boutique ; SaamBiz n'apparaît qu'en pied de page.
+ */
+const miseEnPage = (contenu, { titre = 'SaamBiz', apercu = '', boutique = null } = {}) => `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8"/>
@@ -54,12 +83,14 @@ const miseEnPage = (contenu, { titre = 'SaamBiz', apercu = '' } = {}) => `<!DOCT
 ${apercu ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${echapper(apercu)}</div>` : ''}
 <div style="background:#F5F7FB;padding:24px 12px;${POLICE};color:#1C1C1E">
   <div style="max-width:520px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden">
-${entete()}
+${boutique ? enteteBoutique(boutique) : entete()}
     <div style="padding:24px;font-size:14px;line-height:1.6">
       ${contenu}
     </div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#9AA3B2;margin-top:14px">© ${new Date().getFullYear()} SaamBiz — Email envoyé automatiquement, merci de ne pas y répondre.</p>
+  <p style="text-align:center;font-size:11px;color:#9AA3B2;margin-top:14px">${boutique
+    ? `Email envoyé par ${echapper(boutique.nom)} via SaamBiz — merci de ne pas y répondre.`
+    : `© ${new Date().getFullYear()} SaamBiz — Email envoyé automatiquement, merci de ne pas y répondre.`}</p>
 </div>
 </body>
 </html>`;
@@ -101,4 +132,4 @@ const encadre = (lignes, couleur = NAVY) => `
 const liste = (elements) =>
   `<ul style="margin:0 0 14px;padding-left:20px;color:#48597A;line-height:1.9">${elements.map((e) => `<li>${e}</li>`).join('')}</ul>`;
 
-module.exports = { LOGO_URL, NAVY, OR, echapper, entete, miseEnPage, salutation, paragraphe, note, blocCode, encadre, liste };
+module.exports = { LOGO_URL, NAVY, OR, echapper, entete, enteteBoutique, miseEnPage, salutation, paragraphe, note, blocCode, encadre, liste };
