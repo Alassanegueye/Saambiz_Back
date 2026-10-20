@@ -1,4 +1,5 @@
 const AdminService = require('../../services/admin/admin.service');
+const AdminCatalogueService = require('../../services/admin/adminCatalogue.service');
 const ConfigService = require('../../services/config/config.service');
 const formatUser = require('../../utils/formatUser');
 const DemandeRetourService = require('../../services/commandes/demandeRetour.service');
@@ -295,8 +296,8 @@ exports.produitsEnAttente = asyncHandler(async (req, res) => {
 // -------------------- COMMANDES (e-commerce) --------------------
 
 exports.toutesCommandes = asyncHandler(async (req, res) => {
-  const { statut, page, limit } = req.query;
-  const result = await AdminService.toutesLesCommandes({ statut, page, limit });
+  const { statut, boutiqueId, page, limit } = req.query;
+  const result = await AdminService.toutesLesCommandes({ statut, boutiqueId, page, limit });
   return res.status(200).json(result);
 });
 
@@ -370,4 +371,69 @@ exports.supprimerAcheteur = asyncHandler(async (req, res) => {
   const result = await AdminService.supprimerUtilisateur(req.params.id, 'Acheteur');
   tracer(req, 'supprimer_acheteur', 'acheteur', req.params.id);
   res.json(result);
+});
+
+
+// -------------------- CATALOGUE : BOUTIQUES, PRODUITS, COMMANDES --------------------
+// Un produit et une commande appartiennent toujours à une boutique.
+
+const CHAMPS_PRODUIT = ['boutiqueId', 'nom', 'description', 'prix', 'prix_promo', 'quantite', 'categorieId', 'marque', 'disponible'];
+const champsProduit = (body) => Object.fromEntries(
+  CHAMPS_PRODUIT.filter((c) => body[c] !== undefined).map((c) => [c, body[c]]),
+);
+
+exports.optionsBoutiques = asyncHandler(async (req, res) => {
+  res.status(200).json(await AdminCatalogueService.optionsBoutiques());
+});
+
+exports.listerProduits = asyncHandler(async (req, res) => {
+  const { boutiqueId, statut } = req.query;
+  res.status(200).json(await AdminCatalogueService.listerProduits({ boutiqueId, statut }));
+});
+
+exports.detailProduit = asyncHandler(async (req, res) => {
+  res.status(200).json(await AdminCatalogueService.detailProduit(req.params.id));
+});
+
+exports.creerProduit = asyncHandler(async (req, res) => {
+  const result = await AdminCatalogueService.creerProduit({ ...champsProduit(req.body), image: req.file });
+  tracer(req, 'creer_produit', 'produit', result.produit.id, { boutiqueId: req.body.boutiqueId });
+  res.status(201).json({ message: 'Produit ajouté', ...result });
+});
+
+exports.modifierProduit = asyncHandler(async (req, res) => {
+  const donnees = champsProduit(req.body);
+  if (req.file) donnees.image = req.file;
+  const result = await AdminCatalogueService.modifierProduit(req.params.id, donnees);
+  tracer(req, 'modifier_produit', 'produit', req.params.id);
+  res.status(200).json({ message: 'Produit mis à jour', ...result });
+});
+
+exports.detailCommande = asyncHandler(async (req, res) => {
+  res.status(200).json(await AdminCatalogueService.detailCommande(req.params.id));
+});
+
+exports.creerCommande = asyncHandler(async (req, res) => {
+  const {
+    boutiqueId, acheteurId, client, items, modeLivraison, modePaiement,
+    adresseLivraison, numeroTelephone, note,
+  } = req.body;
+  const result = await AdminCatalogueService.creerCommande({
+    boutiqueId, acheteurId, client, items, modeLivraison, modePaiement,
+    adresseLivraison, numeroTelephone, note,
+  });
+  tracer(req, 'creer_commande', 'commande', result.commande.id, { boutiqueId });
+  res.status(201).json({ message: 'Commande créée', ...result });
+});
+
+exports.modifierCommande = asyncHandler(async (req, res) => {
+  const result = await AdminCatalogueService.modifierCommande(req.params.id, req.body || {});
+  tracer(req, 'modifier_commande', 'commande', req.params.id, { statut: req.body?.statut });
+  res.status(200).json({ message: 'Commande mise à jour', ...result });
+});
+
+exports.supprimerCommande = asyncHandler(async (req, res) => {
+  const result = await AdminCatalogueService.supprimerCommande(req.params.id);
+  tracer(req, 'supprimer_commande', 'commande', req.params.id);
+  res.status(200).json(result);
 });

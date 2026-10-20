@@ -6,6 +6,7 @@ const auth = require('../../middlewares/auth.middleware');
 const isAdmin = require('../../middlewares/isAdmin.middleware');
 const checkActiveUser = require('../../middlewares/checkActiveUser.middleware');
 const requirePermission = require('../../middlewares/requirePermission.middleware');
+const upload = require('../../middlewares/upload.middleware');
 
 // Chaîne d'autorisation : identité → compte actif → rôle → permission fine.
 // `isAdmin` ne vérifie que le rôle ; c'est `requirePermission`, posé route par
@@ -327,6 +328,37 @@ router.post('/notification-globale',
 router.get('/produits-en-attente',
   requirePermission('MODERATION', 'view'),
   adminController.produitsEnAttente);
+
+// -------------------- CATALOGUE (produits et commandes par boutique) --------------------
+router.get('/boutiques-options',
+  requirePermission(['PRODUITS', 'COMMANDES'], 'view'),
+  adminController.optionsBoutiques);
+router.get('/produits',
+  requirePermission('PRODUITS', 'view'),
+  adminController.listerProduits);
+router.post('/produits',
+  requirePermission('PRODUITS', 'create'),
+  upload.single('image'), upload.verifyMagicBytes,
+  adminController.creerProduit);
+router.get('/produit/:id',
+  requirePermission('PRODUITS', 'view'),
+  adminController.detailProduit);
+router.put('/produit/:id',
+  requirePermission('PRODUITS', 'update'),
+  upload.single('image'), upload.verifyMagicBytes,
+  adminController.modifierProduit);
+router.post('/commandes',
+  requirePermission('COMMANDES', 'create'),
+  adminController.creerCommande);
+router.get('/commande/:id',
+  requirePermission('COMMANDES', 'view'),
+  adminController.detailCommande);
+router.put('/commande/:id',
+  requirePermission('COMMANDES', 'update'),
+  adminController.modifierCommande);
+router.delete('/commande/:id',
+  requirePermission('COMMANDES', 'delete'),
+  adminController.supprimerCommande);
 
 // -------------------- COMMANDES (e-commerce) --------------------
 router.get('/commandes',

@@ -653,9 +653,14 @@ class AdminService {
   // -------------------- COMMANDES (e-commerce) --------------------
 
   // Liste paginée de toutes les commandes (filtrable par statut)
-  static async toutesLesCommandes({ statut, page = 1, limit = 20 } = {}) {
+  static async toutesLesCommandes({ statut, boutiqueId, page = 1, limit = 20 } = {}) {
     const where = {};
     if (statut) where.statut = statut;
+    if (boutiqueId) {
+      const boutique = await Boutique.findByPk(boutiqueId, { attributes: ['vendeurId'] });
+      if (!boutique) throw new NotFoundError('Boutique introuvable');
+      where.vendeurId = boutique.vendeurId;
+    }
 
     // Borne haute à 100 (voir utils/paginate) ; `page` et `limit` arrivent
     // de la requête sans contrôle.
@@ -666,7 +671,10 @@ class AdminService {
       where,
       include: [
         { model: Utilisateur, as: 'acheteur', attributes: ['id', 'nom', 'prenom', 'telephone'] },
-        { model: Utilisateur, as: 'vendeur', attributes: ['id', 'nom', 'prenom', 'telephone'] },
+        {
+          model: Utilisateur, as: 'vendeur', attributes: ['id', 'nom', 'prenom', 'telephone'],
+          include: [{ model: Boutique, as: 'boutiques', attributes: ['id', 'nom'] }],
+        },
         { model: LigneCommande, as: 'lignes', attributes: ['id', 'quantite'] },
       ],
       order: [['createdAt', 'DESC']],
@@ -676,7 +684,12 @@ class AdminService {
     });
 
     return {
-      commandes: rows,
+      // La boutique est remontée à plat : c'est elle que l'admin reconnaît.
+      commandes: rows.map((r) => {
+        const o = r.toJSON();
+        const b = o.vendeur?.boutiques?.[0];
+        return { ...o, boutique: b ? { id: b.id, nom: b.nom } : null };
+      }),
       pagination: {
         total: count,
         page: parseInt(page, 10),
