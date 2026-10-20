@@ -118,10 +118,11 @@ class AuthService {
         };
 
         if (boutique) {
-          const existBoutique = await Boutique.findOne({
-            where: { telephone: boutique.telephone },
-            transaction: t
-          });
+          // Téléphone de boutique facultatif (inscription web ou mobile) :
+          // `where: { telephone: undefined }` ferait échouer la requête.
+          const existBoutique = boutique.telephone
+            ? await Boutique.findOne({ where: { telephone: boutique.telephone }, transaction: t })
+            : null;
 
           if (existBoutique) {
             await t.rollback();
@@ -162,15 +163,6 @@ class AuthService {
         }
       }
 
-      // MED-03 : générer token de vérification email (24h)
-      const verificationCode = randomInt(100000, 1000000).toString();
-      const verificationHash = await bcrypt.hash(verificationCode, 10);
-      await UserOtp.create({
-        utilisateurId: utilisateur.id,
-        otpHash: verificationHash,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
-      }, { transaction: t });
-
       await t.commit();
 
       // Emails en arrière-plan (non bloquants)
@@ -181,11 +173,9 @@ class AuthService {
         role: utilisateur.role
       }).catch(() => {});
 
-      sendVerificationEmail({
-        to: emailClean,
-        nom: utilisateur.nom,
-        code: verificationCode,
-      }).catch(() => {});
+      // Pas de second code de vérification : l'adresse vient d'être
+      // confirmée (jetonEmail). L'ancien envoi ici adressait au client un
+      // code inutile qui embrouillait le parcours.
 
       return {
         success: true,
