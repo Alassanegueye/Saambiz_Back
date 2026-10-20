@@ -377,6 +377,9 @@ router.put('/demandes-retour/:id/traiter',
   adminController.traiterDemandeRetour);
 
 // -------------------- LOGS D'AUDIT --------------------
+router.get('/audit-logs/resume',
+  requirePermission('ADMINS', 'view'),
+  adminController.resumeActivite);
 router.get('/audit-logs',
   requirePermission('ADMINS', 'view'),
   adminController.listerAuditLogs);

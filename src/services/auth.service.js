@@ -314,6 +314,34 @@ class AuthService {
         role: utilisateur.role,
       }, jwtConfig.secret, { expiresIn: jwtConfig.expiresIn });
 
+      // Dates de connexion : la première n'est écrite qu'une fois. Une panne
+      // ici ne doit pas empêcher de se connecter.
+      const maintenant = new Date();
+      try {
+        await Utilisateur.update(
+          {
+            derniereConnexion: maintenant,
+            ...(utilisateur.premiereConnexion ? {} : { premiereConnexion: maintenant }),
+          },
+          { where: { id: utilisateur.id }, silent: true, hooks: false },
+        );
+        if (!utilisateur.premiereConnexion) utilisateur.premiereConnexion = maintenant;
+        utilisateur.derniereConnexion = maintenant;
+      } catch (err) {
+        logger.warn('auth.login:dates-connexion', { message: err.message });
+      }
+
+      // Les connexions au dashboard apparaissent dans l'activité des admins.
+      if (['Admin', 'SuperAdmin'].includes(utilisateur.role)) {
+        require('./audit.service').enregistrer({
+          adminId: utilisateur.id,
+          action: 'connexion',
+          cible: 'session',
+          cibleId: utilisateur.id,
+          details: { appareil: (contexte.userAgent || '').slice(0, 160) || undefined },
+        }).catch(() => {});
+      }
+
       // Le refresh est enregistré hashé : il devient révocable, plafonné
       // par compte, et purgeable. Voir RefreshTokenService.
       const RefreshTokenService = require('./refreshToken.service');

@@ -88,7 +88,7 @@ class AdminManagementService {
   static async listerAdmins() {
     return Utilisateur.findAll({
       where: { role: 'Admin' },
-      attributes: ['id', 'nom', 'prenom', 'email', 'statut', 'isFirstLogin', 'createdAt'],
+      attributes: ['id', 'nom', 'prenom', 'email', 'statut', 'isFirstLogin', 'premiereConnexion', 'derniereConnexion', 'createdAt'],
       order: [['createdAt', 'DESC']],
     });
   }

@@ -93,6 +93,15 @@ const User = sequelize.define('User', {
     defaultValue: true,
     allowNull: false,
   },
+  // Première connexion réussie (jamais réécrite) et la plus récente.
+  premiereConnexion: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  derniereConnexion: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 
 }, {
   tableName: 'utilisateur',

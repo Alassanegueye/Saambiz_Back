@@ -324,9 +324,14 @@ exports.traiterDemandeRetour = asyncHandler(async (req, res) => {
 // -------------------- LOGS D'AUDIT --------------------
 
 exports.listerAuditLogs = asyncHandler(async (req, res) => {
-  const { page, limit, adminId, action } = req.query;
-  const result = await AuditService.lister({ page, limit, adminId, action });
+  const { page, limit, adminId, action, cible, du, au } = req.query;
+  const result = await AuditService.lister({ page, limit, adminId, action, cible, du, au });
   return res.status(200).json({ success: true, ...result });
+});
+
+exports.resumeActivite = asyncHandler(async (req, res) => {
+  const { du, au } = req.query;
+  return res.status(200).json({ success: true, ...(await AuditService.resume({ du, au })) });
 });
 
 
