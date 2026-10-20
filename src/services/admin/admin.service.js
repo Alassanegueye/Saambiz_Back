@@ -18,6 +18,11 @@ class AdminService {
       const vendeurs = await Utilisateur.findAll({
         attributes: { exclude: ['mot_de_passe'] },
         where: { role: 'Vendeur' },
+        // La boutique et l'état de son site : l'admin peut l'activer d'ici.
+        include: [{
+          model: Boutique, as: 'boutiques', required: false,
+          attributes: ['id', 'nom', 'slug', 'statut', 'vitrineActive'],
+        }],
         order: [['createdAt', 'DESC']]
       });
 
@@ -204,6 +209,27 @@ class AdminService {
     if (!produit) throw new NotFoundError('Produit introuvable');
     await produit.destroy({ force: true });
     return { message: 'Produit supprimé avec succès' };
+  }
+
+  // 15 bis. Activer / désactiver le site web (vitrine) d'une boutique
+  static async basculerSiteBoutique(boutiqueId, active) {
+    const boutique = await Boutique.findByPk(boutiqueId);
+    if (!boutique) throw new NotFoundError('Boutique introuvable');
+    const maj = { vitrineActive: Boolean(active) };
+    // Une boutique créée avant les sites peut n'avoir aucune adresse.
+    if (maj.vitrineActive && !boutique.slug) {
+      const { genererSlugUnique } = require('../../utils/boutiqueDefaults');
+      maj.slug = await genererSlugUnique(boutique.nom);
+    }
+    await boutique.update(maj);
+    const base = (process.env.VITRINE_BASE_URL || 'https://saambiz.com').replace(/\/+$/, '');
+    return {
+      message: maj.vitrineActive ? 'Site activé' : 'Site désactivé',
+      boutique: {
+        id: boutique.id, nom: boutique.nom, slug: boutique.slug,
+        vitrineActive: boutique.vitrineActive, url: `${base}/b/${boutique.slug}`,
+      },
+    };
   }
 
   // 16. Supprimer une boutique

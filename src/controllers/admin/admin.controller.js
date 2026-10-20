@@ -442,3 +442,12 @@ exports.supprimerCommande = asyncHandler(async (req, res) => {
   tracer(req, 'supprimer_commande', 'commande', req.params.id);
   res.status(200).json(result);
 });
+
+// -------------------- SITE WEB D'UNE BOUTIQUE --------------------
+exports.basculerSiteBoutique = asyncHandler(async (req, res) => {
+  const active = req.body?.active;
+  if (typeof active !== 'boolean') throw new BadRequestError('Indiquez active : true ou false');
+  const result = await AdminService.basculerSiteBoutique(req.params.id, active);
+  tracer(req, active ? 'activer_site' : 'desactiver_site', 'boutique', req.params.id, { nom: result.boutique.nom });
+  return res.status(200).json(result);
+});
