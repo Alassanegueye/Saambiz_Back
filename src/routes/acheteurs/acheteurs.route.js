@@ -11,6 +11,8 @@ const authOptionnel = require('../../middlewares/authOptionnel.middleware');
 // Le jeton, s'il est présent, enrichit la réponse (boutiques suivies,
 // affinités) mais n'est pas exigé.
 router.get('/accueil-personnalise', authOptionnel, AccueilController.accueilPersonnalise);
+// « Voir tout » d'une section de l'accueil, ouvert aux invités aussi.
+router.get('/accueil-section/:cle', authOptionnel, AccueilController.accueilSection);
 
 // Toutes les routes suivantes exigent une session.
 router.use(authMiddleware);

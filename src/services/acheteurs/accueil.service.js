@@ -226,7 +226,11 @@ class AccueilService {
    * @param {number|null} latitude
    * @param {number|null} longitude
    */
-  static async construire({ utilisateur, interetsInvite = [], latitude, longitude }) {
+  /**
+   * Contexte de personnalisation partagé par l'accueil et les pages « Voir
+   * tout » : intérêts, affinités et position du client (ou de l'invité).
+   */
+  static async _contexte({ utilisateur, interetsInvite = [], latitude, longitude }) {
     const utilisateurId = utilisateur?.id || null;
     // L'invité transmet ses choix tels que l'application les connaît —
     // identifiants, slugs, ou anciens libellés ('Mode') : on les ramène aux
@@ -257,6 +261,43 @@ class AccueilService {
       .map(([cat]) => cat)
       .slice(0, 6);
     const categoriesRetenues = categories.length ? categories : interets.slice(0, 6);
+    return { utilisateurId, position, categoriesRetenues };
+  }
+
+  /**
+   * Tout le contenu d'une section de l'accueil (bouton « Voir tout »).
+   * Mêmes règles que l'accueil, sans la limite d'un carrousel.
+   */
+  static async section(cle, params) {
+    const { utilisateurId, position, categoriesRetenues } = await this._contexte(params);
+    const limite = Math.min(Math.max(parseInt(params.limit, 10) || 60, 1), 100);
+    const boutiques = (elements) => ({ type: 'boutiques', elements });
+    const produits = (elements) => ({ type: 'produits', elements });
+
+    switch (cle) {
+      case 'promotions':
+        return produits((await CatalogueService.promotions({ limit: limite })).produits);
+      case 'nouveautes':
+        return produits((await CatalogueService.lister({ tri: 'recents', limit: limite })).produits);
+      case 'abonnements':
+        return produits((await this._sectionAbonnements(utilisateurId, limite)).produits);
+      case 'pourVous':
+        return boutiques(await this._boutiquesParCategories(categoriesRetenues, utilisateurId, limite));
+      case 'proches':
+        return boutiques(await this._boutiquesProches(position.latitude, position.longitude, RAYON_DEFAUT_KM, limite));
+      case 'meilleures':
+        return boutiques(await this._meilleuresBoutiques(limite));
+      case 'nouvelles':
+        return boutiques(await this._nouvellesBoutiques(limite));
+      case 'aDecouvrir':
+        return boutiques(await this._aDecouvrir(categoriesRetenues, limite));
+      default:
+        return null;
+    }
+  }
+
+  static async construire(params) {
+    const { utilisateurId, position, categoriesRetenues } = await this._contexte(params);
 
     const [
       listeCategories, promotions, nouveautes,
@@ -420,7 +461,7 @@ class AccueilService {
   }
 
   /** Derniers produits publiés par les boutiques suivies. */
-  static async _sectionAbonnements(utilisateurId) {
+  static async _sectionAbonnements(utilisateurId, limite = 12) {
     if (!utilisateurId) return { produits: [] };
 
     const favoris = await Favori.findAll({
@@ -440,7 +481,7 @@ class AccueilService {
       where: { vendeurId: { [Op.in]: vendeurIds }, disponible: true, statut: 'approuve' },
       include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom', 'slug', 'icone', 'specifications'] }],
       order: [['createdAt', 'DESC']],
-      limit: 12,
+      limit: limite,
     });
 
     return { produits: await CatalogueService._enrichir(produits) };
@@ -463,7 +504,7 @@ class AccueilService {
   }
 
   /** Boutiques rangées dans les catégories pour lesquelles le client a une affinité. */
-  static async _boutiquesParCategories(categories, utilisateurId) {
+  static async _boutiquesParCategories(categories, utilisateurId, limite = 12) {
     if (!categories.length) return [];
 
     const liens = await this._liensParNoms(categories);
@@ -486,7 +527,7 @@ class AccueilService {
       ...base,
       where: { ...base.where, id: { [Op.in]: ids } },
       order: Sequelize.literal('RANDOM()'),
-      limit: 40,
+      limit: Math.max(40, limite * 3),
     });
     const parId = new Map(boutiques.map((b) => [b.id, b]));
 
@@ -502,7 +543,7 @@ class AccueilService {
     const melange = [];
     const vues = new Set();
     let reste = true;
-    for (let i = 0; reste && melange.length < 12; i++) {
+    for (let i = 0; reste && melange.length < limite; i++) {
       reste = false;
       for (const cat of categories) {
         const b = (parCategorie.get(cat) || [])[i];
@@ -511,7 +552,7 @@ class AccueilService {
         if (!vues.has(b.id)) { vues.add(b.id); melange.push(b); }
       }
     }
-    return melange.slice(0, 12).map((b) => this._formater(b));
+    return melange.slice(0, limite).map((b) => this._formater(b));
   }
 
   /**
@@ -568,7 +609,7 @@ class AccueilService {
   }
 
   /** Boutiques les plus proches, si la position est connue. */
-  static async _boutiquesProches(latitude, longitude, rayonKm = RAYON_DEFAUT_KM) {
+  static async _boutiquesProches(latitude, longitude, rayonKm = RAYON_DEFAUT_KM, limite = 12) {
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
@@ -596,7 +637,7 @@ class AccueilService {
         longitude: { [Op.ne]: null },
       },
       order: [[Sequelize.literal('distance'), 'ASC']],
-      limit: 12,
+      limit: limite,
     });
 
     return boutiques
@@ -607,7 +648,7 @@ class AccueilService {
   }
 
   /** Meilleures notes, à partir d'au moins trois avis. */
-  static async _meilleuresBoutiques() {
+  static async _meilleuresBoutiques(limite = 12) {
     const notes = await Avis.findAll({
       attributes: [
         'boutiqueId',
@@ -617,7 +658,7 @@ class AccueilService {
       group: ['boutiqueId'],
       having: Sequelize.literal('COUNT(id) >= 3'),
       order: [[Sequelize.literal('AVG(note)'), 'DESC']],
-      limit: 12,
+      limit: limite,
       raw: true,
     });
     if (!notes.length) return [];
@@ -637,12 +678,12 @@ class AccueilService {
       .sort((a, b) => b.note - a.note);
   }
 
-  static async _nouvellesBoutiques() {
+  static async _nouvellesBoutiques(limite = 10) {
     const base = this._boutiqueVisible;
     const boutiques = await Boutique.findAll({
       ...base,
       order: [['createdAt', 'DESC']],
-      limit: 10,
+      limit: limite,
     });
     return boutiques.map((b) => this._formater(b));
   }
@@ -652,7 +693,7 @@ class AccueilService {
    * Sans cette section, l'accueil se referme peu à peu sur trois catégories
    * et le client ne découvre plus rien.
    */
-  static async _aDecouvrir(categoriesConnues) {
+  static async _aDecouvrir(categoriesConnues, limite = 8) {
     const base = this._boutiqueVisible;
     const connues = [...new Set((await this._liensParNoms(categoriesConnues)).map((l) => l.boutiqueId))];
     const boutiques = await Boutique.findAll({
@@ -662,7 +703,7 @@ class AccueilService {
         ...(connues.length ? { id: { [Op.notIn]: connues } } : {}),
       },
       order: Sequelize.literal('RANDOM()'),
-      limit: 8,
+      limit: limite,
     });
     return boutiques.map((b) => this._formater(b));
   }
