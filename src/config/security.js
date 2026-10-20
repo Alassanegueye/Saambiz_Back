@@ -194,6 +194,17 @@ if (EN_PRODUCTION) {
 
 const _originesAutorisees = _originesBrutes.length ? _originesBrutes : ['http://localhost:3000'];
 
+/**
+ * Les sites officiels SaamBiz (saambiz.com et ses sous-domaines en HTTPS :
+ * www, app — espace vendeur —, admin…) sont toujours acceptés, même si
+ * CORS_ORIGIN est absente ou incomplète sur l'hébergeur. Sans cela, une
+ * variable oubliée sur Render bloquait toute l'inscription vendeur : la
+ * liste des catégories ne se chargeait jamais sur app.saambiz.com.
+ * Une adresse de domaine n'est pas un secret : elle peut vivre dans le code.
+ */
+const _estOrigineSaamBiz = (origine) =>
+  /^https:\/\/([a-z0-9-]+\.)*saambiz\.com$/i.test(origine);
+
 /** Une origine de la machine de développement, quel que soit son port. */
 const _estOrigineLocale = (origine) =>
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origine);
@@ -216,6 +227,7 @@ const corsConfig = {
     // native. Un navigateur en envoie toujours une.
     if (!origine) return retour(null, true);
     if (_originesAutorisees.includes(origine)) return retour(null, true);
+    if (_estOrigineSaamBiz(origine)) return retour(null, true);
     if (!EN_PRODUCTION && _estOrigineLocale(origine)) return retour(null, true);
     return retour(new Error(`Origine non autorisée : ${origine}`));
   },
