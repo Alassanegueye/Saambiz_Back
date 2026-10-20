@@ -111,4 +111,8 @@ const User = sequelize.define('User', {
   underscored: true
 });
 
+// Prénom « Awa », nom « DIOP », boutique « Chez awa » — quelle que soit la saisie.
+const { formaterPrenom, formaterNom, appliquerFormats } = require('../utils/formatNoms');
+appliquerFormats(User, { prenom: formaterPrenom, nom: formaterNom });
+
 module.exports = User;

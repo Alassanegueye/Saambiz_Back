@@ -168,4 +168,8 @@ const Commande = sequelize.define('Commande', {
   ],
 });
 
+// Prénom « Awa », nom « DIOP », boutique « Chez awa » — quelle que soit la saisie.
+const { formaterPrenom, formaterNom, appliquerFormats } = require('../utils/formatNoms');
+appliquerFormats(Commande, { clientPrenom: formaterPrenom, clientNom: formaterNom });
+
 module.exports = Commande;
