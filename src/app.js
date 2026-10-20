@@ -210,6 +210,9 @@ app.get('/health', async (req, res) => {
       uptime: process.uptime(),
       env: process.env.NODE_ENV,
       commit,
+      // Envoi des e-mails : clé Resend présente ? domaine expéditeur ?
+      // Diagnostic immédiat quand un utilisateur ne reçoit pas son code.
+      email: require('./services/resend.service').etatEmail(),
     });
   } catch {
     // Le commit est renvoyé même en panne de base : c'est précisément quand le

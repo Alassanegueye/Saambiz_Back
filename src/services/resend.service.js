@@ -11,10 +11,7 @@ const isProd = process.env.NODE_ENV === 'production';
 const _resendKey = process.env.RESEND_API_KEY;
 const resend = _resendKey ? new Resend(_resendKey) : null;
 if (!resend) {
-  (isProd ? logger.error : logger.warn).call(
-    logger,
-    '[RESEND] RESEND_API_KEY non défini — aucun e-mail ne sera envoyé.'
-  );
+  logger.error('[RESEND] RESEND_API_KEY non défini — aucun e-mail ne sera envoyé.');
 }
 // Expéditeur des e-mails transactionnels : il DOIT appartenir à un domaine
 // vérifié chez Resend (ici send.saambiz.com), sinon Resend refuse l'envoi.
@@ -47,11 +44,12 @@ function versTexte(html) {
  */
 async function sendEmail({ to, subject, html, text, attachments = [] }) {
   if (!resend) {
-    if (isProd) {
-      throw new Error('Service e-mail non configuré (RESEND_API_KEY manquante).');
-    }
-    logger.warn('[RESEND] e-mail ignoré (service désactivé)', { subject });
-    return null;
+    // Plus de « succès » silencieux : sur Render le serveur tourne avec
+    // NODE_ENV=development, si bien que l'ancienne garde (production
+    // seulement) laissait l'API répondre « code envoyé » sans rien envoyer.
+    // Seuls les tests automatisés ignorent l'envoi.
+    if (process.env.NODE_ENV === 'test') return null;
+    throw new Error('Service e-mail non configuré (RESEND_API_KEY manquante).');
   }
 
   const formattedAttachments = attachments.map(att => ({
@@ -177,7 +175,16 @@ async function sendNouvelleCommandeEmail({ to, nom, referenceCommande, montantTo
   });
 }
 
+/** État du service, pour /health : des indications, jamais la clé. */
+function etatEmail() {
+  return {
+    configure: Boolean(resend),
+    expediteur: FROM.replace(/^.*<|>.*$/g, '').split('@')[1] || null,
+  };
+}
+
 module.exports = {
+  etatEmail,
   sendEmail,
   sendOtpEmail,
   sendWelcomeEmail,

@@ -114,7 +114,6 @@ class InscriptionService {
    * production, où ce serait divulguer le code dans les journaux.
    */
   static async _envoyer(adresse, prenom, code) {
-    const enProduction = process.env.NODE_ENV === 'production';
 
     try {
       await sendVerificationEmail({
@@ -130,11 +129,7 @@ class InscriptionService {
       );
     }
 
-    if (!enProduction && !process.env.RESEND_API_KEY) {
-      logger.warn(
-        `[inscription] e-mails désactivés — code de vérification pour ${adresse} : ${code}`
-      );
-    }
+
   }
 
   // ══════════════════════════════════════════════════════════════════
