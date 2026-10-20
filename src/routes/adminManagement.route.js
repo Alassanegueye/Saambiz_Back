@@ -20,6 +20,9 @@ router.post('/admins',
 router.get('/admins',
   requirePermission('ADMINS', 'view'),
   ctrl.listerAdmins);
+router.put('/admins/:userId',
+  requirePermission('ADMINS', 'update'),
+  ctrl.modifierAdmin);
 router.delete('/admins/:userId',
   requirePermission('ADMINS', 'delete'),
   ctrl.supprimerAdmin);

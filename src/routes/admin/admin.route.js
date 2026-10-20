@@ -176,6 +176,30 @@ router.post('/ajout-categorie',
   requirePermission('CATEGORIES', 'create'),
   adminController.ajoutCategorie);
 
+// Création et modification des comptes clients / vendeurs depuis le dashboard.
+router.post('/vendeurs',
+  requirePermission('VENDEURS', 'create'),
+  adminController.creerVendeur);
+router.put('/vendeur/:id',
+  requirePermission('VENDEURS', 'update'),
+  adminController.modifierVendeur);
+router.post('/acheteurs',
+  requirePermission('ACHETEURS', 'create'),
+  adminController.creerAcheteur);
+router.put('/acheteur/:id',
+  requirePermission('ACHETEURS', 'update'),
+  adminController.modifierAcheteur);
+router.put('/acheteur/:id/activer',
+  requirePermission('ACHETEURS', 'update'),
+  adminController.activerAcheteur);
+// Suppression avec le droit de la rubrique concernée (et non celui des admins).
+router.delete('/vendeur/:id',
+  requirePermission('VENDEURS', 'delete'),
+  adminController.supprimerVendeur);
+router.delete('/acheteur/:id',
+  requirePermission('ACHETEURS', 'delete'),
+  adminController.supprimerAcheteur);
+
 router.put('/vendeur/:id/suspendre',
   requirePermission('VENDEURS', 'update'),
   adminController.suspendreVendeur);

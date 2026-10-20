@@ -327,3 +327,47 @@ exports.listerAuditLogs = asyncHandler(async (req, res) => {
   const result = await AuditService.lister({ page, limit, adminId, action });
   return res.status(200).json({ success: true, ...result });
 });
+
+
+// ── Clients et vendeurs : création, modification, réactivation ──────────────
+exports.creerVendeur = asyncHandler(async (req, res) => {
+  const result = await AdminService.creerUtilisateur('Vendeur', req.body || {});
+  tracer(req, 'creer_vendeur', 'vendeur', result.utilisateur.id);
+  res.status(201).json(result);
+});
+
+exports.modifierVendeur = asyncHandler(async (req, res) => {
+  const result = await AdminService.modifierUtilisateur('Vendeur', req.params.id, req.body || {});
+  tracer(req, 'modifier_vendeur', 'vendeur', req.params.id);
+  res.json(result);
+});
+
+exports.creerAcheteur = asyncHandler(async (req, res) => {
+  const result = await AdminService.creerUtilisateur('Acheteur', req.body || {});
+  tracer(req, 'creer_acheteur', 'acheteur', result.utilisateur.id);
+  res.status(201).json(result);
+});
+
+exports.modifierAcheteur = asyncHandler(async (req, res) => {
+  const result = await AdminService.modifierUtilisateur('Acheteur', req.params.id, req.body || {});
+  tracer(req, 'modifier_acheteur', 'acheteur', req.params.id);
+  res.json(result);
+});
+
+exports.activerAcheteur = asyncHandler(async (req, res) => {
+  const result = await AdminService.activerAcheteur(req.params.id);
+  tracer(req, 'activer_acheteur', 'acheteur', req.params.id);
+  res.json(result);
+});
+
+exports.supprimerVendeur = asyncHandler(async (req, res) => {
+  const result = await AdminService.supprimerUtilisateur(req.params.id, 'Vendeur');
+  tracer(req, 'supprimer_vendeur', 'vendeur', req.params.id);
+  res.json(result);
+});
+
+exports.supprimerAcheteur = asyncHandler(async (req, res) => {
+  const result = await AdminService.supprimerUtilisateur(req.params.id, 'Acheteur');
+  tracer(req, 'supprimer_acheteur', 'acheteur', req.params.id);
+  res.json(result);
+});

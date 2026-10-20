@@ -183,7 +183,18 @@ function etatEmail() {
   };
 }
 
+/** Accès d'un client ou vendeur créé depuis le dashboard admin. */
+async function sendAccesUtilisateurEmail({ to, prenom, nom, email, password, role }) {
+  const template = require('../templates/mail/accesUtilisateur.template');
+  return sendEmail({
+    to,
+    subject: 'Vos accès SaamBiz',
+    html: template({ prenom, nom, email, password, role }),
+  });
+}
+
 module.exports = {
+  sendAccesUtilisateurEmail,
   etatEmail,
   sendEmail,
   sendOtpEmail,

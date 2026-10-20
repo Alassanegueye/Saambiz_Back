@@ -30,6 +30,11 @@ exports.listerAdmins = asyncHandler(async (req, res) => {
   res.json({ admins });
 });
 
+exports.modifierAdmin = asyncHandler(async (req, res) => {
+  const admin = await AdminManagementService.modifierAdmin(req.params.userId, req.body || {});
+  res.json({ message: 'Administrateur mis à jour.', admin });
+});
+
 exports.supprimerAdmin = asyncHandler(async (req, res) => {
   const result = await AdminManagementService.supprimerAdmin(req.params.userId);
   res.json(result);

@@ -5,6 +5,10 @@ const { paginate, metaPagination } = require('../../utils/paginate');
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
 const { BadRequestError, ForbiddenError, ConflictError, NotFoundError } = require('../../errors/AppError');
+const bcrypt = require('bcryptjs');
+const { generatePassword } = require('../../utils/generatePassword');
+const { bcryptConfig } = require('../../config/security');
+const { sendAccesUtilisateurEmail } = require('../resend.service');
 
 class AdminService {
 
@@ -210,10 +214,112 @@ class AdminService {
     return { message: 'Boutique supprimée avec succès' };
   }
 
+  // ── Création / modification d'un client ou d'un vendeur depuis le dashboard ──
+
+  /** Champs d'identité modifiables, nettoyés. */
+  static _identite({ prenom, nom, email, telephone, adresse } = {}) {
+    const champs = {};
+    if (prenom !== undefined) champs.prenom = String(prenom).trim();
+    if (nom !== undefined) champs.nom = String(nom).trim();
+    if (email !== undefined) champs.email = String(email).trim().toLowerCase();
+    if (telephone !== undefined) {
+      const t = String(telephone).replace(/[\s.-]/g, '');
+      champs.telephone = t || null;
+    }
+    if (adresse !== undefined) champs.adresse = String(adresse).trim() || null;
+    return champs;
+  }
+
+  /** Email et téléphone uniques : message clair plutôt qu'une erreur SQL. */
+  static async _verifierUnicite({ email, telephone }, saufId = null) {
+    const exclure = saufId ? { id: { [Op.ne]: saufId } } : {};
+    if (email && await Utilisateur.findOne({ where: { email, ...exclure } })) {
+      throw new ConflictError('Cet email est déjà utilisé par un autre compte.');
+    }
+    if (telephone && await Utilisateur.findOne({ where: { telephone, ...exclure } })) {
+      throw new ConflictError('Ce numéro de téléphone est déjà utilisé par un autre compte.');
+    }
+  }
+
+  /**
+   * Crée un compte client (« Acheteur ») ou vendeur. Un mot de passe
+   * provisoire est généré et envoyé par email. Un vendeur reçoit, comme à
+   * l'inscription, un mois d'essai.
+   */
+  static async creerUtilisateur(role, donnees) {
+    if (!['Acheteur', 'Vendeur'].includes(role)) throw new BadRequestError('Rôle invalide');
+    const champs = this._identite(donnees);
+    if (!champs.prenom || !champs.nom) throw new BadRequestError('Prénom et nom sont requis.');
+    if (!champs.email || !/^\S+@\S+\.\S+$/.test(champs.email)) throw new BadRequestError('Email invalide.');
+    if (champs.telephone && !/^\+?\d{7,15}$/.test(champs.telephone)) throw new BadRequestError('Téléphone invalide.');
+    await this._verifierUnicite(champs);
+
+    const password = generatePassword();
+    const t = await sequelize.transaction();
+    try {
+      const utilisateur = await Utilisateur.create({
+        ...champs,
+        mot_de_passe: await bcrypt.hash(password, bcryptConfig.saltRounds),
+        role,
+        statut: 'actif',
+        verifie: true,
+      }, { transaction: t });
+
+      if (role === 'Vendeur') {
+        const dateDebut = new Date();
+        const dateFin = new Date();
+        dateFin.setMonth(dateFin.getMonth() + 1);
+        await Abonnement.create({
+          utilisateurId: utilisateur.id, type: 'essai', dateDebut, dateFin, montant: 0,
+        }, { transaction: t });
+      }
+      await t.commit();
+
+      sendAccesUtilisateurEmail({
+        to: utilisateur.email,
+        prenom: utilisateur.prenom,
+        nom: utilisateur.nom,
+        email: utilisateur.email,
+        password,
+        role,
+      }).catch((err) => logger.error('sendAccesUtilisateurEmail:failed', { error: err.message }));
+
+      const brut = utilisateur.toJSON();
+      delete brut.mot_de_passe;
+      return { message: `${role === 'Vendeur' ? 'Vendeur' : 'Client'} créé — ses accès lui ont été envoyés par email.`, utilisateur: brut };
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  /** Modifie l'identité d'un client ou d'un vendeur (jamais d'un admin). */
+  static async modifierUtilisateur(role, id, donnees) {
+    const utilisateur = await Utilisateur.findOne({ where: { id, role } });
+    if (!utilisateur) throw new NotFoundError(role === 'Vendeur' ? 'Vendeur introuvable' : 'Client introuvable');
+    const champs = this._identite(donnees);
+    if (champs.prenom === '' || champs.nom === '') throw new BadRequestError('Prénom et nom sont requis.');
+    if (champs.email !== undefined && !/^\S+@\S+\.\S+$/.test(champs.email)) throw new BadRequestError('Email invalide.');
+    if (champs.telephone && !/^\+?\d{7,15}$/.test(champs.telephone)) throw new BadRequestError('Téléphone invalide.');
+    await this._verifierUnicite(champs, id);
+    await utilisateur.update(champs);
+    const brut = utilisateur.toJSON();
+    delete brut.mot_de_passe;
+    return { message: 'Informations mises à jour', utilisateur: brut };
+  }
+
+  /** Réactive un client suspendu. */
+  static async activerAcheteur(acheteurId) {
+    const acheteur = await Utilisateur.findOne({ where: { id: acheteurId, role: 'Acheteur' } });
+    if (!acheteur) throw new NotFoundError('Acheteur introuvable');
+    await acheteur.update({ statut: 'actif' });
+    return { message: 'Client réactivé avec succès' };
+  }
+
   // 16b. Supprimer un utilisateur (vendeur ou acheteur) — pas un admin
-  static async supprimerUtilisateur(userId) {
+  static async supprimerUtilisateur(userId, roleAttendu = null) {
     const user = await Utilisateur.findByPk(userId);
-    if (!user) throw new NotFoundError('Utilisateur introuvable');
+    if (!user || (roleAttendu && user.role !== roleAttendu)) throw new NotFoundError('Utilisateur introuvable');
     if (user.role === 'Admin') throw new ForbiddenError("Impossible de supprimer un administrateur ici");
     // Suppression logique (paranoid) ; les boutiques/produits liés suivent la cascade
     await user.destroy();
