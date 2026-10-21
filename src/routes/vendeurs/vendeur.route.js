@@ -220,7 +220,11 @@ router.post(
 // doit pouvoir consulter l'adresse de son site et la reprendre. L'écriture,
 // elle, est un acte de gestion comme un autre.
 router.get('/ma-vitrine', VendeurController.maVitrine);
+// Aperçu du site, publié ou non, pour l'écran de personnalisation.
+router.get('/ma-vitrine/apercu', VendeurController.apercuVitrine);
 router.put('/ma-vitrine', finAbonnement, VendeurController.majVitrine);
+// Supprimer le site : possible même sans abonnement (on retire, on n'ajoute rien).
+router.delete('/ma-vitrine', VendeurController.supprimerVitrine);
 
 // -------------------- ABONNEMENT --------------------
 router.get('/mon-abonnement', VendeurController.monAbonnement);

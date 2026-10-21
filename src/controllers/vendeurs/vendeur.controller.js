@@ -1,3 +1,4 @@
+const VitrineService = require('../../services/vitrine/vitrine.service');
 const VendeurService = require('../../services/vendeurs/vendeur.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const AssistantService = require('../../services/vitrine/assistant.service');
@@ -167,6 +168,9 @@ class VendeurController {
     if (typeof reponses.sections === 'string') {
       try { reponses.sections = JSON.parse(reponses.sections); } catch { reponses.sections = undefined; }
     }
+    if (typeof reponses.blocs === 'string') {
+      try { reponses.blocs = JSON.parse(reponses.blocs); } catch { reponses.blocs = undefined; }
+    }
     for (const drapeau of ['active', 'commande', 'paiementLivraison']) {
       if (typeof reponses[drapeau] === 'string') {
         reponses[drapeau] = reponses[drapeau] !== 'false';
@@ -196,6 +200,16 @@ class VendeurController {
   static majVitrine = asyncHandler(async (req, res) => {
     const result = await VendeurService.majVitrine(req.user.id, req.body);
     return ok(res, result, 'Votre site a été mis à jour.');
+  });
+
+  static apercuVitrine = asyncHandler(async (req, res) => {
+    const result = await VitrineService.apercu(req.user.id);
+    return ok(res, result, 'Aperçu de votre site.');
+  });
+
+  static supprimerVitrine = asyncHandler(async (req, res) => {
+    const result = await VendeurService.supprimerVitrine(req.user.id);
+    return ok(res, result, 'Votre site a été supprimé. Vos produits restent dans l’application.');
   });
 
   // -------------------- MON ABONNEMENT --------------------

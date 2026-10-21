@@ -11,7 +11,7 @@ const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/
 const DEFAULT_PAGE_SIZE = 20;
 
 // Mises en page proposées pour la vitrine — la liste du service fait foi.
-const { MODELES_VITRINE } = require('../vitrine/vitrine.service');
+const { MODELES_VITRINE, ICONES_VITRINE } = require('../vitrine/vitrine.service');
 
 // Domaine qui sert les vitrines. Le vendeur voit l'adresse de son site dans
 // son tableau de bord, la partage sur WhatsApp et l'imprime sur ses cartes :
@@ -203,18 +203,20 @@ class VendeurService {
 
   // -------------------- MA BOUTIQUE --------------------
   static async maBoutique(vendeurId) {
-    const boutique = await Boutique.findOne({
-      where: { vendeurId },
-      include: [
-        { model: Produit, as: 'produits', attributes: ['id', 'nom', 'prix', 'prix_promo', 'image', 'disponible', 'vues', 'statut'] }
-      ]
-    });
+    const boutique = await Boutique.findOne({ where: { vendeurId } });
     if (!boutique) throw new NotFoundError('Boutique introuvable');
-    const totalVues = boutique.produits.reduce((acc, p) => acc + (p.vues || 0), 0);
+    // Les produits sont rattachés au vendeur, pas à la boutique : il n'existe
+    // pas d'association Boutique → Produit, et l'inclure faisait échouer la
+    // page « Ma boutique » (« Produit is not associated to Boutique »).
+    const produits = await Produit.findAll({
+      where: { vendeurId },
+      attributes: ['id', 'nom', 'prix', 'prix_promo', 'image', 'disponible', 'vues', 'statut'],
+    });
+    const totalVues = produits.reduce((acc, p) => acc + (p.vues || 0), 0);
     const categories = await CategorieBoutiqueService.lister(boutique.id);
     return {
-      boutique: { ...boutique.toJSON(), categories },
-      stats: { totalVues, nombreProduits: boutique.produits.length },
+      boutique: { ...boutique.toJSON(), produits: produits.map((p) => p.toJSON()), categories },
+      stats: { totalVues, nombreProduits: produits.length },
     };
   }
 
@@ -319,10 +321,14 @@ class VendeurService {
           categories: boutique.vitrineSections?.categories !== false,
           avis:       boutique.vitrineSections?.avis       !== false,
           contact:    boutique.vitrineSections?.contact    !== false,
+          nouveautes: boutique.vitrineSections?.nouveautes !== false,
+          meilleures: boutique.vitrineSections?.meilleures !== false,
         },
+        blocs: VendeurService._blocsVides(boutique.vitrineBlocs),
         commande: boutique.vitrineCommande !== false,
         paiementLivraison: boutique.vitrinePaiementLivraison !== false,
         vues: boutique.vitrineVues || 0,
+        sectionsPerso: Array.isArray(boutique.vitrineSectionsPerso) ? boutique.vitrineSectionsPerso : [],
 
         // Distinct de `active` : « configurée » dit que le vendeur est passé
         // par l'assistant de l'application mobile. Le tableau de bord web s'y
@@ -420,13 +426,13 @@ class VendeurService {
     }
 
     // ── Réseaux sociaux ──────────────────────────────────────────────
-    // Seules quatre clés connues sont retenues, et seulement en http(s) :
+    // Seules les clés connues sont retenues, et seulement en http(s) :
     // ces valeurs finissent dans un href sur une page publique, un
     // `javascript:` recopié tel quel y deviendrait exécutable.
     if (data.reseaux !== undefined) {
       const source = data.reseaux || {};
       const reseaux = {};
-      for (const cle of ['facebook', 'instagram', 'tiktok', 'site']) {
+      for (const cle of ['facebook', 'instagram', 'snapchat', 'tiktok', 'site']) {
         const val = String(source[cle] || '').trim().slice(0, 200);
         if (!val) continue;
         if (!/^https?:\/\//i.test(val)) {
@@ -445,7 +451,37 @@ class VendeurService {
         categories: s.categories !== false,
         avis:       s.avis       !== false,
         contact:    s.contact    !== false,
+        nouveautes: s.nouveautes !== false,
+        meilleures: s.meilleures !== false,
       };
+    }
+
+    // ── Bannières, bloc contact, icônes, avantages ───────────────────
+    if (data.blocs !== undefined) {
+      maj.vitrineBlocs = await VendeurService._validerBlocs(vendeurId, data.blocs);
+    }
+
+    // ── Sections personnalisées ──────────────────────────────────────
+    // Au plus 12 sections de 60 produits ; seuls les produits du vendeur
+    // sont retenus (un identifiant étranger est ignoré sans erreur).
+    if (data.sectionsPerso !== undefined) {
+      const source = Array.isArray(data.sectionsPerso) ? data.sectionsPerso.slice(0, 12) : [];
+      const demandes = [...new Set(source.flatMap((s) => (Array.isArray(s?.produitIds) ? s.produitIds : [])).map(String))];
+      const UUID = /^[0-9a-f-]{36}$/i;
+      const autorises = new Set(demandes.filter((id) => UUID.test(id)).length
+        ? (await Produit.findAll({
+          where: { vendeurId, id: demandes.filter((id) => UUID.test(id)) },
+          attributes: ['id'],
+        })).map((p) => p.id)
+        : []);
+      const sections = source.map((s, i) => {
+        const titre = String(s?.titre || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        if (!titre) throw new BadRequestError(`Donnez un nom à la section n° ${i + 1}.`);
+        const id = /^[A-Za-z0-9_-]{4,40}$/.test(String(s?.id || '')) ? String(s.id) : `s${Date.now().toString(36)}${i}`;
+        const produitIds = [...new Set((s.produitIds || []).map(String))].filter((pid) => autorises.has(pid)).slice(0, 60);
+        return { id, titre, produitIds };
+      });
+      maj.vitrineSectionsPerso = sections.length ? sections : null;
     }
 
     // ── Publication et caisse ────────────────────────────────────────
@@ -463,6 +499,50 @@ class VendeurService {
 
     await boutique.update(maj);
     return await VendeurService.maVitrine(vendeurId);
+  }
+
+  static _blocsVides(blocs) {
+    const b = blocs && typeof blocs === 'object' ? blocs : {};
+    return {
+      icones: b.icones && typeof b.icones === 'object' ? b.icones : {},
+      avantages: Array.isArray(b.avantages) ? b.avantages : [],
+    };
+  }
+
+  /**
+   * Contenus composés par le vendeur : les avantages (« Livraison rapide »…)
+   * et les icônes des catégories. Aucun avantage, pas de bandeau.
+   */
+  static async _validerBlocs(vendeurId, source) {
+    const b = source && typeof source === 'object' ? source : {};
+    const texte = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
+
+    const icones = {};
+    const sourceIcones = b.icones && typeof b.icones === 'object' ? b.icones : {};
+    for (const [cat, cle] of Object.entries(sourceIcones).slice(0, 60)) {
+      if (!/^[0-9a-zA-Z_-]{1,40}$/.test(cat)) continue;
+      if (!ICONES_VITRINE.includes(cle)) throw new BadRequestError('Icône inconnue.');
+      icones[cat] = cle;
+    }
+
+    const avantages = (Array.isArray(b.avantages) ? b.avantages : []).slice(0, 4).map((x, i) => {
+      if (!ICONES_VITRINE.includes(x?.icone)) throw new BadRequestError('Icône inconnue.');
+      const titre = texte(x?.titre, 40);
+      if (!titre) throw new BadRequestError(`Donnez un titre à l'avantage n° ${i + 1}.`);
+      return { icone: x.icone, titre, texte: texte(x?.texte, 60) };
+    });
+
+    return !Object.keys(icones).length && !avantages.length ? null : { icones, avantages };
+  }
+
+  // -------------------- SUPPRIMER MON SITE --------------------
+  // Seule la présence en ligne disparaît : les produits restent dans
+  // l'application et dans le tableau de bord.
+  static async supprimerVitrine(vendeurId) {
+    const boutique = await Boutique.findOne({ where: { vendeurId } });
+    if (!boutique) throw new NotFoundError('Boutique introuvable');
+    await boutique.update(Boutique.reglagesSiteParDefaut());
+    return VendeurService.maVitrine(vendeurId);
   }
 
   // -------------------- MON ABONNEMENT --------------------

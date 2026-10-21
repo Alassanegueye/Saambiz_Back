@@ -21,7 +21,7 @@ class AdminService {
         // La boutique et l'état de son site : l'admin peut l'activer d'ici.
         include: [{
           model: Boutique, as: 'boutiques', required: false,
-          attributes: ['id', 'nom', 'slug', 'statut', 'vitrineActive'],
+          attributes: ['id', 'nom', 'slug', 'statut', 'vitrineActive', 'vitrineConfiguree'],
         }],
         order: [['createdAt', 'DESC']]
       });
@@ -222,11 +222,10 @@ class AdminService {
         const { genererSlugUnique } = require('../../utils/boutiqueDefaults');
         maj.slug = await genererSlugUnique(boutique.nom);
       }
-      // Site jamais composé : il part avec la mise en page par défaut, et le
-      // vendeur le retrouve ensuite dans « Mon site » pour l'ajuster.
+      // Un site doit avoir été personnalisé une première fois par son
+      // vendeur (mise en page, couleur, textes) avant d'être publié.
       if (!boutique.vitrineConfiguree) {
-        maj.vitrineConfiguree = true;
-        if (!boutique.vitrineCreeeLe) maj.vitrineCreeeLe = new Date();
+        throw new BadRequestError("Le vendeur doit d'abord personnaliser son site depuis son espace (« Mon site ») avant qu'il soit publié.");
       }
     }
     await boutique.update(maj);
@@ -238,6 +237,14 @@ class AdminService {
         vitrineActive: boutique.vitrineActive, url: `${base}/b/${boutique.slug}`,
       },
     };
+  }
+
+  // 15 ter. Supprimer le site web d'une boutique (pas ses produits)
+  static async supprimerSiteBoutique(boutiqueId) {
+    const boutique = await Boutique.findByPk(boutiqueId);
+    if (!boutique) throw new NotFoundError('Boutique introuvable');
+    await boutique.update(Boutique.reglagesSiteParDefaut());
+    return { message: 'Site supprimé — les produits restent dans l’application', boutique: { id: boutique.id, nom: boutique.nom } };
   }
 
   // 16. Supprimer une boutique

@@ -451,3 +451,9 @@ exports.basculerSiteBoutique = asyncHandler(async (req, res) => {
   tracer(req, active ? 'activer_site' : 'desactiver_site', 'boutique', req.params.id, { nom: result.boutique.nom });
   return res.status(200).json(result);
 });
+
+exports.supprimerSiteBoutique = asyncHandler(async (req, res) => {
+  const result = await AdminService.supprimerSiteBoutique(req.params.id);
+  tracer(req, 'supprimer_site', 'boutique', req.params.id, { nom: result.boutique.nom });
+  return res.status(200).json(result);
+});

@@ -300,9 +300,18 @@ class AssistantService {
         categories: s.categories !== false,
         avis: s.avis !== false,
         contact: s.contact !== false,
+        nouveautes: s.nouveautes !== false,
+        meilleures: s.meilleures !== false,
       };
     } else {
       maj.vitrineSections = proposition.sections;
+    }
+
+    // ── Avantages (et icônes des catégories) ──────────────────────────
+    if (reponses.blocs !== undefined) {
+      // Chargé ici : vendeur.service dépend déjà de vitrine.service.
+      const VendeurService = require('../vendeurs/vendeur.service');
+      maj.vitrineBlocs = await VendeurService._validerBlocs(vendeurId, reponses.blocs);
     }
 
     // ── Caisse ────────────────────────────────────────────────────────

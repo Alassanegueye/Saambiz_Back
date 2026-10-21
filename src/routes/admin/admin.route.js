@@ -227,6 +227,9 @@ router.put('/produit/:id/rejeter',
 router.delete('/produit/:id',
   requirePermission('PRODUITS', 'delete'),
   adminController.supprimerProduit);
+router.delete('/boutique/:id/site',
+  requirePermission('VENDEURS', 'delete'),
+  adminController.supprimerSiteBoutique);
 router.put('/boutique/:id/site',
   requirePermission('VENDEURS', 'update'),
   adminController.basculerSiteBoutique);

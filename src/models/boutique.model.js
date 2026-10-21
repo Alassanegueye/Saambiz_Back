@@ -192,6 +192,18 @@ const Boutique = sequelize.define('Boutique', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  // Sections créées par le vendeur, dans l'ordre d'affichage :
+  // [{ id, titre, produitIds: [] }] — voir VendeurService.majVitrine.
+  vitrineSectionsPerso: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+  },
+  // Contenus du site : { avantages: [{ icone, titre, texte }], icones:
+  // { categorieId: cle } } — voir VendeurService._validerBlocs.
+  vitrineBlocs: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+  },
 
   vendeurId: {
     type: DataTypes.UUID,
@@ -220,5 +232,17 @@ const Boutique = sequelize.define('Boutique', {
 // Prénom « Awa », nom « DIOP », boutique « Chez awa » — quelle que soit la saisie.
 const { formaterNomBoutique, appliquerFormats } = require('../utils/formatNoms');
 appliquerFormats(Boutique, { nom: formaterNomBoutique });
+
+/**
+ * Supprime le site web (vitrine) de la boutique : tous les réglages `vitrine*`
+ * reviennent à leur valeur d'origine — hors ligne, jamais personnalisé, sans
+ * textes ni couleurs. La boutique, ses produits, ses commandes et son
+ * adresse (slug) ne sont pas touchés : seule la présence en ligne disparaît.
+ */
+Boutique.reglagesSiteParDefaut = () => Object.fromEntries(
+  Object.entries(Boutique.rawAttributes)
+    .filter(([nom]) => nom.startsWith('vitrine'))
+    .map(([nom, def]) => [nom, def.defaultValue !== undefined ? def.defaultValue : null]),
+);
 
 module.exports = Boutique;

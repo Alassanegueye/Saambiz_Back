@@ -34,6 +34,18 @@ const logger = require('../../utils/logger');
 // grand, de l'électronique qui se compare en liste, et le reste.
 const MODELES_VITRINE = ['classique', 'galerie', 'catalogue'];
 
+// Icônes que le vendeur peut poser sur ses catégories et ses avantages. Le
+// site et l'application traduisent chaque clé en pictogramme ; une clé
+// inconnue est refusée à l'enregistrement.
+const ICONES_VITRINE = [
+  'tous', 'vetements', 'tshirt', 'chaussures', 'sacs', 'accessoires', 'montres', 'lunettes',
+  'bijoux', 'beaute', 'parfums', 'enfants', 'maison', 'meubles', 'cuisine', 'electronique',
+  'telephones', 'informatique', 'alimentation', 'boissons', 'sante', 'sport', 'livres',
+  'jeux', 'auto', 'outils', 'animaux', 'fleurs', 'couture', 'art', 'autres',
+  'livraison', 'paiement', 'service', 'retours', 'qualite', 'cadeau', 'promo', 'garantie',
+  'local', 'rapide', 'coeur', 'etoile',
+];
+
 // Plafond de pagination : sans lui, `?limit=100000` fait sortir tout le
 // catalogue en une requête, sur une route ouverte à tout le monde.
 const LIMITE_MAX = 48;
@@ -161,8 +173,15 @@ class VitrineService {
           categories: b.vitrineSections?.categories !== false,
           avis:       b.vitrineSections?.avis       !== false,
           contact:    b.vitrineSections?.contact    !== false,
+          nouveautes: b.vitrineSections?.nouveautes !== false,
+          meilleures: b.vitrineSections?.meilleures !== false,
         },
       },
+
+      // Avantages et icônes : ce que le vendeur a composé.
+      blocs: VitrineService._blocsPublics(b.vitrineBlocs),
+      // « Vente en ligne depuis 2024 ».
+      depuis: b.createdAt ? new Date(b.createdAt).getFullYear() : null,
 
       apropos: b.vitrineApropos,
       annonce: b.vitrineAnnonce,
@@ -175,6 +194,14 @@ class VitrineService {
       paiementLivraison: b.vitrinePaiementLivraison !== false,
 
       ...extra,
+    };
+  }
+
+  static _blocsPublics(blocs) {
+    const b = blocs && typeof blocs === 'object' ? blocs : {};
+    return {
+      icones: b.icones && typeof b.icones === 'object' ? b.icones : {},
+      avantages: Array.isArray(b.avantages) ? b.avantages : [],
     };
   }
 
@@ -212,6 +239,32 @@ class VitrineService {
 
   static async accueil(slug) {
     const boutique = await VitrineService._chargerBoutique(slug);
+    return VitrineService._accueilDe(boutique);
+  }
+
+  /**
+   * Aperçu du site pour son vendeur, publié ou non : la page d'accueil telle
+   * qu'un client la verrait, plus tout le catalogue (l'aperçu ne peut pas
+   * interroger l'API publique d'un site qui n'est pas encore en ligne).
+   */
+  static async apercu(vendeurId) {
+    const boutique = await Boutique.findOne({
+      where: { vendeurId },
+      include: [{ model: Utilisateur, as: 'vendeur', attributes: ATTRIBUTS_VENDEUR }],
+    });
+    if (!boutique) throw new NotFoundError("Créez d'abord votre boutique pour ouvrir votre site.");
+    const accueil = await VitrineService._accueilDe(boutique);
+    const tous = await Produit.findAll({
+      where: VitrineService._filtreCatalogue(boutique.vendeurId),
+      include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
+      attributes: ATTRIBUTS_PRODUIT,
+      order: [['createdAt', 'DESC']],
+      limit: 200,
+    });
+    return { ...accueil, catalogue: tous.map(VitrineService._exposerProduit) };
+  }
+
+  static async _accueilDe(boutique) {
     const where = VitrineService._filtreCatalogue(boutique.vendeurId);
 
     const [produits, total, categoriesBrutes, avis, nouveautes] = await Promise.all([
@@ -221,7 +274,7 @@ class VitrineService {
       Produit.findAll({
         where: { ...where, disponible: true },
         include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
-        attributes: ATTRIBUTS_PRODUIT,
+        attributes: [...ATTRIBUTS_PRODUIT, 'nombre_ventes'],
         order: [['nombre_ventes', 'DESC'], ['vues', 'DESC'], ['createdAt', 'DESC']],
         limit: LIMITE_DEFAUT,
       }),
@@ -265,15 +318,42 @@ class VitrineService {
       ? Math.round((notes.reduce((s, n) => s + n, 0) / notes.length) * 10) / 10
       : null;
 
+    // Sections du vendeur, dans son ordre, avec les produits visibles qu'il
+    // y a placés. Une section vide (produits retirés, épuisés) n'apparaît pas.
+    const sectionsPerso = Array.isArray(boutique.vitrineSectionsPerso) ? boutique.vitrineSectionsPerso : [];
+    const idsSections = [...new Set(sectionsPerso.flatMap((s) => s.produitIds || []))];
+    const produitsSections = idsSections.length
+      ? await Produit.findAll({
+        where: { ...where, id: idsSections },
+        include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
+        attributes: ATTRIBUTS_PRODUIT,
+      })
+      : [];
+    const parId = new Map(produitsSections.map((p) => [p.id, p]));
+    const sections = sectionsPerso
+      .map((s) => ({
+        id: s.id,
+        titre: s.titre,
+        produits: (s.produitIds || []).map((id) => parId.get(id)).filter(Boolean).map(VitrineService._exposerProduit),
+      }))
+      .filter((s) => s.produits.length);
+
     return {
       boutique: VitrineService._exposerBoutique(boutique, {
         stats: { produits: total, avis: notes.length, note: noteMoyenne },
       }),
+      sections,
       categories: categoriesBrutes
         .filter((c) => c.categorie && c.categorie.id)
         .map((c) => ({ id: c.categorie.id, nom: c.categorie.nom, nombre: Number(c.nombre) })),
       produitsVedettes: produits.map(VitrineService._exposerProduit),
       nouveautes: nouveautesInedites.map(VitrineService._exposerProduit),
+      // Sections « Nouveautés » et « Meilleures ventes » du site : les dix
+      // derniers produits, et ceux qui se sont réellement vendus (une
+      // boutique qui démarre n'a pas encore de meilleures ventes).
+      derniersProduits: nouveautes.slice(0, 10).map(VitrineService._exposerProduit),
+      meilleuresVentes: produits.filter((p) => Number(p.get ? p.get('nombre_ventes') : p.nombre_ventes) > 0)
+        .slice(0, 10).map(VitrineService._exposerProduit),
       avis: avis.map((a) => ({
         id: a.id,
         note: a.note,
@@ -628,3 +708,4 @@ class VitrineService {
 
 module.exports = VitrineService;
 module.exports.MODELES_VITRINE = MODELES_VITRINE;
+module.exports.ICONES_VITRINE = ICONES_VITRINE;
