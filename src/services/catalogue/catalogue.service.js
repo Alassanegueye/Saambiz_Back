@@ -1,6 +1,6 @@
 const { Op, literal } = require('sequelize');
 const {
-  Produit, Boutique, Utilisateur, Categorie, Promotion, ProduitImage,
+  Produit, Boutique, Utilisateur, Categorie, Promotion, ProduitImage, Avis,
 } = require('../../models');
 const { NotFoundError } = require('../../errors/AppError');
 const CategorieService = require('../categories/categorie.service');
@@ -264,7 +264,11 @@ class CatalogueService {
   static async boutique(id) {
     const b = await Boutique.findOne({
       where: { id, statut: 'actif' },
-      attributes: ['id', 'nom', 'slug', 'description', 'slogan', 'logo', 'banniere', 'localisation', 'ville', 'telephone', 'whatsapp', 'categorie', 'vendeurId', 'createdAt'],
+      attributes: [
+        'id', 'nom', 'slug', 'description', 'slogan', 'logo', 'banniere', 'localisation', 'ville', 'telephone', 'whatsapp',
+        'categorie', 'vendeurId', 'createdAt', 'couleur_theme', 'vitrineAccent', 'vitrineApropos', 'vitrineHoraires',
+        'vitrineReseaux', 'vitrineSectionsPerso', 'vitrineBlocs', 'vitrineSections',
+      ],
       include: [{
         model: Utilisateur, as: 'vendeur', attributes: ['id', 'prenom', 'nom', 'statutValidation'],
         where: { statut: 'actif' }, required: true,
@@ -272,13 +276,50 @@ class CatalogueService {
     });
     if (!b) throw new NotFoundError("Cette boutique n'existe pas ou n'est plus en ligne.");
     const brut = b.toJSON();
-    const nombreProduits = await Produit.count({ where: { vendeurId: b.vendeurId, statut: 'approuve' } });
+    const [nombreProduits, avis] = await Promise.all([
+      Produit.count({ where: { vendeurId: b.vendeurId, statut: 'approuve' } }),
+      Avis.findAll({ where: { boutiqueId: b.id }, attributes: ['note'], raw: true }),
+    ]);
+    const notes = avis.map((a) => Number(a.note)).filter((n) => !Number.isNaN(n));
+
+    // La page de la boutique dans l'application est la même que son site :
+    // les sections choisies par le vendeur, dans son ordre, avec leurs
+    // produits. Une section sans produit visible n'est pas renvoyée.
+    const sectionsPerso = Array.isArray(brut.vitrineSectionsPerso) ? brut.vitrineSectionsPerso : [];
+    const ids = [...new Set(sectionsPerso.flatMap((s) => s.produitIds || []))].filter((x) => /^[0-9a-f-]{36}$/i.test(String(x)));
+    const produits = ids.length
+      ? await Produit.findAll({
+        where: { id: ids, vendeurId: b.vendeurId, statut: 'approuve', [Op.and]: [VENDEUR_VISIBLE] },
+        attributes: ATTRIBUTS,
+        include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom', 'slug', 'icone', 'specifications'] }],
+      })
+      : [];
+    const parId = new Map((await this._enrichir(produits)).map((p) => [p.id, p]));
+    const sections = sectionsPerso
+      .map((s) => ({ id: s.id, titre: s.titre, produits: (s.produitIds || []).map((pid) => parId.get(pid)).filter(Boolean) }))
+      .filter((s) => s.produits.length);
+
+    const blocs = brut.vitrineBlocs && typeof brut.vitrineBlocs === 'object' ? brut.vitrineBlocs : {};
+    const {
+      vitrineSectionsPerso, vitrineBlocs, vitrineSections, vitrineAccent, vitrineApropos, vitrineHoraires,
+      vitrineReseaux, couleur_theme: couleurTheme, ...publique
+    } = brut;
+
     return {
       boutique: {
-        ...brut,
+        ...publique,
         localisation: brut.localisation || brut.ville || '',
         verifiee: brut.vendeur?.statutValidation === 'approuve',
         nombreProduits,
+        depuis: brut.createdAt ? new Date(brut.createdAt).getFullYear() : null,
+        note: notes.length ? Math.round((notes.reduce((t, n) => t + n, 0) / notes.length) * 10) / 10 : null,
+        nombreAvis: notes.length,
+        accent: vitrineAccent || couleurTheme || '#0D1B3D',
+        apropos: vitrineSections?.apropos === false ? null : (vitrineApropos || null),
+        horaires: vitrineHoraires || null,
+        reseaux: vitrineReseaux || {},
+        avantages: Array.isArray(blocs.avantages) ? blocs.avantages : [],
+        sections,
       },
     };
   }

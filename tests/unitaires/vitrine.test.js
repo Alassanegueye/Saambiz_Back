@@ -122,7 +122,18 @@ describe('Ce qu\'une boutique publie', () => {
 
   it('allume toutes les sections tant que le vendeur n\'en a éteint aucune', () => {
     const b = VitrineService._exposerBoutique(base);
-    expect(b.theme.sections).toEqual({ apropos: true, categories: true, avis: true, contact: true });
+    // Liste exhaustive, volontairement : ajouter une section au service fait
+    // échouer ce test, ce qui oblige à décider sciemment de son défaut. Une
+    // section qui s'allumerait toute seule sur la vitrine de tous les
+    // vendeurs, sans que personne ne l'ait voulu, passerait sinon inaperçue.
+    expect(b.theme.sections).toEqual({
+      apropos:    true,
+      categories: true,
+      avis:       true,
+      contact:    true,
+      nouveautes: true,
+      meilleures: true,
+    });
   });
 
   it('respecte une section explicitement éteinte', () => {
