@@ -1,0 +1,4 @@
+{
+  "watch": ["src", "migrations", ".env"],
+  "ext": "js,json,sql,env"
+}
