@@ -202,6 +202,11 @@ class VendeurController {
     return ok(res, result, 'Votre site a été mis à jour.');
   });
 
+  static abonnes = asyncHandler(async (req, res) => {
+    const result = await VendeurService.abonnes(req.user.id);
+    return ok(res, result, 'Vos abonnés.');
+  });
+
   static apercuVitrine = asyncHandler(async (req, res) => {
     const result = await VitrineService.apercu(req.user.id);
     return ok(res, result, 'Aperçu de votre site.');

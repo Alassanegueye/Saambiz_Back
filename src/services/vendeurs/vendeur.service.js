@@ -535,6 +535,34 @@ class VendeurService {
     return !Object.keys(icones).length && !avantages.length ? null : { icones, avantages };
   }
 
+  /**
+   * Les clients abonnés à la boutique du vendeur, du plus récent au plus
+   * ancien, avec l'état de leur cloche (seuls ceux qui l'ont activée
+   * reçoivent les notifications de la boutique).
+   */
+  static async abonnes(vendeurId) {
+    const boutique = await Boutique.findOne({ where: { vendeurId }, attributes: ['id'] });
+    if (!boutique) throw new NotFoundError('Boutique introuvable');
+    const favoris = await Favori.findAll({
+      where: { boutiqueId: boutique.id },
+      include: [{ model: Utilisateur, as: 'acheteur', attributes: ['id', 'prenom', 'nom', 'photoProfil'] }],
+      order: [['createdAt', 'DESC']],
+    });
+    const liste = favoris.filter((f) => f.acheteur).map((f) => ({
+      id: f.acheteur.id,
+      prenom: f.acheteur.prenom,
+      nom: f.acheteur.nom,
+      photo: f.acheteur.photoProfil || null,
+      clocheActive: f.clocheActive === true,
+      depuis: f.createdAt,
+    }));
+    return {
+      total: liste.length,
+      avecCloche: liste.filter((a) => a.clocheActive).length,
+      abonnes: liste,
+    };
+  }
+
   // -------------------- SUPPRIMER MON SITE --------------------
   // Seule la présence en ligne disparaît : les produits restent dans
   // l'application et dans le tableau de bord.

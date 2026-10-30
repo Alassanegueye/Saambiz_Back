@@ -219,6 +219,8 @@ router.post(
 // Pas de finAbonnement sur la lecture : un vendeur dont l'abonnement a expiré
 // doit pouvoir consulter l'adresse de son site et la reprendre. L'écriture,
 // elle, est un acte de gestion comme un autre.
+// Clients abonnés à la boutique (avec l'état de leur cloche).
+router.get('/abonnes', VendeurController.abonnes);
 router.get('/ma-vitrine', VendeurController.maVitrine);
 // Aperçu du site, publié ou non, pour l'écran de personnalisation.
 router.get('/ma-vitrine/apercu', VendeurController.apercuVitrine);

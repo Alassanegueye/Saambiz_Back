@@ -211,13 +211,14 @@ class AcheteurController {
 
     const result = await AcheteurService.getProduitsByBoutique(boutiqueId, page);
 
-    if (!result?.produits?.length) {
-      throw new NotFoundError(
-        `Aucun produit trouvé pour la boutique "${result.boutique?.nom || 'cette boutique'}"`
-      );
-    }
-
-    return res.status(200).json({ success: true, ...result });
+    // Une boutique sans produit n'est pas une erreur : on renvoie une liste vide
+    // pour que l'application affiche la boutique (et un message « aucun produit »).
+    return res.status(200).json({
+      success: true,
+      ...result,
+      produits: result?.produits || [],
+      message: result?.produits?.length ? undefined : "Cette boutique n'a pas encore de produit.",
+    });
   });
 }
 

@@ -13,6 +13,8 @@ router.get('/actives', promotionController.getPromotionsActives);
 
 // Routes vendeur
 router.post('/', auth, checkActiveUser, isVendeur, finAbonnement, validate(creerPromotionSchema), promotionController.creerPromotion);
+// Promotion sur des produits, ou simple message, envoyé aux abonnés choisis.
+router.post('/campagne', auth, checkActiveUser, isVendeur, finAbonnement, promotionController.creerCampagne);
 router.put('/:id', auth, checkActiveUser, isVendeur, finAbonnement, validate(modifierPromotionSchema), promotionController.modifierPromotion);
 router.delete('/:id', auth, checkActiveUser, isVendeur, promotionController.supprimerPromotion);
 router.get('/', auth, checkActiveUser, isVendeur, promotionController.mesPromotions);

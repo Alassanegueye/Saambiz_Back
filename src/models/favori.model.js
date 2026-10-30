@@ -32,7 +32,9 @@ const Favori = sequelize.define('Favori', {
   clocheActive: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
-    defaultValue: true,
+    // Désactivée par défaut : seul le client qui l'active reçoit les
+    // notifications de la boutique.
+    defaultValue: false,
   }
 }, {
   tableName: 'favori',

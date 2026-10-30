@@ -3,8 +3,11 @@ const { Favori, Boutique, Utilisateur } = require('../../models');
 class FavoriService {
 
   static async ajouterFavori(acheteurId, boutiqueId) {
+    // Suivre n'abonne pas aux notifications : le client active la cloche
+    // s'il veut être prévenu des nouveautés et promotions de la boutique.
     const [favori, created] = await Favori.findOrCreate({
-      where: { acheteurId, boutiqueId }
+      where: { acheteurId, boutiqueId },
+      defaults: { acheteurId, boutiqueId, clocheActive: false },
     });
     if (!created) return { success: false, message: 'Boutique déjà en favoris' };
     return { success: true, message: 'Boutique ajoutée aux favoris', favori };

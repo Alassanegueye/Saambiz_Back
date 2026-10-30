@@ -19,6 +19,11 @@ exports.modifierPromotion = asyncHandler(async (req, res) => {
   return res.status(200).json(result);
 });
 
+exports.creerCampagne = asyncHandler(async (req, res) => {
+  const result = await PromotionService.creerCampagne(req.user.id, req.body);
+  return res.status(201).json(result);
+});
+
 exports.supprimerPromotion = asyncHandler(async (req, res) => {
   const result = await PromotionService.supprimerPromotion(req.params.id, req.user.id);
   if (!result.success) throw new NotFoundError(result.message);
