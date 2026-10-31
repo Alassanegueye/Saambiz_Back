@@ -56,10 +56,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # En production : Nginx écoute sur 443 et proxifie vers 127.0.0.1:3000
-    # On publie uniquement sur 127.0.0.1 (loopback) pour que Nginx seul y accède
+    # En production : Nginx écoute sur 443 et proxifie vers 127.0.0.1:HOST_PORT.
+    # On publie uniquement sur 127.0.0.1 (loopback) pour que Nginx seul y accède.
+    #
+    # Le port hôte est réglable par `HOST_PORT` (.env) parce qu'un VPS héberge
+    # souvent plusieurs API : figé à 3000, `up` échouait sur « port is already
+    # allocated » dès qu'une autre application l'occupait, et modifier ce
+    # fichier à la main faisait ensuite échouer le `git pull --ff-only` de
+    # deploy/deploy.sh. Le port INTERNE reste 3000 — chaque conteneur a son
+    # propre espace réseau, deux applications peuvent y écouter sur 3000 sans
+    # se gêner. Penser à aligner l'`upstream` de deploy/nginx.conf.
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${HOST_PORT:-3000}:3000"
     # 1) bootstrap : schéma + migrations + seed  2) démarrage du serveur
     #
     # Sans cette ligne, le conteneur part sur le CMD du Dockerfile
@@ -77,6 +85,14 @@ services:
       HOST:     0.0.0.0
       DB_HOST:  postgres
       DB_PORT:  5432
+      # Le service postgres ci-dessus est l'image officielle, sans SSL activé,
+      # et il n'est joignable que par le réseau Docker interne. Le code exige
+      # le chiffrement dès NODE_ENV=production — réglage juste pour une base
+      # managée (Render, Neon…), mais qui faisait échouer le bootstrap ici sur
+      # « The server does not support SSL connections ». On lève l'exigence
+      # par défaut, tout en laissant le .env la rétablir si la base est
+      # déplacée hors du compose.
+      DB_SSL:   ${DB_SSL:-false}
     networks:
       - saambiz_network
     logging:

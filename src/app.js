@@ -9,6 +9,21 @@ const logger = require('./utils/logger');
 
 const app = express();
 
+// Derrière un reverse proxy (Nginx, Render, Fly…), `req.ip` vaut l'adresse du
+// proxy — identique pour TOUS les visiteurs — tant qu'Express n'a pas reçu
+// l'autorisation de lire `X-Forwarded-For`.
+//
+// Toute la défense anti-brute-force compte par `req.ip` : sans cette ligne,
+// `authRateLimitConfig` (5 tentatives par quart d'heure) devient un compteur
+// unique mondial. Trois personnes qui se trompent de mot de passe bloquaient
+// la connexion pour l'ensemble des utilisateurs, et les journaux attribuaient
+// chaque requête à la passerelle Docker au lieu du client réel.
+//
+// `1` : on ne fait confiance qu'au dernier maillon, le proxy que l'on
+// administre. Faire confiance à toute la chaîne laisserait n'importe qui
+// forger `X-Forwarded-For` et échapper aux limites.
+app.set('trust proxy', 1);
+
 // F-02 : Helmet avec CSP personnalisée + HSTS explicite
 app.use(helmet({
   contentSecurityPolicy: {

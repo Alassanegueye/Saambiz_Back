@@ -24,8 +24,22 @@ if (SUR_RENDER && !EN_PRODUCTION) {
     + 'les contrôles CORS et le masquage des erreurs restent désactivés.',
   );
 }
+
+// Déploiement sur VPS : la base est un conteneur PostgreSQL sur le réseau
+// Docker interne, jamais exposé (`expose: 5432`, sans `ports:`). L'image
+// officielle n'a ni certificat ni SSL activé — exiger le chiffrement y faisait
+// échouer le démarrage sur « The server does not support SSL connections »,
+// et le seul contournement apparent était de retirer NODE_ENV=production,
+// ce qui désactive du même coup la limitation de débit, les contrôles CORS et
+// le masquage des erreurs.
+//
+// DB_SSL=false lève l'exigence. À ne poser que pour une base joignable
+// uniquement par un réseau privé : sur un hébergeur managé, laisser la
+// variable absente.
+const SSL_DESACTIVE = String(process.env.DB_SSL || '').trim().toLowerCase() === 'false';
+
 const dialectOptions = {
-  ssl: SUR_HEBERGEUR ? { require: true, rejectUnauthorized: false } : false,
+  ssl: (SUR_HEBERGEUR && !SSL_DESACTIVE) ? { require: true, rejectUnauthorized: false } : false,
 };
 
 const options = {
