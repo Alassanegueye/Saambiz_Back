@@ -12,9 +12,9 @@ de temps. [`CLAUDE.md`](CLAUDE.md) en tient la version longue. Les deux vivent
 ici parce que ce dépôt sert de point d'entrée — les quatre autres ne portent
 que leur propre application.
 
-**Vous déployez sur Render ?** [`DEPLOIEMENT-RENDER.md`](DEPLOIEMENT-RENDER.md)
-donne les variables à renseigner et les deux réglages sans lesquels le service
-démarre sans avoir migré la base.
+**Vous déployez ?** L'API tourne sur un VPS, en Docker derrière Nginx et
+Let's Encrypt. Voir [Déploiement](#déploiement) plus bas : un `git push` sur
+`main` suffit.
 
 > Ce fichier contenait auparavant un `.env` complet, secrets en clair compris.
 > Aucun secret ne doit revenir ici : la configuration se décrit dans
@@ -65,6 +65,67 @@ docker compose up -d --build backend   # et NON `restart`
 ```
 
 Un `restart` relance l'ancienne image sans le moindre avertissement.
+
+## Déploiement
+
+L'API tourne sur un VPS : PostgreSQL et le backend en Docker, Nginx devant en
+reverse proxy, certificat Let's Encrypt renouvelé par Certbot.
+
+Pousser sur `main` suffit. [`deploy.yml`](.github/workflows/deploy.yml) lance
+la suite de tests et vérifie que l'image se construit ; le déploiement ne
+démarre que si les deux passent. Il se connecte ensuite en SSH, met le dépôt à
+jour, reconstruit le conteneur, attend qu'il soit `healthy`, et vérifie que
+`/health` porte bien la révision qui vient d'être poussée — puis que l'API
+publique répond.
+
+Secrets à configurer une fois dans ce dépôt (Settings → Secrets and variables
+→ Actions) :
+
+| Secret | Valeur |
+|---|---|
+| `VPS_HOST` | adresse du serveur |
+| `VPS_USER` | utilisateur SSH |
+| `VPS_SSH_KEY` | clé privée SSH, la publique étant dans `~/.ssh/authorized_keys` du serveur |
+
+[`security.yml`](.github/workflows/security.yml) complète avec `npm audit` et
+un scan de secrets commités, à chaque poussée et chaque pull request.
+
+### Première installation
+
+```bash
+mkdir -p /var/www/saambiz-backend
+git clone <url> /var/www/saambiz-backend
+cd /var/www/saambiz-backend
+cp .env.example .env     # puis remplir, et chmod 600
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+`HOST_PORT` du `.env` fixe le port publié sur l'hôte (3000 par défaut) : à
+changer si une autre application l'occupe déjà, en alignant l'`upstream` de
+[`deploy/nginx.conf`](deploy/nginx.conf) sur la même valeur.
+
+Nginx se pose en deux temps, parce que `deploy/nginx.conf` référence des
+certificats qui n'existent pas encore : un bloc HTTP minimal, puis
+`certbot --nginx -d <domaine>`, puis le fichier complet. `nginx -t` avant
+chaque `reload`, sans exception — un seul fichier invalide empêche de
+recharger **tous** les sites de la machine, et bloque aussi le renouvellement
+des certificats.
+
+### Mise à jour manuelle
+
+```bash
+bash deploy/deploy.sh --mode docker
+```
+
+### Sauvegardes
+
+```bash
+bash deploy/backup-postgres.sh
+```
+
+À planifier par cron (voir [`deploy/backup-postgres.sh`](deploy/backup-postgres.sh)).
+Une sauvegarde jamais restaurée n'est qu'une hypothèse : testez-la une fois
+dans une base dédiée.
 
 ## Migrations
 

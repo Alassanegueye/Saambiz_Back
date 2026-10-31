@@ -37,6 +37,21 @@ mkdir -p logs
 echo "[deploy] git pull..."
 git pull --ff-only
 
+# 5. Marquer la révision déployée
+#
+# Le champ `commit` de /health porte la révision réellement en cours
+# d'exécution. Sans lui, sonder /health après un déploiement ne prouve rien :
+# pendant la construction de l'image, c'est l'ANCIENNE instance qui répond, et
+# elle répond 200. Un déploiement cassé ressemble alors trait pour trait à un
+# déploiement réussi.
+SHA="$(git rev-parse HEAD)"
+if grep -q '^GIT_COMMIT=' .env; then
+    sed -i "s|^GIT_COMMIT=.*|GIT_COMMIT=${SHA}|" .env
+else
+    printf '\nGIT_COMMIT=%s\n' "${SHA}" >> .env
+fi
+echo "[deploy] Révision : ${SHA}"
+
 if [[ "$MODE" == "docker" ]]; then
     # ── Mode Docker Compose ──────────────────────────────────────────────────
     echo "[deploy] Build et rechargement des conteneurs..."

@@ -1,0 +1,64 @@
+name: Sécurité
+
+# Trois contrôles, à chaque poussée et à chaque pull request. Ils ne bloquent
+# pas le déploiement (workflow séparé) mais signalent ce qui, sans eux, ne se
+# découvre qu'après coup : une dépendance vulnérable et un secret commité.
+#
+# Le dépôt porte des clés JWT, des identifiants PostgreSQL, Cloudinary, Resend
+# et Orange Money dans son .env — jamais commité, et c'est précisément ce que
+# le scan de secrets vérifie à chaque poussée.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  npm-audit:
+    name: npm audit (dépendances)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # `--omit=dev` : seules les dépendances réellement livrées en production
+      # comptent ici. Une faille dans jest ou nodemon ne tourne jamais sur le
+      # serveur, et la signaler au même niveau noierait les vraies.
+      - name: Installer les dépendances de production
+        run: npm ci --omit=dev --no-fund
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+  secret-scan:
+    name: Gitleaks (secrets commités)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tout l'historique : un secret retiré dans un commit ultérieur reste
+          # lisible dans les précédents, et reste donc à révoquer.
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency Review (pull requests)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

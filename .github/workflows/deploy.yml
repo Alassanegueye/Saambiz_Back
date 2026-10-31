@@ -1,0 +1,211 @@
+name: Backend — tests et déploiement VPS
+
+# Deux temps :
+#   • sur toute branche et toute pull request → contrôle qualité
+#   • sur main uniquement → déploiement sur le VPS par SSH
+#
+# Le déploiement se fait en SSH sur le serveur, où l'API tourne en Docker
+# derrière Nginx. L'ancien job appelait le Deploy Hook de Render : l'hôte
+# managé n'est plus utilisé, et un hook laissé en place déploierait en silence
+# une seconde copie de l'API sur une base différente.
+#
+# Secrets à configurer UNE FOIS dans ce dépôt
+# (Settings → Secrets and variables → Actions). Ils ne sont pas partagés entre
+# dépôts, même pour le même serveur :
+#
+#   VPS_HOST     adresse du serveur (IP ou nom de domaine)
+#   VPS_USER     utilisateur SSH
+#   VPS_SSH_KEY  clé privée SSH, dont la publique est dans
+#                ~/.ssh/authorized_keys de cet utilisateur sur le VPS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Relancer un déploiement sans commit : utile après un changement de .env
+  # sur le serveur, ou pour reconstruire l'image.
+  workflow_dispatch:
+
+# Deux déploiements simultanés construiraient la même image et se
+# marcheraient dessus. `cancel-in-progress: false` est délibéré : couper un
+# déploiement en cours laisserait le conteneur à moitié remplacé.
+concurrency:
+  group: deploiement-backend
+  cancel-in-progress: false
+
+env:
+  # Adresse publique de l'API. Aucun secret : elle figure déjà dans les
+  # bundles des interfaces. En dur ici, elle reste lisible dans les journaux
+  # de la CI — ce qu'on veut quand on cherche pourquoi une vérification a
+  # échoué.
+  URL_SANTE: https://api.saambiz.com/health
+
+jobs:
+  # ── Contrôle qualité ──────────────────────────────────────────────────────
+  qualite:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # `npm ci` et non `--omit=dev` : jest et supertest sont des
+      # devDependencies, nécessaires pour exécuter la suite mais jamais
+      # embarquées dans l'image de production (voir .dockerignore).
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+        env:
+          # Ces secrets n'ont aucune valeur réelle : ils servent uniquement à
+          # faire passer les contrôles de démarrage de config/security.js, qui
+          # exige trois secrets distincts. La suite n'ouvre aucune connexion à
+          # une vraie base et ne signe aucun jeton utilisable.
+          NODE_ENV: test
+          JWT_SECRET: ci_acces_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          JWT_REFRESH_SECRET: ci_refresh_bbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          JWT_RESET_SECRET: ci_reset_cccccccccccccccccccccccccccccc
+          CORS_ORIGIN: http://localhost:5190
+
+      # Le déploiement reconstruit l'image sur le VPS. Si le Dockerfile est
+      # cassé, autant l'apprendre ici que sur le serveur, après avoir arrêté
+      # le conteneur qui tournait.
+      - name: Vérifier que l'image se construit
+        run: docker build -t saambiz-backend:ci .
+
+  # ── Déploiement (seulement si les tests passent) ───────────────────────────
+  deploiement:
+    name: Déploiement VPS
+    needs: qualite
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Déployer par SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # La construction de l'image (npm ci dans le conteneur) dépasse les
+          # 10 minutes par défaut de l'action, ce qui couperait la connexion
+          # SSH avant la fin — un échec signalé alors que l'image finit de se
+          # construire.
+          command_timeout: "30m"
+          script: |
+            set -e
+
+            APP_DIR="/var/www/saambiz-backend"
+            COMPOSE="docker compose -f docker-compose.prod.yml"
+
+            # Le dépôt est cloné une première fois à la main sur le VPS, avec
+            # son .env rempli. Ce workflow ne fait que le mettre à jour :
+            # cloner ici masquerait une erreur de chemin derrière un
+            # déploiement en apparence réussi.
+            if [ ! -d "${APP_DIR}/.git" ]; then
+              echo "ERREUR : ${APP_DIR} n'est pas un dépôt git." >&2
+              echo "Premier déploiement : cloner à la main, puis copier .env.example vers .env et le remplir." >&2
+              exit 1
+            fi
+
+            cd "${APP_DIR}"
+
+            # .env n'est jamais commité : il porte les secrets JWT, les
+            # identifiants de la base et les clés Cloudinary, Resend et Orange
+            # Money. Sans lui, `up` échoue sur les `${VAR:?}` du compose — mais
+            # autant le dire ici, avec la marche à suivre.
+            if [ ! -f ".env" ]; then
+              echo "ERREUR : ${APP_DIR}/.env manquant — copier .env.example et le remplir." >&2
+              exit 1
+            fi
+
+            # --rebase et non --ff-only : le VPS peut porter un commit local
+            # (un réglage propre à cette machine, jamais poussé) ; --rebase le
+            # rejoue par-dessus au lieu de bloquer le déploiement.
+            git pull --rebase origin main
+
+            SHA="$(git rev-parse HEAD)"
+
+            # `commit` de /health porte la révision réellement en cours
+            # d'exécution. Sans ce champ, sonder /health après un déploiement
+            # ne prouve rien : pendant la construction, c'est l'ANCIENNE
+            # instance qui répond, et elle répond 200. On l'écrit dans .env
+            # avant le build pour que le conteneur le lise (app.js → GIT_COMMIT).
+            if grep -q '^GIT_COMMIT=' .env; then
+              sed -i "s|^GIT_COMMIT=.*|GIT_COMMIT=${SHA}|" .env
+            else
+              printf '\nGIT_COMMIT=%s\n' "${SHA}" >> .env
+            fi
+
+            # Seul le backend est reconstruit : PostgreSQL et son volume
+            # restent intacts.
+            #
+            # Les migrations ne sont pas lancées ici : le `command` du compose
+            # exécute src/seed/bootstrap.js avant le serveur — il attend la
+            # base, crée les tables manquantes, applique les SQL de
+            # migrations/, puis seede. Un redémarrage du VPS migre donc aussi,
+            # et une migration en échec empêche le conteneur de démarrer au
+            # lieu de laisser l'API servir du trafic sur un schéma périmé.
+            ${COMPOSE} up -d --build --remove-orphans backend
+
+            # On sonde l'état réel du conteneur plutôt que d'attendre un délai
+            # fixe : une migration longue ne fait plus échouer le déploiement
+            # à tort, et un conteneur qui meurt est détecté tout de suite.
+            echo "Attente du démarrage (bootstrap et migrations inclus)…"
+            etat="absent"
+            for i in $(seq 1 60); do
+              cid="$(${COMPOSE} ps -q backend 2>/dev/null || true)"
+              if [ -z "$cid" ]; then
+                echo "Le conteneur n'est plus lancé — journaux :"
+                ${COMPOSE} logs --tail=60 backend
+                exit 1
+              fi
+              etat="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo absent)"
+              [ "$etat" = "healthy" ] && break
+              sleep 5
+            done
+
+            if [ "$etat" != "healthy" ]; then
+              echo "Conteneur non healthy après 300 s — journaux :"
+              ${COMPOSE} logs --tail=60 backend
+              exit 1
+            fi
+
+            # Le port publié sur l'hôte est réglable (HOST_PORT), parce que ce
+            # VPS héberge plusieurs API : le lire plutôt que le supposer.
+            PORT_HOTE="$(grep -E '^HOST_PORT=' .env | tail -1 | cut -d= -f2 | tr -dc '0-9')"
+            PORT_HOTE="${PORT_HOTE:-3000}"
+
+            echo "Contrôle local sur 127.0.0.1:${PORT_HOTE}…"
+            corps="$(curl -fsS "http://127.0.0.1:${PORT_HOTE}/health")"
+            echo "$corps"
+
+            # La révision en ligne doit être celle qu'on vient de déployer.
+            case "$corps" in
+              *"$SHA"*) echo "Révision confirmée : ${SHA}" ;;
+              *)
+                echo "ERREUR : /health ne porte pas la révision ${SHA} — c'est l'ancienne instance qui répond." >&2
+                exit 1
+                ;;
+            esac
+
+            echo "Déploiement terminé — backend healthy."
+
+      - name: Vérifier l'API publique
+        # Contrôle de bout en bout : DNS, Nginx, certificat, puis application.
+        # Le contrôle précédent tournait sur le serveur, en loopback — il ne
+        # dit rien de ce que voient les applications mobile et web.
+        run: |
+          set -e
+          code=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$URL_SANTE")
+          echo "$URL_SANTE -> $code"
+          [ "$code" = "200" ] || { echo "::error::l'API publique répond $code"; exit 1; }
+          echo "API publique vérifiée."
