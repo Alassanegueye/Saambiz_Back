@@ -127,6 +127,26 @@ jobs:
               exit 1
             fi
 
+            # Un `git pull --rebase` refuse de tourner sur un arbre sale et
+            # s'arrête sur « cannot pull with rebase: You have unstaged
+            # changes », sans dire lesquelles. On le dit ici, avec la marche à
+            # suivre — plutôt que d'écraser en silence un travail laissé sur
+            # le serveur.
+            #
+            # Le cas le plus courant n'est pas une édition : un `chmod +x` sur
+            # un script de deploy/ suffit, git suivant le bit d'exécution.
+            # `git config core.fileMode false` sur le serveur l'évite
+            # définitivement.
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              echo "ERREUR : modifications non commitées dans ${APP_DIR} :" >&2
+              git status --short >&2
+              echo "" >&2
+              echo "Pour les abandonner : git -C ${APP_DIR} checkout -- ." >&2
+              echo "Si ce sont des changements de permissions seulement :" >&2
+              echo "  git -C ${APP_DIR} config core.fileMode false" >&2
+              exit 1
+            fi
+
             # --rebase et non --ff-only : le VPS peut porter un commit local
             # (un réglage propre à cette machine, jamais poussé) ; --rebase le
             # rejoue par-dessus au lieu de bloquer le déploiement.
