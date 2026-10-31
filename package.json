@@ -20,6 +20,7 @@
     "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build",
     "docker:prod:logs": "docker compose -f docker-compose.prod.yml logs -f backend",
     "docker:prod:down": "docker compose -f docker-compose.prod.yml down",
+    "audit": "node scripts/verifier-audit.js",
     "backup": "bash deploy/backup-postgres.sh",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -62,6 +63,8 @@
     "supertest": "^7.2.2"
   },
   "overrides": {
-    "uuid": ">=11.1.1"
+    "uuid": ">=11.1.1",
+    "glob": "^14.0.3",
+    "minimatch": "^11.0.1"
   }
 }

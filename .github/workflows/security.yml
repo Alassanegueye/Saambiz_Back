@@ -33,8 +33,16 @@ jobs:
       - name: Installer les dépendances de production
         run: npm ci --omit=dev --no-fund
 
-      - name: npm audit
-        run: npm audit --omit=dev --audit-level=moderate
+      # `npm audit --audit-level=moderate` seul laissait ce job rouge en
+      # permanence : une partie des vulnérabilités n'a aucun correctif
+      # applicable, et un voyant toujours rouge finit par être ignoré — donc
+      # une faille réellement corrigeable passerait inaperçue.
+      #
+      # Le script applique le même contrôle, mais avec des exceptions
+      # nommées, motivées et datées. Toute vulnérabilité qui ne vient pas d'un
+      # paquet explicitement accepté fait échouer le job.
+      - name: npm audit (exceptions documentées)
+        run: npm run audit
 
   secret-scan:
     name: Gitleaks (secrets commités)
