@@ -56,15 +56,25 @@ npm run dev
 | `npm run docker:prod` | stack de production |
 | `npm run backup` | sauvegarde PostgreSQL (`deploy/backup-postgres.sh`) |
 
-## Après une modification du code
+## Après une modification
 
-L'image embarque le code (`COPY . .`) :
+| Ce qui change | La commande |
+|---|---|
+| le code | `docker compose -f docker-compose.prod.yml up -d --build backend` |
+| le `.env` | `docker compose -f docker-compose.prod.yml up -d --force-recreate backend` |
+| rien (relancer un processus bloqué) | `restart` |
 
-```bash
-docker compose up -d --build backend   # et NON `restart`
-```
+Dans les deux premiers cas, **`restart` ne suffit pas**, et c'est silencieux.
 
-Un `restart` relance l'ancienne image sans le moindre avertissement.
+L'image embarque le code (`COPY . .`) : un `restart` relance l'ancienne image
+sans le moindre avertissement.
+
+Les variables d'environnement, elles, sont fixées à la **création** du
+conteneur. `restart` relance le même conteneur avec l'environnement qu'il
+portait déjà : une clé d'API corrigée dans le `.env` reste donc ignorée, et
+l'erreur affichée est celle de l'ancienne valeur. Le symptôme est déroutant —
+un `curl` depuis l'hôte réussit avec la nouvelle clé pendant que
+l'application continue d'être refusée.
 
 ## Déploiement
 
