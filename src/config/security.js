@@ -117,42 +117,93 @@ function cleParUtilisateur(req) {
   return req.user?.id ? `u:${req.user.id}` : `ip:${ipKeyGenerator(req.ip)}`;
 }
 
-const rateLimitConfig = {
-  windowMs: 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX) || 1000,
+// ─── Politique « trop de tentatives » ─────────────────────────────────────
+// Le serveur est la SEULE source de vérité. Les écrans (admin, vendeur,
+// mobile) affichent son message ; ils ne tiennent pas de compteur à eux, sauf
+// le gel court de l'écran administrateur, volontairement plus strict.
+//
+//   Limiteur               Clé                      Plafond     Compte
+//   ─────────────────────  ───────────────────────  ──────────  ─────────────
+//   global                 IP                       1000/15 min tout
+//   connexion (compte)     IP + email/téléphone     10/15 min   échecs seuls
+//   connexion (IP)         IP                       50/15 min   échecs seuls
+//   envoi de code          adresse visée            5/15 min    tout
+//   saisie de code         adresse visée            10/15 min   échecs seuls
+//   par compte             utilisateur, sinon IP    120/min     tout
+//   mutations sensibles    utilisateur, sinon IP    20/min      tout
+//
+// Ne compter que les échecs est la clé : un utilisateur qui se connecte, se
+// déconnecte ou rafraîchit sa session ne consomme jamais son budget.
+
+/** « Réessayez dans 4 minutes » d'après la fin réelle de la fenêtre. */
+function messageAttente(prefixe) {
+  return (req) => {
+    const fin = req.rateLimit?.resetTime;
+    const minutes = fin ? Math.max(1, Math.ceil((fin.getTime() - Date.now()) / 60000)) : 15;
+    return {
+      success: false,
+      message: `${prefixe} Réessayez dans ${minutes} minute${minutes > 1 ? 's' : ''}.`,
+    };
+  };
+}
+
+/** Options communes à tous les limiteurs. */
+const _base = {
   standardHeaders: true,
   legacyHeaders: false,
   skip: _sauterEnDev,
-  message: { success: false, message: 'Trop de requêtes, veuillez réessayer dans 15 minutes.' },
 };
 
-const authRateLimitConfig = {
+/** Adresse email ou téléphone visé par la requête, normalisé. */
+function _identifiantVise(req) {
+  const b = req.body || {};
+  return String(b.email || b.identifiant || b.telephone || '').toLowerCase().trim();
+}
+
+const rateLimitConfig = {
+  ..._base,
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: _sauterEnDev,
-  message: { success: false, message: 'Trop de tentatives, veuillez réessayer dans 15 minutes.' },
+  max: Number(process.env.RATE_LIMIT_MAX) || 1000,
+  message: messageAttente('Trop de requêtes depuis cette connexion.'),
+};
+
+// Connexion, compte par compte. Compté par IP *et* identifiant : les erreurs
+// faites sur un compte ne bloquent pas les autres comptes de la même box.
+const authRateLimitConfig = {
+  ..._base,
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 10,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `login:${ipKeyGenerator(req.ip)}:${_identifiantVise(req)}`,
+  message: messageAttente('Trop de mots de passe incorrects pour ce compte.'),
+};
+
+// Connexion, toutes adresses confondues : arrête un script qui essaie un mot
+// de passe courant sur des milliers de comptes depuis la même IP. Assez haut
+// pour qu'un cybercafé entier ne le touche jamais.
+const loginIpRateLimitConfig = {
+  ..._base,
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_IP_RATE_LIMIT_MAX) || 50,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `login-ip:${ipKeyGenerator(req.ip)}`,
+  message: messageAttente('Trop de connexions échouées depuis cette connexion internet.'),
 };
 
 // Requêtes authentifiées : comptées par compte, pas par IP.
 const userRateLimitConfig = {
+  ..._base,
   windowMs: 60 * 1000,
   max: Number(process.env.USER_RATE_LIMIT_MAX) || 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: _sauterEnDev,
   keyGenerator: cleParUtilisateur,
   message: { success: false, message: 'Trop de requêtes sur ce compte, patientez une minute.' },
 };
 
 // Mutations sensibles (création de commande, paiement, envoi en masse).
 const mutationRateLimitConfig = {
+  ..._base,
   windowMs: 60 * 1000,
   max: Number(process.env.MUTATION_RATE_LIMIT_MAX) || 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: _sauterEnDev,
   keyGenerator: cleParUtilisateur,
   message: { success: false, message: 'Trop d\'opérations, patientez une minute.' },
 };
@@ -161,16 +212,30 @@ const mutationRateLimitConfig = {
 // l'appelant. Sinon un attaquant qui fait tourner ses adresses IP pilonne la
 // boîte mail d'une victime sans jamais déclencher la limite.
 const otpRateLimitConfig = {
+  ..._base,
   windowMs: 15 * 60 * 1000,
   max: Number(process.env.OTP_RATE_LIMIT_MAX) || 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: _sauterEnDev,
   keyGenerator: (req) => {
-    const email = (req.body?.email || req.body?.identifiant || '').toLowerCase().trim();
+    const email = _identifiantVise(req);
     return email ? `otp:${email}` : `otp-ip:${ipKeyGenerator(req.ip)}`;
   },
-  message: { success: false, message: 'Trop de codes demandés pour cette adresse, réessayez dans 15 minutes.' },
+  message: messageAttente('Trop de codes demandés pour cette adresse.'),
+};
+
+// Saisie d'un code reçu : budget séparé de l'envoi (avant, envoyer, se
+// tromper une fois et renvoyer consommaient le même compteur de 5). Seuls
+// les codes faux comptent ; chaque code a en plus sa propre limite d'essais
+// côté service.
+const otpVerificationRateLimitConfig = {
+  ..._base,
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.OTP_VERIFICATION_RATE_LIMIT_MAX) || 10,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    const email = _identifiantVise(req);
+    return email ? `otp-verif:${email}` : `otp-verif-ip:${ipKeyGenerator(req.ip)}`;
+  },
+  message: messageAttente('Trop de codes incorrects pour cette adresse.'),
 };
 
 // ─── CORS ──────────────────────────────────────────────────────────────────
@@ -259,9 +324,12 @@ module.exports = {
   passwordPolicy,
   rateLimitConfig,
   authRateLimitConfig,
+  loginIpRateLimitConfig,
   userRateLimitConfig,
   mutationRateLimitConfig,
   otpRateLimitConfig,
+  otpVerificationRateLimitConfig,
+  messageAttente,
   corsConfig,
   cookieConfig,
   uploadConfig,

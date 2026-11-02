@@ -12,12 +12,16 @@ const {
   verifierCodeInscriptionSchema,
 } = require('../validators/auth.validator');
 const rateLimit = require('express-rate-limit');
-const { otpRateLimitConfig } = require('../config/security');
+const {
+  authRateLimitConfig, loginIpRateLimitConfig, otpRateLimitConfig, otpVerificationRateLimitConfig,
+} = require('../config/security');
 
 // Envoi de code : compté sur l'adresse VISÉE, pas sur l'IP de l'appelant.
 // Sinon un attaquant qui fait tourner ses IP pilonne la boîte mail d'une
 // victime sans jamais déclencher la limite globale.
-const limiteOtp = rateLimit(otpRateLimitConfig);
+const limiteEnvoiCode = rateLimit(otpRateLimitConfig);
+const limiteSaisieCode = rateLimit(otpVerificationRateLimitConfig);
+const limiteConnexion = [rateLimit(loginIpRateLimitConfig), rateLimit(authRateLimitConfig)];
 
 /**
  * @swagger
@@ -134,7 +138,7 @@ router.post(
  */
 router.post(
   '/inscription/envoyer-code',
-  limiteOtp,
+  limiteEnvoiCode,
   validate(envoyerCodeInscriptionSchema),
   authController.envoyerCodeInscription
 );
@@ -152,12 +156,12 @@ router.post(
  */
 router.post(
   '/inscription/verifier-code',
-  limiteOtp,
+  limiteSaisieCode,
   validate(verifierCodeInscriptionSchema),
   authController.verifierCodeInscription
 );
 
-router.post('/login', validate(loginSchema), authController.login);
+router.post('/login', limiteConnexion, validate(loginSchema), authController.login);
 
 /**
  * @swagger
@@ -246,7 +250,7 @@ router.get('/verify-email', authController.verifierEmail);
  *       400: { description: Code expiré ou invalide }
  *       429: { $ref: '#/components/responses/TropDeRequetes' }
  */
-router.post('/verify-email', limiteOtp, authController.verifierEmail);
+router.post('/verify-email', limiteSaisieCode, authController.verifierEmail);
 
 // Renvoi d'un nouveau code de vérification — POST { email }
 /**
@@ -272,7 +276,7 @@ router.post('/verify-email', limiteOtp, authController.verifierEmail);
  *       200: { description: Code envoyé }
  *       429: { $ref: '#/components/responses/TropDeRequetes' }
  */
-router.post('/resend-verification', limiteOtp, authController.renvoyerCodeVerification);
+router.post('/resend-verification', limiteEnvoiCode, authController.renvoyerCodeVerification);
 
 // RBAC : changement de mot de passe (première connexion ou volontaire)
 router.post('/changer-mot-de-passe', authMiddleware, changerMotDePasse);

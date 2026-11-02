@@ -6,11 +6,12 @@ const checkActiveUser = require('../middlewares/checkActiveUser.middleware');
 const upload = require('../middlewares/upload.middleware');
 const validate = require('../middlewares/validate.middleware');
 const rateLimit = require('express-rate-limit');
-const { otpRateLimitConfig } = require('../config/security');
+const { otpRateLimitConfig, otpVerificationRateLimitConfig } = require('../config/security');
 
 // Le code de réinitialisation part vers l'adresse indiquée dans le corps de
 // la requête : c'est elle qu'il faut protéger, pas l'IP qui la demande.
-const limiteOtp = rateLimit(otpRateLimitConfig);
+const limiteEnvoiCode = rateLimit(otpRateLimitConfig);
+const limiteSaisieCode = rateLimit(otpVerificationRateLimitConfig);
 const {
   modifierProfilSchema,
   changePasswordSchema,
@@ -29,7 +30,7 @@ router.put('/modifier-profil',
   validate(modifierProfilSchema),
   accountController.updateProfile);
 router.put('/change-password', validate(changePasswordSchema), accountController.changePassword);
-router.post('/forgot-password', limiteOtp, validate(forgotPasswordSchema), accountController.forgotPassword);
-router.post('/reset-password', limiteOtp, validate(resetPasswordSchema), accountController.resetPassword);
+router.post('/forgot-password', limiteEnvoiCode, validate(forgotPasswordSchema), accountController.forgotPassword);
+router.post('/reset-password', limiteSaisieCode, validate(resetPasswordSchema), accountController.resetPassword);
 
 module.exports = router;

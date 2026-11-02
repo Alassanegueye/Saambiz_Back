@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const compression = require('compression'); // PERF-01 : compression gzip
 const rateLimit = require('express-rate-limit');
 const { randomUUID } = require('crypto');
-const { corsConfig, rateLimitConfig, authRateLimitConfig, userRateLimitConfig } = require('./config/security');
+const { corsConfig, rateLimitConfig, userRateLimitConfig } = require('./config/security');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -14,7 +14,7 @@ const app = express();
 // l'autorisation de lire `X-Forwarded-For`.
 //
 // Toute la défense anti-brute-force compte par `req.ip` : sans cette ligne,
-// `authRateLimitConfig` (5 tentatives par quart d'heure) devient un compteur
+// les limiteurs de connexion deviennent un compteur
 // unique mondial. Trois personnes qui se trompent de mot de passe bloquaient
 // la connexion pour l'ensemble des utilisateurs, et les journaux attribuaient
 // chaque requête à la passerelle Docker au lieu du client réel.
@@ -150,8 +150,8 @@ const configPubliqueRoutes = require('./routes/config/configPublique.route');
 // ═══════════════════════════════════════════════════════════════════════════
 const apiRouter = express.Router();
 
-// Rate limit renforcé sur les routes d'authentification/OTP
-apiRouter.use('/auth', rateLimit(authRateLimitConfig));
+// Les limites anti-brute-force sont posées route par route dans `auth.route`
+// (connexion, codes) : un refresh ou une déconnexion n'a pas à les consommer.
 apiRouter.use('/auth', authRoutes);
 
 // Le site public d'une boutique — saambiz.com/b/<slug>.

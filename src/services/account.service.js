@@ -12,7 +12,7 @@ const { NotFoundError, TooManyRequestsError } = require('../errors/AppError');
 
 // HIGH-04 : protection brute-force OTP par email (en mémoire — Redis recommandé en prod)
 const _otpAttempts = new Map();
-const OTP_MAX_ATTEMPTS = 3;
+const OTP_MAX_ATTEMPTS = 5;
 const OTP_WINDOW_MS   = 15 * 60 * 1000;
 
 function _checkOtpLimit(email) {
@@ -125,7 +125,7 @@ class AccountService {
   }
 
   static async resetPassword(email, otp, nouveauMdp) {
-    // HIGH-04 : limite par email avant de vérifier le code (3 tentatives / 15 min)
+    // HIGH-04 : limite par email avant de vérifier le code (5 essais par code, comme l'inscription)
     _checkOtpLimit(email);
 
     const utilisateur = await Utilisateur.findOne({ where: { email } });
