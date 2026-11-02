@@ -240,11 +240,13 @@ class AccueilService {
     let interets = interetsInvite;
     let affinites = {};
     let position = { latitude, longitude };
+    let recherches = [];
 
     if (utilisateurId) {
       const pref = await this._preferences(utilisateurId);
       affinites = pref.affinites || {};
       interets = (pref.interets || []).length ? pref.interets : interetsInvite;
+      recherches = (pref.recherchesRecentes || []).map((r) => r.terme).filter(Boolean);
       // La position transmise dans la requête est plus fraîche que la
       // dernière enregistrée : elle prime.
       if (position.latitude == null && pref.latitude != null) {
@@ -261,7 +263,7 @@ class AccueilService {
       .map(([cat]) => cat)
       .slice(0, 6);
     const categoriesRetenues = categories.length ? categories : interets.slice(0, 6);
-    return { utilisateurId, position, categoriesRetenues };
+    return { utilisateurId, position, categoriesRetenues, recherches };
   }
 
   /**
@@ -269,7 +271,7 @@ class AccueilService {
    * Mêmes règles que l'accueil, sans la limite d'un carrousel.
    */
   static async section(cle, params) {
-    const { utilisateurId, position, categoriesRetenues } = await this._contexte(params);
+    const { utilisateurId, position, categoriesRetenues, recherches } = await this._contexte(params);
     const limite = Math.min(Math.max(parseInt(params.limit, 10) || 60, 1), 100);
     const boutiques = (elements) => ({ type: 'boutiques', elements });
     const produits = (elements) => ({ type: 'produits', elements });
@@ -279,8 +281,14 @@ class AccueilService {
         return produits((await CatalogueService.promotions({ limit: limite })).produits);
       case 'nouveautes':
         return produits((await CatalogueService.lister({ tri: 'recents', limit: limite })).produits);
+      case 'produitsPourVous':
+        return produits((await this._produitsPourVous(categoriesRetenues, limite)).produits);
+      case 'dapresRecherches':
+        return produits(await this._produitsDesRecherches(recherches, limite));
       case 'abonnements':
         return produits((await this._sectionAbonnements(utilisateurId, limite)).produits);
+      case 'suivies':
+        return boutiques(await this._boutiquesSuivies(utilisateurId, limite));
       case 'pourVous':
         return boutiques(await this._boutiquesParCategories(categoriesRetenues, utilisateurId, limite));
       case 'proches':
@@ -297,24 +305,36 @@ class AccueilService {
   }
 
   static async construire(params) {
-    const { utilisateurId, position, categoriesRetenues } = await this._contexte(params);
+    const { utilisateurId, position, categoriesRetenues, recherches } = await this._contexte(params);
 
     const [
-      listeCategories, promotions, nouveautes,
-      abonnements, pourVous, proches, meilleures, nouvelles, aDecouvrir,
+      listeCategories, promotionsBrutes, nouveautesBrutes, produitsPourVous, dapresRecherches,
+      abonnements, suivies, pourVous, proches, meilleures, nouvelles, aDecouvrir,
+      idsSuivies,
     ] = await Promise.all([
       CategorieService.getAllCategories().then((r) => r.categories),
       // Produits au format du catalogue : mêmes cartes, même fiche, avec la
-      // fin de promotion pour le compte à rebours.
-      CatalogueService.promotions({ limit: 12 }).then((r) => r.produits),
-      CatalogueService.lister({ tri: 'recents', limit: 12 }).then((r) => r.produits),
+      // fin de promotion pour le compte à rebours. On en prend plus que
+      // n'en montre le carrousel : le tri personnalisé choisit ensuite.
+      CatalogueService.promotions({ limit: 40 }).then((r) => r.produits),
+      CatalogueService.lister({ tri: 'recents', limit: 40 }).then((r) => r.produits),
+      this._produitsPourVous(categoriesRetenues).then((r) => r.produits),
+      this._produitsDesRecherches(recherches),
       this._sectionAbonnements(utilisateurId),
+      this._boutiquesSuivies(utilisateurId),
       this._boutiquesParCategories(categoriesRetenues, utilisateurId),
       this._boutiquesProches(position.latitude, position.longitude),
       this._meilleuresBoutiques(),
       this._nouvellesBoutiques(),
       this._aDecouvrir(categoriesRetenues),
+      this._idsBoutiquesSuivies(utilisateurId),
     ]);
+
+    // Promotions et nouveautés pour tout le monde, mais dans l'ordre du
+    // client : ses boutiques suivies d'abord, puis ses catégories.
+    const promotions = this._prioriser(promotionsBrutes, idsSuivies, categoriesRetenues).slice(0, 12);
+    const nouveautes = this._prioriser(nouveautesBrutes, idsSuivies, categoriesRetenues).slice(0, 12);
+    const promosSuivies = promotions.filter((p) => idsSuivies.has(p.boutique?.id)).length;
 
     const sections = [];
 
@@ -324,8 +344,35 @@ class AccueilService {
       sections.push({
         cle: 'promotions',
         titre: 'Promotions du moment',
+        // Le client voit pourquoi ces promotions sont en tête.
+        ...(promosSuivies
+          ? { sousTitre: `${promosSuivies} chez vos boutiques` }
+          : categoriesRetenues.length ? { sousTitre: 'Vos catégories d’abord' } : {}),
         type: 'produits',
         elements: promotions,
+      });
+    }
+    // Les produits des catégories choisies à l'inscription (puis des
+    // affinités apprises) : sans cette rangée, deux nouveaux clients aux
+    // goûts opposés voyaient exactement les mêmes produits en tête.
+    if (produitsPourVous.length) {
+      sections.push({
+        cle: 'produitsPourVous',
+        titre: 'Pour vous',
+        sousTitre: categoriesRetenues.slice(0, 3).join(' · '),
+        type: 'produits',
+        elements: produitsPourVous,
+      });
+    }
+    // Ce que le client vient de chercher : la rangée qui bouge le plus vite,
+    // d'une recherche à l'autre.
+    if (dapresRecherches.length) {
+      sections.push({
+        cle: 'dapresRecherches',
+        titre: 'D’après vos recherches',
+        sousTitre: recherches.slice(0, 3).join(' · '),
+        type: 'produits',
+        elements: dapresRecherches,
       });
     }
     // Des produits dès l'ouverture, même pour un invité sans préférence :
@@ -346,6 +393,16 @@ class AccueilService {
         titre: 'Nouveautés',
         type: 'produits',
         elements: nouveautes,
+      });
+    }
+    // Les boutiques suivies d'abord parmi les boutiques : c'est le choix
+    // explicite du client. Placées en tête, elles échappent à la rotation.
+    if (suivies.length) {
+      sections.push({
+        cle: 'suivies',
+        titre: 'Vos boutiques',
+        type: 'boutiques',
+        elements: suivies,
       });
     }
     if (pourVous.length) {
@@ -458,6 +515,85 @@ class AccueilService {
       verifiee: brut.vendeur?.statutValidation === 'approuve',
       ...extra,
     };
+  }
+
+  /** Produits des catégories retenues pour le client, les plus vus d'abord. */
+  static async _produitsPourVous(categories, limite = 12) {
+    if (!categories.length) return { produits: [] };
+    return CatalogueService.lister({ categories, tri: 'populaires', limit: limite });
+  }
+
+  /**
+   * Produits correspondant aux trois dernières recherches, la plus récente
+   * d'abord, sans doublon. Vide pour un invité (rien n'est mémorisé).
+   */
+  static async _produitsDesRecherches(recherches, limite = 12) {
+    const termes = (recherches || []).slice(0, 3);
+    if (!termes.length) return [];
+    const parTerme = await Promise.all(termes.map((q) =>
+      CatalogueService.lister({ q, tri: 'populaires', limit: limite })
+        .then((r) => r.produits)
+        .catch(() => [])));
+    // Un produit par terme à tour de rôle, pour ne pas laisser une seule
+    // recherche occuper toute la rangée.
+    const vus = new Set();
+    const melange = [];
+    for (let i = 0; melange.length < limite && parTerme.some((l) => l[i]); i++) {
+      for (const liste of parTerme) {
+        const p = liste[i];
+        if (p && !vus.has(p.id)) { vus.add(p.id); melange.push(p); }
+      }
+    }
+    return melange.slice(0, limite);
+  }
+
+  /** Identifiants des boutiques suivies (ensemble vide pour un invité). */
+  static async _idsBoutiquesSuivies(utilisateurId) {
+    if (!utilisateurId) return new Set();
+    const favoris = await Favori.findAll({ where: { acheteurId: utilisateurId }, attributes: ['boutiqueId'] });
+    return new Set(favoris.map((f) => f.boutiqueId));
+  }
+
+  /**
+   * Range des produits pour un client sans en retirer aucun : ceux de ses
+   * boutiques suivies d'abord, puis ceux de ses catégories (la plus forte
+   * affinité d'abord), puis le reste. L'ordre d'origine (fin de promotion,
+   * date) est conservé à l'intérieur de chaque groupe.
+   */
+  static _prioriser(produits, idsSuivies, categories) {
+    const rangCategorie = new Map(categories.map((c, i) => [c, i]));
+    const score = (p) => {
+      if (idsSuivies.has(p.boutique?.id)) return 0;
+      const r = rangCategorie.get(p.categorie?.nom);
+      return r == null ? 1000 : 1 + r;
+    };
+    return produits
+      .map((p, i) => ({ p, i, s: score(p) }))
+      .sort((a, b) => a.s - b.s || a.i - b.i)
+      .map((x) => x.p);
+  }
+
+  /** Boutiques suivies par le client, la dernière suivie d'abord. */
+  static async _boutiquesSuivies(utilisateurId, limite = 12) {
+    if (!utilisateurId) return [];
+    const favoris = await Favori.findAll({
+      where: { acheteurId: utilisateurId },
+      attributes: ['boutiqueId'],
+      order: [['createdAt', 'DESC']],
+    });
+    if (!favoris.length) return [];
+    const ordre = favoris.map((f) => f.boutiqueId);
+    const base = this._boutiqueVisible;
+    const boutiques = await Boutique.findAll({
+      ...base,
+      where: { ...base.where, id: { [Op.in]: ordre } },
+    });
+    const parId = new Map(boutiques.map((b) => [b.id, b]));
+    return ordre
+      .map((id) => parId.get(id))
+      .filter(Boolean)
+      .slice(0, limite)
+      .map((b) => this._formater(b, { suivie: true }));
   }
 
   /** Derniers produits publiés par les boutiques suivies. */

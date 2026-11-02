@@ -170,7 +170,8 @@ class CatalogueService {
 
   /**
    * Liste paginée.
-   * @param {object} f categorie (id ou slug), boutique (id), q, tri, promo, page, limit, exclure
+   * @param {object} f categorie (id ou slug), categories (noms, pour l'accueil),
+   *                   boutique (id), q, tri, promo, page, limit, exclure
    */
   static async lister(f = {}) {
     const limit = Math.min(Math.max(parseInt(f.limit, 10) || 20, 1), 50);
@@ -182,6 +183,18 @@ class CatalogueService {
     if (f.categorie) {
       categorie = await CategorieService.trouver(f.categorie);
       where.categorieId = categorie.id;
+    }
+    // Plusieurs catégories à la fois, par leur nom : les centres d'intérêt
+    // du client, pour la rangée « Pour vous » de l'accueil.
+    if (Array.isArray(f.categories)) {
+      const noms = f.categories.filter((n) => typeof n === 'string' && n.trim());
+      const trouvees = noms.length
+        ? await Categorie.findAll({ where: { nom: { [Op.in]: noms } }, attributes: ['id'] })
+        : [];
+      if (!trouvees.length) {
+        return { categorie: null, produits: [], pagination: { page, limit, total: 0, pages: 0 } };
+      }
+      where.categorieId = { [Op.in]: trouvees.map((c) => c.id) };
     }
     if (f.boutique) {
       const b = await Boutique.findByPk(f.boutique, { attributes: ['vendeurId'] });
@@ -261,6 +274,36 @@ class CatalogueService {
   }
 
   /** Fiche publique d'une boutique (sans ses produits, chargés à part). */
+  /**
+   * Boutiques en ligne dont le nom, le slogan, la catégorie ou la ville
+   * contient `q`. Sert à la recherche de l'accueil, qui annonce « un produit,
+   * une boutique » : sans elle, seules les boutiques étaient introuvables.
+   */
+  static async rechercherBoutiques({ q, limit } = {}) {
+    const texte = String(q || '').trim().slice(0, 80);
+    if (!texte) return { boutiques: [] };
+    const motif = `%${texte.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    const boutiques = await Boutique.findAll({
+      where: {
+        statut: 'actif',
+        [Op.or]: [
+          { nom: { [Op.iLike]: motif } },
+          { slogan: { [Op.iLike]: motif } },
+          { categorie: { [Op.iLike]: motif } },
+          { ville: { [Op.iLike]: motif } },
+        ],
+      },
+      attributes: ['id', 'nom', 'slug', 'slogan', 'logo', 'ville', 'localisation', 'categorie'],
+      include: [{
+        model: Utilisateur, as: 'vendeur', attributes: [],
+        where: { statut: 'actif' }, required: true,
+      }],
+      order: [['nom', 'ASC']],
+      limit: Math.min(Math.max(Number(limit) || 10, 1), 20),
+    });
+    return { boutiques: boutiques.map((b) => b.toJSON()) };
+  }
+
   static async boutique(id) {
     const b = await Boutique.findOne({
       where: { id, statut: 'actif' },

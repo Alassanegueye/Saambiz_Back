@@ -14,6 +14,21 @@ const NOMBRE_BOUTIQUES = literal(`(
    WHERE bc.categorie_id = "Categorie"."id"
 )`);
 
+// Produits en vente dans la catégorie, avec les règles du catalogue : approuvés,
+// non supprimés, d'une boutique et d'un vendeur actifs. C'est le chiffre
+// affiché sur chaque tuile de l'onglet « Catégories ».
+const NOMBRE_PRODUITS = literal(`(
+  SELECT COUNT(*)::int
+    FROM produit p
+   WHERE p.categorie_id = "Categorie"."id"
+     AND p.statut = 'approuve' AND p.deleted_at IS NULL
+     AND p.vendeur_id IN (
+       SELECT b.vendeur_id FROM boutique b
+         JOIN utilisateur u ON u.id = b.vendeur_id
+        WHERE b.statut = 'actif' AND b.deleted_at IS NULL AND u.statut = 'actif'
+     )
+)`);
+
 // `specifications` : formulaire produit de la catégorie (tailles, pointures…).
 const ATTRIBUTS_PUBLICS = ['id', 'nom', 'slug', 'description', 'icone', 'image', 'ordre', 'specifications'];
 
@@ -22,7 +37,11 @@ class CategorieService {
   static async getAllCategories() {
     const categories = await Categorie.findAll({
       where: { active: true },
-      attributes: [...ATTRIBUTS_PUBLICS, [NOMBRE_BOUTIQUES, 'nombreBoutiques']],
+      attributes: [
+        ...ATTRIBUTS_PUBLICS,
+        [NOMBRE_BOUTIQUES, 'nombreBoutiques'],
+        [NOMBRE_PRODUITS, 'nombreProduits'],
+      ],
       order: [['ordre', 'ASC'], ['nom', 'ASC']],
     });
     return { categories };
