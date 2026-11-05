@@ -1,4 +1,5 @@
 // services/paiement/paiement.service.js
+const WaveService = require('./wave.service');
 const { Paiement, Abonnement, Utilisateur } = require('../../models');
 const sequelize = require('../../config/db');
 const OrangeMoneyService = require('./orangeMoney.service');
@@ -54,8 +55,13 @@ class PaiementService {
         providerData = omResponse;
       }
 
-      // Ajouter Wave ici si besoin :
-      // if (methode === 'wave') { ... }
+      if (methode === 'wave') {
+        const session = await WaveService.creerSession({ montant, reference: orderId });
+        paiement.transactionId = session.sessionId;
+        paiement.metadata = { paymentUrl: session.paymentUrl };
+        await paiement.save({ transaction: t });
+        providerData = session;
+      }
 
       await t.commit();
 
@@ -71,7 +77,7 @@ class PaiementService {
   }
 
   // -------------------- CONFIRMER VIA WEBHOOK --------------------
-  static async confirmerPaiement({ transactionId, status, orderId }) {
+  static async confirmerPaiement({ transactionId, status, orderId, montantRecu = null }) {
     const t = await sequelize.transaction();
 
     try {
@@ -96,7 +102,10 @@ class PaiementService {
         return paiement;
       }
 
-      const isSuccess = status === 'SUCCESS' || status === 'success';
+      // Un montant inférieur à celui demandé n'est pas un paiement réussi.
+      const montantInsuffisant =
+        montantRecu !== null && Number(montantRecu) < Number(paiement.montant);
+      const isSuccess = (status === 'SUCCESS' || status === 'success') && !montantInsuffisant;
 
       paiement.statut = isSuccess ? 'success' : 'failed';
       paiement.datePaiement = new Date();

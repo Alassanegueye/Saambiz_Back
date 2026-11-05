@@ -172,7 +172,7 @@ class AccountService {
       const commandeEnCours = await Commande.findOne({
         where: {
           [Op.or]: [{ acheteurId: userId }, { vendeurId: userId }],
-          statut: { [Op.notIn]: ['livree', 'annulee'] }
+          statut: { [Op.notIn]: ['livree', 'annulee', 'rejetee'] }
         },
         transaction: t
       });

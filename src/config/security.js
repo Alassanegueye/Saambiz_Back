@@ -60,7 +60,7 @@ const jwtConfig = {
   secret: _accessSecret,
   expiresIn: process.env.JWT_EXPIRES_IN || '1h',
   refreshSecret: _refreshSecret,
-  refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+  refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '24h',
   // Repli sur le secret d'accès en développement uniquement : en production
   // la boucle ci-dessus a déjà exigé une valeur distincte.
   resetSecret: _resetSecret || _accessSecret,
@@ -72,7 +72,9 @@ const jwtConfig = {
 // côté des sessions légitimes.
 const refreshTokenConfig = {
   maxParUtilisateur: Number(process.env.REFRESH_MAX_PAR_UTILISATEUR) || 5,
-  dureeJours: Number(process.env.REFRESH_DUREE_JOURS) || 7,
+  // Compte depuis le dernier renouvellement : 24 h sans ouvrir l'application
+  // imposent de se reconnecter. À garder aligné sur JWT_REFRESH_EXPIRES_IN.
+  dureeJours: Number(process.env.REFRESH_DUREE_JOURS) || 1,
 };
 
 // ─── Mots de passe ─────────────────────────────────────────────────────────

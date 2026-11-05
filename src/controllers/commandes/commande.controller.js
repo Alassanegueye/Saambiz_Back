@@ -55,8 +55,11 @@ exports.payerCommande = asyncHandler(async (req, res) => {
   if (commande.statutPaiement === 'paye') {
     throw new BadRequestError('Commande déjà payée');
   }
-  if (commande.statut === 'annulee') {
-    throw new BadRequestError('Commande annulée');
+  if (commande.statut === 'en_attente') {
+    throw new BadRequestError('Le vendeur doit d\'abord accepter votre commande.');
+  }
+  if (commande.statut !== 'acceptee') {
+    throw new BadRequestError('Cette commande ne peut plus être payée.');
   }
   if (!['orange_money', 'wave'].includes(methode)) {
     throw new BadRequestError('Méthode de paiement non supportée');
@@ -94,7 +97,8 @@ exports.getCommande = asyncHandler(async (req, res) => {
 
 // -------------------- ACHETEUR : annuler --------------------
 exports.annulerCommande = asyncHandler(async (req, res) => {
-  const commande = await CommandeService.annulerCommande(req.params.id, req.user.id);
+  const { id } = await CommandeService.annulerCommande(req.params.id, req.user.id);
+  const commande = await CommandeService.getCommandeComplete(id);
   return res.status(200).json({ success: true, commande });
 });
 
@@ -113,7 +117,9 @@ exports.changerStatut = asyncHandler(async (req, res) => {
   if (!statut) {
     throw new BadRequestError('Le nouveau statut est requis');
   }
-  const commande = await CommandeService.changerStatut(req.params.id, req.user.id, statut);
+  const { id } = await CommandeService.changerStatut(req.params.id, req.user.id, statut);
+  // La commande complète : l'écran affiche ses articles à partir de cette réponse.
+  const commande = await CommandeService.getCommandeComplete(id);
   return res.status(200).json({ success: true, commande });
 });
 

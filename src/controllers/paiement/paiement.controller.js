@@ -1,4 +1,6 @@
 // controllers/paiement/paiement.controller.js
+const logger = require('../../utils/logger');
+const WaveService = require('../../services/paiement/wave.service');
 const PaiementService = require('../../services/paiement/paiement.service');
 const OrangeMoneyService = require('../../services/paiement/orangeMoney.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
@@ -48,6 +50,32 @@ exports.payer = asyncHandler(async (req, res) => {
 // notification tant qu'il ne reçoit pas un 200. Laisser l'erreur partir dans
 // le gestionnaire global produirait un 500, donc une boucle de renvois sur
 // une panne que le renvoi ne corrigera pas.
+// Wave exige une réponse sous cinq secondes et renvoie la notification tant
+// qu'il ne reçoit pas de 2xx. La confirmation est idempotente : un doublon ne
+// change rien.
+exports.webhookWave = async (req, res) => {
+  if (!WaveService.signatureValide(req.headers['wave-signature'], req.rawBody)) {
+    return res.status(401).json({ success: false, message: 'Signature invalide' });
+  }
+  const { type, data } = req.body || {};
+  // Un échec ne clôt pas la session : le client peut réessayer.
+  if (type !== 'checkout.session.completed' || data?.payment_status !== 'succeeded') {
+    return res.status(200).json({ success: true });
+  }
+  try {
+    await PaiementService.confirmerPaiement({
+      transactionId: data.id,
+      status: 'success',
+      orderId: data.client_reference,
+      montantRecu: data.amount,
+    });
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    logger.error('[WEBHOOK WAVE] Échec de confirmation', { message: err.message });
+    return res.status(500).json({ success: false });
+  }
+};
+
 exports.webhook = async (req, res) => {
   try {
     console.log("[WEBHOOK] Notification Orange Money reçue:", JSON.stringify(req.body));

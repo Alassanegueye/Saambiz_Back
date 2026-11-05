@@ -31,7 +31,7 @@ const payerCommandeSchema = Joi.object({
 
 const changerStatutSchema = Joi.object({
   statut: Joi.string()
-    .valid('confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree', 'annulee')
+    .valid('acceptee', 'rejetee', 'confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree', 'annulee')
     .required()
     .messages({ 'any.required': 'Le nouveau statut est requis' }),
 }).unknown(true);

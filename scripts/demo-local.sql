@@ -1,0 +1,8 @@
+-- Données de démonstration pour la base LOCALE de développement (Docker).
+-- Ne jamais exécuter sur une base de production.
+--
+-- Compte vendeur de test : demo.vendeur@example.com
+-- Mot de passe de test   : Democ12b83d6!Local
+--
+-- Boutique « Teranga Style » et six produits (dont trois en promotion),
+-- insérés le 2026-11-02 pour vérifier l'application mobile.

@@ -1,4 +1,5 @@
-const { Produit, Categorie, Boutique, Abonnement, Message, Paiement, Favori, Utilisateur, ProduitImage, Commande } = require('../../models');
+const { Produit, Categorie, Boutique, Abonnement, Message, Paiement, Favori, Utilisateur, ProduitImage, Commande, LigneCommande } = require('../../models');
+const { niveauFidelite } = require('../../utils/fideliteClient');
 const { uploadImage, deleteImage } = require('../stockage/upload.service');
 const sequelize = require('../../config/db');
 const NotificationService = require('../notifications/notification.service');
@@ -37,6 +38,23 @@ const PRODUIT_FIELDS = ['nom', 'description', 'prix', 'prix_promo', 'quantite', 
 
 // Champs modifiables sur une Boutique — HIGH-01 whitelist
 const BOUTIQUE_FIELDS = ['nom', 'slug', 'description', 'slogan', 'localisation', 'telephone', 'whatsapp', 'ville', 'latitude', 'longitude', 'banniere', 'couleur_theme', 'categorie'];
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ATTRIBUTS_ABONNE = ['id', 'prenom', 'nom', 'photoProfil', 'email', 'telephone'];
+
+function formaterAbonne(favori) {
+  const a = favori.acheteur;
+  return {
+    id: a.id,
+    prenom: a.prenom,
+    nom: a.nom,
+    photo: a.photoProfil || null,
+    email: a.email,
+    telephone: a.telephone || null,
+    clocheActive: favori.clocheActive === true,
+    depuis: favori.createdAt,
+  };
+}
 
 class VendeurService {
 
@@ -545,21 +563,47 @@ class VendeurService {
     if (!boutique) throw new NotFoundError('Boutique introuvable');
     const favoris = await Favori.findAll({
       where: { boutiqueId: boutique.id },
-      include: [{ model: Utilisateur, as: 'acheteur', attributes: ['id', 'prenom', 'nom', 'photoProfil'] }],
+      include: [{ model: Utilisateur, as: 'acheteur', attributes: ATTRIBUTS_ABONNE }],
       order: [['createdAt', 'DESC']],
     });
-    const liste = favoris.filter((f) => f.acheteur).map((f) => ({
-      id: f.acheteur.id,
-      prenom: f.acheteur.prenom,
-      nom: f.acheteur.nom,
-      photo: f.acheteur.photoProfil || null,
-      clocheActive: f.clocheActive === true,
-      depuis: f.createdAt,
-    }));
+    const liste = favoris.filter((f) => f.acheteur).map(formaterAbonne);
     return {
       total: liste.length,
       avecCloche: liste.filter((a) => a.clocheActive).length,
       abonnes: liste,
+    };
+  }
+
+  // Fiche d'un abonné. Le lien d'abonnement à CETTE boutique est vérifié : sans
+  // lui, un vendeur lirait les coordonnées de n'importe quel compte.
+  static async abonneDetail(vendeurId, acheteurId) {
+    // Un identifiant mal formé ferait échouer la requête SQL en erreur 500.
+    if (!UUID.test(acheteurId)) throw new NotFoundError('Abonné introuvable');
+    const boutique = await Boutique.findOne({ where: { vendeurId }, attributes: ['id'] });
+    if (!boutique) throw new NotFoundError('Boutique introuvable');
+    const favori = await Favori.findOne({
+      where: { boutiqueId: boutique.id, acheteurId },
+      include: [{ model: Utilisateur, as: 'acheteur', attributes: ATTRIBUTS_ABONNE }],
+    });
+    if (!favori || !favori.acheteur) throw new NotFoundError('Abonné introuvable');
+
+    const commandes = await Commande.findAll({
+      where: { vendeurId, acheteurId, statut: { [Op.notIn]: ['annulee', 'rejetee'] } },
+      attributes: ['id', 'createdAt'],
+      include: [{ model: LigneCommande, as: 'lignes', attributes: ['quantite'] }],
+      order: [['createdAt', 'DESC']],
+    });
+    return {
+      abonne: formaterAbonne(favori),
+      activite: {
+        commandes: commandes.length,
+        produitsCommandes: commandes.reduce(
+          (total, c) => total + c.lignes.reduce((n, l) => n + l.quantite, 0),
+          0
+        ),
+        derniereCommande: commandes[0]?.createdAt ?? null,
+      },
+      fidelite: niveauFidelite(commandes.length),
     };
   }
 

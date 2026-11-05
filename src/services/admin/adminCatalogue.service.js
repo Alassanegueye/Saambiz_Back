@@ -32,10 +32,10 @@ const aplatir = (instance) => {
   return { ...o, boutique: b ? { id: b.id, nom: b.nom, slug: b.slug } : null };
 };
 
-const STATUTS_COMMANDE = ['en_attente', 'confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree', 'annulee'];
+const STATUTS_COMMANDE = ['en_attente', 'acceptee', 'rejetee', 'payee', 'confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree', 'annulee'];
 const STATUTS_PAIEMENT = ['non_paye', 'paye', 'rembourse'];
 // Statuts où la marchandise est engagée : le stock doit être réservé.
-const STATUTS_ENGAGES = ['confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree'];
+const STATUTS_ENGAGES = ['acceptee', 'payee', 'confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree'];
 
 class AdminCatalogueService {
 

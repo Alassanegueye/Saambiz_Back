@@ -221,6 +221,7 @@ router.post(
 // elle, est un acte de gestion comme un autre.
 // Clients abonnés à la boutique (avec l'état de leur cloche).
 router.get('/abonnes', VendeurController.abonnes);
+router.get('/abonnes/:id', VendeurController.abonneDetail);
 router.get('/ma-vitrine', VendeurController.maVitrine);
 // Aperçu du site, publié ou non, pour l'écran de personnalisation.
 router.get('/ma-vitrine/apercu', VendeurController.apercuVitrine);

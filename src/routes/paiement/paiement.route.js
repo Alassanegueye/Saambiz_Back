@@ -10,6 +10,7 @@ const isVendeur = require('../../middlewares/isVendeur.middleware');
 //  ROUTES PUBLIQUES — pas de JWT (Orange Money appelle directement)
 // ================================================================
 router.post('/webhook/orange', PaiementController.webhook);
+router.post('/webhook/wave', PaiementController.webhookWave);
 
 // ================================================================
 //  ROUTES PROTEGEES — JWT + utilisateur actif + vendeur

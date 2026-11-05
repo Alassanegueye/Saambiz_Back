@@ -85,7 +85,13 @@ app.use('/saambiz/paiement/webhook/orange', (req, res, next) => {
 
 // 512 ko : les fichiers passent par Multer, pas par ce parseur. Une limite
 // haute ici n'apporte rien et offre une surface d'épuisement mémoire.
-app.use(express.json({ limit: '512kb' }));
+// La signature des notifications Wave porte sur le corps brut, à l'octet près.
+app.use(express.json({
+  limit: '512kb',
+  verify: (req, _res, tampon) => {
+    if (req.originalUrl.includes('/paiement/webhook/wave')) req.rawBody = tampon.toString('utf8');
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '512kb' }));
 
 // PERF-01 : compression gzip/brotli

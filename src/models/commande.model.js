@@ -82,7 +82,10 @@ const Commande = sequelize.define('Commande', {
   // Cycle de vie de la commande
   statut: {
     type: DataTypes.ENUM(
-      'en_attente',     // créée, en attente de paiement / confirmation
+      'en_attente',     // créée, attend la décision du vendeur
+      'acceptee',       // acceptée par le vendeur, le client peut payer
+      'rejetee',        // refusée par le vendeur
+      'payee',          // acceptée et réglée en ligne
       'confirmee',      // payée ou acceptée (à la livraison)
       'en_preparation', // le vendeur prépare
       'prete',          // prête (retrait) / prête à expédier

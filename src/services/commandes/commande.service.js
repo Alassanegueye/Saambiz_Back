@@ -8,7 +8,10 @@ const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors
 
 // Transitions de statut autorisées (qui mène où) — le vendeur fait avancer la commande
 const TRANSITIONS = {
-  en_attente:     ['confirmee', 'annulee'],
+  en_attente:     ['acceptee', 'rejetee', 'annulee'],
+  acceptee:       ['en_preparation', 'annulee'],
+  rejetee:        [],
+  payee:          ['en_preparation', 'annulee'],
   confirmee:      ['en_preparation', 'annulee'],
   en_preparation: ['prete', 'annulee'],
   prete:          ['en_livraison', 'livree', 'annulee'], // retrait → livree directement
@@ -243,10 +246,10 @@ class CommandeService {
       const fraisLivraison = await CommandeService._getFraisLivraison(modeLivraison);
       const montantTotal = montantProduits + fraisLivraison;
 
-      // 3) Statut initial selon le mode de paiement
-      //    - en_ligne : reste 'en_attente' jusqu'au paiement (stock décrémenté à la confirmation du paiement)
-      //    - a_la_livraison : 'confirmee' immédiatement, on réserve le stock tout de suite
-      const paiementEnLigne = modePaiement === 'en_ligne';
+      // 3) Statut initial : le vendeur décide d'abord, et le stock n'est réservé
+      //    qu'à son acceptation. Seule une commande saisie par l'administration
+      //    et réglée à la livraison est engagée d'emblée.
+      const engageeDEmblee = origine === 'admin' && modePaiement !== 'en_ligne';
 
       const commande = await Commande.create({
         referenceCommande: CommandeService._genererReference(),
@@ -261,7 +264,7 @@ class CommandeService {
         montantProduits,
         fraisLivraison,
         montantTotal,
-        statut: paiementEnLigne ? 'en_attente' : 'confirmee',
+        statut: engageeDEmblee ? 'confirmee' : 'en_attente',
         statutPaiement: 'non_paye',
         modeLivraison,
         modePaiement,
@@ -278,8 +281,8 @@ class CommandeService {
         { transaction: t, validate: true },
       );
 
-      // 5) Réserver le stock immédiatement si paiement à la livraison
-      if (!paiementEnLigne) {
+      // 5) Réserver le stock d'une commande engagée d'emblée
+      if (engageeDEmblee) {
         await CommandeService._decrementerStock(commande, t);
       }
 
@@ -315,18 +318,23 @@ class CommandeService {
         return commande;
       }
 
+      // Un paiement arrivé après une annulation reste enregistré (à rembourser),
+      // mais ne ressuscite pas la commande et ne réserve aucun stock.
+      const abandonnee = ['annulee', 'rejetee'].includes(commande.statut);
+
       commande.statutPaiement = 'paye';
-      if (commande.statut === 'en_attente') commande.statut = 'confirmee';
+      if (['en_attente', 'acceptee'].includes(commande.statut)) commande.statut = 'payee';
       await commande.save({ transaction: t });
 
       // Décrémenter le stock maintenant (si pas déjà fait)
-      if (!commande.stockDecremente) {
+      if (!abandonnee && !commande.stockDecremente) {
         await CommandeService._decrementerStock(commande, t);
       }
 
       if (gererTransaction) await t.commit();
 
       CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(() => {});
+      CommandeService._notifierAcheteurStatut(commande).catch(() => {});
       return commande;
 
     } catch (err) {
@@ -432,6 +440,16 @@ class CommandeService {
     if (nouveauStatut === 'annulee') {
       return await CommandeService._annuler(commande, 'vendeur');
     }
+    if (nouveauStatut === 'rejetee') {
+      return await CommandeService._annuler(commande, 'vendeur', 'rejetee');
+    }
+    if (nouveauStatut === 'acceptee') {
+      return await CommandeService._accepter(commande.id);
+    }
+    // Une commande à régler en ligne attend son paiement avant d'être préparée.
+    if (commande.statut === 'acceptee' && commande.modePaiement === 'en_ligne' && commande.acheteurId) {
+      throw new BadRequestError('Le client n\'a pas encore payé cette commande.');
+    }
 
     commande.statut = nouveauStatut;
     await commande.save();
@@ -444,6 +462,38 @@ class CommandeService {
     // Notifier l'acheteur de l'avancement
     CommandeService._notifierAcheteurStatut(commande).catch(() => {});
     return commande;
+  }
+
+  /** Le stock est réservé ici : c'est l'engagement du vendeur à livrer. */
+  static async _accepter(commandeId) {
+    const t = await sequelize.transaction();
+    try {
+      const commande = await Commande.findByPk(commandeId, { transaction: t, lock: t.LOCK.UPDATE });
+      if (commande.statut !== 'en_attente') {
+        throw new BadRequestError('Cette commande a déjà été traitée.');
+      }
+      if (!commande.stockDecremente) {
+        await CommandeService._decrementerStock(commande, t);
+      }
+      commande.statut = 'acceptee';
+      await commande.save({ transaction: t });
+      await t.commit();
+
+      CommandeService._notifierAcheteurStatut(commande, CommandeService._messageAcceptation(commande)).catch(() => {});
+      return commande;
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  static _messageAcceptation(commande) {
+    if (commande.modePaiement !== 'en_ligne') {
+      return 'Votre commande est acceptée. Vous la réglerez à la réception.';
+    }
+    return commande.acheteurId
+      ? 'Votre commande est acceptée. Ouvrez « Mes commandes » dans l\'application pour la payer par Wave ou Orange Money.'
+      : 'Votre commande est acceptée. La boutique vous contactera pour le règlement.';
   }
 
   // Incrémente nombre_ventes de chaque produit d'après les quantités commandées
@@ -469,19 +519,19 @@ class CommandeService {
       throw new ForbiddenError('Cette commande ne vous appartient pas');
     }
     // L'acheteur ne peut annuler que tant que ce n'est pas en livraison/livrée
-    if (!['en_attente', 'confirmee', 'en_preparation'].includes(commande.statut)) {
+    if (!['en_attente', 'acceptee', 'payee', 'confirmee', 'en_preparation'].includes(commande.statut)) {
       throw new BadRequestError('Cette commande ne peut plus être annulée.');
     }
     return await CommandeService._annuler(commande, 'acheteur');
   }
 
-  static async _annuler(commande, parQui) {
+  static async _annuler(commande, parQui, statutFinal = 'annulee') {
     const t = await sequelize.transaction();
     try {
       // Restaurer le stock si réservé
       await CommandeService._restaurerStock(commande, t);
 
-      commande.statut = 'annulee';
+      commande.statut = statutFinal;
       if (commande.statutPaiement === 'paye') {
         commande.statutPaiement = 'rembourse'; // le remboursement réel via PSP reste à déclencher
       }
@@ -490,7 +540,9 @@ class CommandeService {
       await t.commit();
 
       // Notifier l'autre partie
-      if (parQui === 'vendeur') {
+      if (statutFinal === 'rejetee') {
+        CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+      } else if (parQui === 'vendeur') {
         CommandeService._notifierAcheteurStatut(commande, 'Votre commande a été annulée par le vendeur.').catch(() => {});
       } else {
         CommandeService._notifierUtilisateur(
@@ -570,6 +622,9 @@ class CommandeService {
    */
   static async _notifierAcheteurStatut(commande, messagePerso = null) {
     const libelles = {
+      acceptee: 'Votre commande est acceptée.',
+      rejetee: 'Votre commande a été rejetée par la boutique. Vous ne serez pas débité.',
+      payee: 'Votre paiement est bien reçu. Merci !',
       confirmee: 'Votre commande est confirmée.',
       en_preparation: 'Votre commande est en préparation.',
       prete: 'Votre commande est prête.',

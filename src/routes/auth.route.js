@@ -219,7 +219,7 @@ router.post('/logout', authMiddleware, authController.logout);
  *               type: object
  *               properties:
  *                 token: { type: string, description: "Nouveau jeton d'accès (1 h)" }
- *                 refreshToken: { type: string, description: 'Nouveau jeton de rafraîchissement (7 j)' }
+ *                 refreshToken: { type: string, description: 'Nouveau jeton de rafraîchissement (24 h)' }
  *       401:
  *         description: Jeton absent de la base, révoqué ou expiré
  */
