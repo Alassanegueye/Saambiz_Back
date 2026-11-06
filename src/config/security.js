@@ -60,7 +60,10 @@ const jwtConfig = {
   secret: _accessSecret,
   expiresIn: process.env.JWT_EXPIRES_IN || '1h',
   refreshSecret: _refreshSecret,
-  refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '24h',
+  // 10 ans : pas de deconnexion automatique. La session se termine sur un
+  // geste — deconnexion, coupure d'un appareil, depassement du plafond de
+  // sessions — jamais sur l'ecoulement du temps.
+  refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '3650d',
   // Repli sur le secret d'accès en développement uniquement : en production
   // la boucle ci-dessus a déjà exigé une valeur distincte.
   resetSecret: _resetSecret || _accessSecret,
@@ -72,9 +75,15 @@ const jwtConfig = {
 // côté des sessions légitimes.
 const refreshTokenConfig = {
   maxParUtilisateur: Number(process.env.REFRESH_MAX_PAR_UTILISATEUR) || 5,
-  // Compte depuis le dernier renouvellement : 24 h sans ouvrir l'application
-  // imposent de se reconnecter. À garder aligné sur JWT_REFRESH_EXPIRES_IN.
-  dureeJours: Number(process.env.REFRESH_DUREE_JOURS) || 1,
+  // 10 ans, a garder aligne sur JWT_REFRESH_EXPIRES_IN : la ligne en base ne
+  // doit pas expirer avant le jeton qu'elle valide, sinon la session tombe
+  // malgre un jeton encore signe.
+  //
+  // La revocation ne depend pas de cette duree : la double verification
+  // (signature + presence en base) rend la deconnexion et la coupure d'un
+  // appareil immediates, et le plafond de sessions revoque toujours la plus
+  // ancienne.
+  dureeJours: Number(process.env.REFRESH_DUREE_JOURS) || 3650,
 };
 
 // ─── Mots de passe ─────────────────────────────────────────────────────────

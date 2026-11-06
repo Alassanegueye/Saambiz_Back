@@ -103,6 +103,22 @@ const User = sequelize.define('User', {
     allowNull: true,
   },
 
+  // Montant disponible sur le compte du vendeur, en FCFA.
+  //
+  // Rien ne l'alimente ni ne le debite pour l'instant : la colonne est posee
+  // pour que l'ecran « Compte » du vendeur ait une valeur a afficher, et pour
+  // que la donnee soit deja la le jour ou les reversements seront traites.
+  //
+  // DECIMAL et non FLOAT : un solde est de l'argent, et l'arrondi binaire
+  // d'un flottant finit par ne plus tomber juste. Douze chiffres au lieu des
+  // dix habituels parce qu'un solde s'accumule, la ou un prix unitaire ne
+  // s'accumule pas.
+  soldeDisponible: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+    defaultValue: 0,
+  },
+
 }, {
   tableName: 'utilisateur',
   freezeTableName: true,

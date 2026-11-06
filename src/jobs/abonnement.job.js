@@ -18,32 +18,28 @@ async function expireAbonnements() {
     }
   );
 
-  // 2. Désactiver vendeurs sans abonnement actif
-  const vendeurs = await Utilisateur.findAll({
-    include: [
-      {
-        model: Abonnement,
-        as: 'abonnements',
-        required: false,
-        where: {
-          statut: 'actif',
-          dateFin: { [Op.gte]: maintenant }
-        }
-      }
-    ]
-  });
+  // Ce job ne touche plus au statut des comptes.
+  //
+  // Il y avait ici une etape « Desactiver vendeurs sans abonnement actif »
+  // qui chargeait Utilisateur.findAll() SANS filtre de role — la variable
+  // s'appelait `vendeurs`, mais la requete ramenait tout le monde — puis
+  // passait a `statut: 'inactif'` quiconque n'avait pas d'abonnement en
+  // cours. Les Admin et les Acheteur n'en ont jamais : chaque nuit a 00h00,
+  // tous leurs comptes etaient donc desactives, et auth.service refusait
+  // ensuite la connexion avec « Votre compte est inactif ».
+  //
+  // Elle etait aussi redondante et nuisible, meme corrigee du filtre de
+  // role : l'abonnement est deja exige route par route par
+  // finAbonnement.middleware (403 « abonnement expire »), alors que
+  // desactiver le compte bloque la connexion elle-meme — un vendeur dont
+  // l'abonnement venait d'expirer ne pouvait plus se connecter pour le
+  // renouveler.
+  //
+  // Un compte ne passe donc plus a 'inactif' que sur geste explicite :
+  // admin.service (suspension par un administrateur) ou account.service
+  // (desactivation par son proprietaire).
 
-  await Promise.all(
-    vendeurs.map(async (v) => {
-      if (!v.abonnements || v.abonnements.length === 0) {
-        if (v.statut !== 'inactif') {
-          await v.update({ statut: 'inactif' });
-        }
-      }
-    })
-  );
-
-  // 3. Envoyer rappels d'expiration (7j et 3j avant)
+  // 2. Envoyer rappels d'expiration (7j et 3j avant)
   const now = new Date();
   for (const jours of [7, 3]) {
     const cible = new Date(now);

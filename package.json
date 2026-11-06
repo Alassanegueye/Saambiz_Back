@@ -21,6 +21,7 @@
     "docker:prod:logs": "docker compose -f docker-compose.prod.yml logs -f backend",
     "docker:prod:down": "docker compose -f docker-compose.prod.yml down",
     "audit": "node scripts/verifier-audit.js",
+    "comptes:reparer": "node -r dotenv/config scripts/reactiver-comptes.js",
     "backup": "bash deploy/backup-postgres.sh",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
