@@ -198,7 +198,7 @@ class AssistantService {
     const explications = {
       galerie: 'Vos produits se vendent par la photo : la mise en page « Galerie » les montre en grand.',
       catalogue: 'Vos clients comparent des références et des prix : la mise en page « Catalogue » se parcourt vite.',
-      classique: 'La mise en page « Classique » convient à tous les catalogues : bannière, rayons, puis les produits.',
+      classique: 'La mise en page « Classique » convient à tous les catalogues : vos catégories, puis vos produits.',
     };
     return explications[s.modele];
   }

@@ -9,6 +9,7 @@ const isVendeur = require('../../middlewares/isVendeur.middleware');
 const validate = require('../../middlewares/validate.middleware');
 const {
   creerCommandeSchema,
+  creerCommandeVendeurSchema,
   payerCommandeSchema,
   changerStatutSchema,
 } = require('../../validations/commande.validation');
@@ -32,8 +33,15 @@ router.use(checkActiveUser);
 // Commandes reçues par le vendeur connecté
 router.get('/vendeur', isVendeur, CommandeController.commandesVendeur);
 
+// Enregistrer une commande prise hors de l'application (téléphone, WhatsApp,
+// en boutique…) : le vendeur saisit le client et les articles.
+router.post('/vendeur', isVendeur, validate(creerCommandeVendeurSchema), CommandeController.creerCommandeVendeur);
+
 // Faire avancer le statut d'une commande (vendeur)
 router.patch('/:id/statut', isVendeur, validate(changerStatutSchema), CommandeController.changerStatut);
+
+// Confirmer qu'une commande réglée à la livraison a bien été payée (vendeur)
+router.patch('/:id/paiement', isVendeur, CommandeController.confirmerPaiement);
 
 // ================================================================
 //  ACHETEUR

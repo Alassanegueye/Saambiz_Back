@@ -68,6 +68,11 @@ const User = sequelize.define('User', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  // Verso de la pièce d'identité (le recto est dans `pieceIdentite`).
+  pieceIdentiteVerso: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
   typePiece: {
     type: DataTypes.STRING(50),
     allowNull: true,

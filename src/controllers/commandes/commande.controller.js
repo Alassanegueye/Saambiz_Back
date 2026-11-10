@@ -103,6 +103,56 @@ exports.annulerCommande = asyncHandler(async (req, res) => {
 });
 
 // -------------------- VENDEUR : commandes reçues --------------------
+// -------------------- VENDEUR : saisir une commande --------------------
+// Une commande prise hors de l'application (téléphone, WhatsApp, en
+// boutique). Le client n'a pas forcément de compte : ses coordonnées sont
+// portées par la commande, comme pour une commande venue du site.
+exports.creerCommandeVendeur = asyncHandler(async (req, res) => {
+  // Chargé ici : le service vitrine dépend lui-même du service commandes.
+  const VitrineService = require('../../services/vitrine/vitrine.service');
+  const { Produit } = require('../../models');
+  const { Op } = require('sequelize');
+
+  const vendeurId = req.user.id;
+  const { client = {}, items, modeLivraison = 'retrait', adresseLivraison, note } = req.body;
+
+  const telephone = VitrineService.normaliserTelephone(client.telephone);
+  if (!VitrineService.estTelephoneValide(telephone)) {
+    throw new BadRequestError('Le numéro de téléphone du client est invalide. Exemple : 77 123 45 67.');
+  }
+  if (modeLivraison === 'livraison' && !String(adresseLivraison || '').trim()) {
+    throw new BadRequestError('Indiquez l\'adresse de livraison.');
+  }
+
+  // Le vendeur ne saisit que ses propres produits.
+  const ids = [...new Set(items.map((i) => i.produitId))];
+  const nbAMoi = await Produit.count({ where: { id: { [Op.in]: ids }, vendeurId } });
+  if (nbAMoi !== ids.length) {
+    throw new ForbiddenError('Vous ne pouvez enregistrer que vos propres produits.');
+  }
+
+  const email = String(client.email || '').trim().toLowerCase();
+  const commande = await CommandeService.creerCommande({
+    acheteurId: null,
+    client: {
+      prenom: String(client.prenom).trim().slice(0, 120),
+      nom: String(client.nom || '').trim().slice(0, 120) || null,
+      telephone,
+      email: email || null,
+    },
+    items,
+    modeLivraison,
+    // Saisie par le vendeur : le règlement se fait de la main à la main.
+    modePaiement: 'a_la_livraison',
+    adresseLivraison: adresseLivraison ? String(adresseLivraison).trim().slice(0, 240) : null,
+    numeroTelephone: telephone,
+    note: note ? String(note).trim().slice(0, 500) : null,
+    origine: 'dashboard',
+  });
+
+  return res.status(201).json({ success: true, commande });
+});
+
 exports.commandesVendeur = asyncHandler(async (req, res) => {
   const commandes = await CommandeService.commandesVendeur(req.user.id, {
     statut: req.query.statut,
@@ -119,6 +169,13 @@ exports.changerStatut = asyncHandler(async (req, res) => {
   }
   const { id } = await CommandeService.changerStatut(req.params.id, req.user.id, statut);
   // La commande complète : l'écran affiche ses articles à partir de cette réponse.
+  const commande = await CommandeService.getCommandeComplete(id);
+  return res.status(200).json({ success: true, commande });
+});
+
+// -------------------- VENDEUR : confirmer le paiement reçu à la livraison --------------------
+exports.confirmerPaiement = asyncHandler(async (req, res) => {
+  const { id } = await CommandeService.confirmerPaiementVendeur(req.params.id, req.user.id);
   const commande = await CommandeService.getCommandeComplete(id);
   return res.status(200).json({ success: true, commande });
 });

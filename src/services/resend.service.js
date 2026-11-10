@@ -209,7 +209,18 @@ async function sendAccesUtilisateurEmail({ to, prenom, nom, email, password, rol
   });
 }
 
+/** Réponse à une demande de certification (approuvée ou refusée). */
+async function sendCertificationEmail({ to, prenom, boutique, approuvee, motif }) {
+  const template = require('../templates/mail/certification.template');
+  return sendEmail({
+    to,
+    subject: approuvee ? 'Votre boutique est certifiée sur SaamBiz' : 'Votre demande de certification SaamBiz',
+    html: template({ prenom, boutique, approuvee, motif }),
+  });
+}
+
 module.exports = {
+  sendCertificationEmail,
   sendCommandeClientEmail,
   sendAccesUtilisateurEmail,
   etatEmail,

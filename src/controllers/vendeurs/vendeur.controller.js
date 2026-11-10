@@ -20,9 +20,10 @@ class VendeurController {
 
   // -------------------- VÉRIFICATION DU PROFIL --------------------
   static soumettreVerification = asyncHandler(async (req, res) => {
-    const fichier = req.files?.piece?.[0] || req.file;
+    const fichier = req.files?.recto?.[0] || req.files?.piece?.[0] || req.file;
     const result = await VendeurService.soumettreVerification(req.user.id, {
       fichier,
+      verso: req.files?.verso?.[0],
       typePiece: req.body?.typePiece,
     });
     // Le corps d'échec porte plus que le message (statut courant, motif de

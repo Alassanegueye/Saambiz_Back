@@ -180,7 +180,13 @@ router.get('/ma-boutique', VendeurController.maBoutique);
 // l'abonnement a expiré doit pouvoir régulariser son profil.
 router.post(
   '/soumettre-verification',
-  upload.fields([{ name: 'piece', maxCount: 1 }]),
+  // Recto et verso de la pièce d'identité. `piece` reste accepté comme recto
+  // pour les anciennes versions de l'application.
+  upload.fields([
+    { name: 'recto', maxCount: 1 },
+    { name: 'verso', maxCount: 1 },
+    { name: 'piece', maxCount: 1 },
+  ]),
   upload.verifyMagicBytes,
   VendeurController.soumettreVerification
 );
