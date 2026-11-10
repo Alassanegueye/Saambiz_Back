@@ -306,84 +306,175 @@ class AuthService {
         return { success: false, message: 'Identifiant ou mot de passe incorrect' };
       }
 
-      const token = jwt.sign({
-        id: utilisateur.id,
-        nom: utilisateur.nom,
-        prenom: utilisateur.prenom,
-        email: utilisateur.email,
-        role: utilisateur.role,
-      }, jwtConfig.secret, { expiresIn: jwtConfig.expiresIn });
-
-      // Dates de connexion : la première n'est écrite qu'une fois. Une panne
-      // ici ne doit pas empêcher de se connecter.
-      const maintenant = new Date();
-      try {
-        await Utilisateur.update(
-          {
-            derniereConnexion: maintenant,
-            ...(utilisateur.premiereConnexion ? {} : { premiereConnexion: maintenant }),
-          },
-          { where: { id: utilisateur.id }, silent: true, hooks: false },
-        );
-        if (!utilisateur.premiereConnexion) utilisateur.premiereConnexion = maintenant;
-        utilisateur.derniereConnexion = maintenant;
-      } catch (err) {
-        logger.warn('auth.login:dates-connexion', { message: err.message });
-      }
-
-      // Les connexions au dashboard apparaissent dans l'activité des admins.
-      if (['Admin', 'SuperAdmin'].includes(utilisateur.role)) {
-        require('./audit.service').enregistrer({
-          adminId: utilisateur.id,
-          action: 'connexion',
-          cible: 'session',
-          cibleId: utilisateur.id,
-          details: { appareil: (contexte.userAgent || '').slice(0, 160) || undefined },
-        }).catch(() => {});
-      }
-
-      // Le refresh est enregistré hashé : il devient révocable, plafonné
-      // par compte, et purgeable. Voir RefreshTokenService.
-      const RefreshTokenService = require('./refreshToken.service');
-      const refreshToken = await RefreshTokenService.emettre(utilisateur.id, contexte);
-
-      // Récupérer les menus accessibles selon les permissions RBAC
-      const { Permission, Menu } = require('../models');
-      const permissionsData = await Permission.findAll({
-        where: { userId: utilisateur.id },
-        include: [{ model: Menu, as: 'menu', where: { isActive: true }, required: false }],
-      });
-      const menus = permissionsData
-        .filter((p) => p.canView && p.menu)
-        .map((p) => ({
-          id:   p.menu.id,
-          name: p.menu.name,
-          code: p.menu.code,
-          path: p.menu.path,
-          icon: p.menu.icon,
-          permissions: {
-            canView:   p.canView,
-            canCreate: p.canCreate,
-            canUpdate: p.canUpdate,
-            canDelete: p.canDelete,
-          },
-        }));
-
-      return {
-        success: true,
-        message: "Connexion réussie",
-        token,
-        refreshToken,
-        utilisateur: { ...utilisateur.toJSON(), isFirstLogin: utilisateur.isFirstLogin },
-        abonnement: utilisateur.abonnements?.[0] || null,
-        menus,
-      };
+      return await AuthService.ouvrirSession(utilisateur, contexte);
 
     } catch (error) {
       // CRIT-03 : logger structuré, pas de console.error + stack trace brute
       logger.error('auth.login', { message: error.message });
       throw error;
     }
+  }
+
+  // ==============================
+  // CONNEXION GOOGLE / APPLE
+  // ==============================
+  /**
+   * Connexion par un compte Google ou Apple.
+   *
+   * - L'adresse lue dans le jeton (vérifiée par le fournisseur) correspond à
+   *   un compte SaamBiz : on ouvre la session de ce compte, client ou vendeur.
+   * - Aucun compte : on crée un compte client, déjà vérifié. Un vendeur passe
+   *   par l'inscription habituelle, qui crée aussi sa boutique.
+   *
+   * Les comptes d'administration restent réservés au mot de passe.
+   *
+   * @param {{ fournisseur: 'google'|'apple', idToken: string, nonce?: string,
+   *           prenom?: string, nom?: string }} donnees  prénom et nom : Apple
+   *           ne les transmet qu'à la toute première connexion, et pas dans
+   *           le jeton ; l'application les relaie.
+   */
+  static async connexionSociale({ fournisseur, idToken, nonce, prenom, nom }, contexte = {}) {
+    const ConnexionSociale = require('./connexionSociale.service');
+    const identite = await ConnexionSociale.verifier(fournisseur, idToken, { nonce });
+
+    const charger = () => Utilisateur.findOne({
+      where: { email: identite.email },
+      include: [{ model: Abonnement, as: 'abonnements', required: false }],
+      order: [[{ model: Abonnement, as: 'abonnements' }, 'createdAt', 'DESC']],
+    });
+
+    let utilisateur = await charger();
+    let nouveauCompte = false;
+
+    if (utilisateur) {
+      if (!['Acheteur', 'Vendeur'].includes(utilisateur.role)) {
+        return { success: false, message: 'Ce compte se connecte avec son mot de passe.' };
+      }
+      if (utilisateur.statut !== 'actif') {
+        return { success: false, message: `Votre compte est ${utilisateur.statut}` };
+      }
+      // Le fournisseur vient de confirmer l'adresse.
+      if (!utilisateur.verifie) {
+        await utilisateur.update({ verifie: true }, { silent: true });
+      }
+    } else {
+      const morceauEmail = identite.email.split('@')[0].replace(/[._-]+/g, ' ').trim();
+      const prenomFinal = (prenom || identite.prenom || morceauEmail || 'Client').trim().slice(0, 80);
+      const nomFinal = (nom || identite.nom || prenomFinal).trim().slice(0, 80);
+
+      // Mot de passe aléatoire jamais communiqué : le compte se connecte par
+      // Google / Apple, ou par « Mot de passe oublié » s'il veut en choisir un.
+      const motDePasse = await bcrypt.hash(
+        require('crypto').randomBytes(32).toString('hex'),
+        bcryptConfig.saltRounds,
+      );
+
+      await Utilisateur.create({
+        nom: nomFinal,
+        prenom: prenomFinal,
+        email: identite.email,
+        mot_de_passe: motDePasse,
+        role: 'Acheteur',
+        verifie: true,
+        isFirstLogin: false,
+      });
+      nouveauCompte = true;
+      utilisateur = await charger();
+
+      sendWelcomeEmail({
+        to: identite.email,
+        nom: utilisateur.nom,
+        prenom: utilisateur.prenom,
+        role: utilisateur.role,
+      }).catch(() => {});
+    }
+
+    const session = await AuthService.ouvrirSession(utilisateur, contexte);
+    return { ...session, nouveauCompte };
+  }
+
+  // ==============================
+  // OUVERTURE DE SESSION
+  // ==============================
+  /**
+   * Émet les jetons d'une personne dont l'identité vient d'être prouvée —
+   * par mot de passe (login) ou par Google / Apple (connexionSociale).
+   * `utilisateur` doit être chargé avec ses abonnements, du plus récent au
+   * plus ancien.
+   */
+  static async ouvrirSession(utilisateur, contexte = {}) {
+    const token = jwt.sign({
+      id: utilisateur.id,
+      nom: utilisateur.nom,
+      prenom: utilisateur.prenom,
+      email: utilisateur.email,
+      role: utilisateur.role,
+    }, jwtConfig.secret, { expiresIn: jwtConfig.expiresIn });
+
+    // Dates de connexion : la première n'est écrite qu'une fois. Une panne
+    // ici ne doit pas empêcher de se connecter.
+    const maintenant = new Date();
+    try {
+      await Utilisateur.update(
+        {
+          derniereConnexion: maintenant,
+          ...(utilisateur.premiereConnexion ? {} : { premiereConnexion: maintenant }),
+        },
+        { where: { id: utilisateur.id }, silent: true, hooks: false },
+      );
+      if (!utilisateur.premiereConnexion) utilisateur.premiereConnexion = maintenant;
+      utilisateur.derniereConnexion = maintenant;
+    } catch (err) {
+      logger.warn('auth.login:dates-connexion', { message: err.message });
+    }
+
+    // Les connexions au dashboard apparaissent dans l'activité des admins.
+    if (['Admin', 'SuperAdmin'].includes(utilisateur.role)) {
+      require('./audit.service').enregistrer({
+        adminId: utilisateur.id,
+        action: 'connexion',
+        cible: 'session',
+        cibleId: utilisateur.id,
+        details: { appareil: (contexte.userAgent || '').slice(0, 160) || undefined },
+      }).catch(() => {});
+    }
+
+    // Le refresh est enregistré hashé : il devient révocable, plafonné
+    // par compte, et purgeable. Voir RefreshTokenService.
+    const RefreshTokenService = require('./refreshToken.service');
+    const refreshToken = await RefreshTokenService.emettre(utilisateur.id, contexte);
+
+    // Récupérer les menus accessibles selon les permissions RBAC
+    const { Permission, Menu } = require('../models');
+    const permissionsData = await Permission.findAll({
+      where: { userId: utilisateur.id },
+      include: [{ model: Menu, as: 'menu', where: { isActive: true }, required: false }],
+    });
+    const menus = permissionsData
+      .filter((p) => p.canView && p.menu)
+      .map((p) => ({
+        id:   p.menu.id,
+        name: p.menu.name,
+        code: p.menu.code,
+        path: p.menu.path,
+        icon: p.menu.icon,
+        permissions: {
+          canView:   p.canView,
+          canCreate: p.canCreate,
+          canUpdate: p.canUpdate,
+          canDelete: p.canDelete,
+        },
+      }));
+
+    return {
+      success: true,
+      message: "Connexion réussie",
+      token,
+      refreshToken,
+      utilisateur: { ...utilisateur.toJSON(), isFirstLogin: utilisateur.isFirstLogin },
+      abonnement: utilisateur.abonnements?.[0] || null,
+      menus,
+    };
   }
 
   // ==============================
