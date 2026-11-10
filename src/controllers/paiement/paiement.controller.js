@@ -78,12 +78,23 @@ exports.webhookWave = async (req, res) => {
 
 exports.webhook = async (req, res) => {
   try {
-    console.log("[WEBHOOK] Notification Orange Money reçue:", JSON.stringify(req.body));
+    // Le corps entier était imprimé ici, en clair et sans condition : il
+    // porte `pay_token`, le jeton de la transaction. Un journal de production
+    // se lit chez l'hébergeur, dans l'agrégateur de logs, et dans tout export
+    // qui en sort. Seuls les identifiants nécessaires au diagnostic sont
+    // conservés, et par le journal structuré du projet plutôt que par
+    // `console`, qui échappe à ses règles de niveau et de rédaction.
+    logger.info('webhook_orange_recu', {
+      orderId: req.body?.order_id,
+      status: req.body?.status,
+    });
 
     // Valider que la notification vient bien d'Orange
     const estValide = OrangeMoneyService.validerSignature(req);
     if (!estValide) {
-      console.warn("[WEBHOOK] Signature invalide ou body malformé");
+      logger.warn('webhook_orange_signature_invalide', {
+        orderId: req.body?.order_id,
+      });
       return res.status(400).json({ success: false, message: "Notification invalide" });
     }
 
@@ -106,9 +117,16 @@ exports.webhook = async (req, res) => {
     return res.status(200).json({ success: true });
 
   } catch (err) {
-    console.error("[WEBHOOK] Erreur traitement:", err.message);
+    logger.error('webhook_orange_erreur', {
+      message: err.message,
+      orderId: req.body?.order_id,
+    });
     // On renvoie quand même 200 pour éviter qu'Orange retry en boucle sur une erreur interne
-    return res.status(200).json({ success: false, error: err.message });
+    // Le message interne n'est pas renvoyé : ce point d'entrée est public par
+    // construction, et un message d'erreur Sequelize nomme les tables et les
+    // colonnes. Le 200 reste, lui, volontaire — il évite qu'Orange rejoue la
+    // notification en boucle sur une panne que le rejeu ne corrigera pas.
+    return res.status(200).json({ success: false });
   }
 };
 
