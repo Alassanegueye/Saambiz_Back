@@ -93,6 +93,27 @@ exports.login = asyncHandler(async (req, res) => {
   });
 });
 
+// Connexion Google / Apple : même réponse que /auth/login, plus `nouveauCompte`
+// (l'application peut alors accueillir la personne autrement).
+exports.connexionSociale = asyncHandler(async (req, res) => {
+  const { fournisseur, idToken, nonce, prenom, nom } = req.body;
+  const contexte = { userAgent: req.get('user-agent'), ip: req.ip };
+  const result = await AuthService.connexionSociale({ fournisseur, idToken, nonce, prenom, nom }, contexte);
+
+  if (!result.success) {
+    throw new BadRequestError(result.message);
+  }
+
+  return res.status(200).json({
+    token: result.token,
+    refreshToken: result.refreshToken,
+    utilisateur: formatUser(result.utilisateur),
+    abonnement: result.abonnement,
+    menus: result.menus || [],
+    nouveauCompte: result.nouveauCompte,
+  });
+});
+
 exports.logout = asyncHandler(async (req, res) => {
   const token = req.headers.authorization.split(' ')[1];
   const decoded = jwt.decode(token);

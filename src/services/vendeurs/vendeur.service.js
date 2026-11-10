@@ -671,32 +671,36 @@ class VendeurService {
   // Distincte de la confirmation d'email : ici le vendeur transmet une pièce
   // justificative qu'un administrateur examine. Tant que le profil n'est pas
   // approuvé, la boutique reste visible mais sans le badge de confiance.
-  static async soumettreVerification(vendeurId, { fichier, typePiece }) {
+  static async soumettreVerification(vendeurId, { fichier, verso, typePiece }) {
     const vendeur = await Utilisateur.findOne({ where: { id: vendeurId, role: 'Vendeur' } });
     if (!vendeur) return { success: false, message: 'Vendeur introuvable' };
 
     if (vendeur.statutValidation === 'approuve') {
-      return { success: false, message: 'Votre profil est déjà validé.' };
+      return { success: false, message: 'Votre boutique est déjà certifiée.' };
     }
     if (vendeur.statutValidation === 'en_attente') {
       return { success: false, message: "Votre demande est déjà en cours d'examen." };
     }
-    if (!fichier) {
-      return { success: false, message: 'La pièce justificative est requise.' };
+    if (!fichier || !verso) {
+      return { success: false, message: "Envoyez la photo du recto et celle du verso de votre pièce d'identité." };
     }
 
     // Même stockage que les logos et photos produits (buffer multer).
-    const pieceUrl = await uploadImage(fichier.buffer);
+    const [pieceUrl, versoUrl] = await Promise.all([
+      uploadImage(fichier.buffer),
+      uploadImage(verso.buffer),
+    ]);
 
     await vendeur.update({
       pieceIdentite: pieceUrl,
+      pieceIdentiteVerso: versoUrl,
       typePiece: typePiece || null,
       statutValidation: 'en_attente',
       dateSoumission: new Date(),
       motifRejet: null,
     });
 
-    return { success: true, message: "Demande envoyée. Un administrateur l'examine sous 48 h." };
+    return { success: true, message: "Demande envoyée. Notre équipe l'examine sous 48 h." };
   }
 
   static async statutVerification(vendeurId) {

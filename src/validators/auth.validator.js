@@ -75,3 +75,17 @@ exports.loginSchema = Joi.object({
   .or('email', 'telephone')
   .messages({ 'object.missing': 'Email ou téléphone est requis.' })
   .options({ allowUnknown: false });
+
+// ─── Connexion Google / Apple ──────────────────────────────────────────────
+exports.connexionSocialeSchema = Joi.object({
+  fournisseur: Joi.string().valid('google', 'apple').required(),
+  // Jeton d'identité signé par le fournisseur (JWT).
+  idToken: Joi.string().max(8192).required().messages({
+    'any.required': 'Jeton de connexion manquant.',
+  }),
+  // Nonce brut (Apple) : le jeton en porte l'empreinte SHA-256.
+  nonce:  Joi.string().max(256).optional().allow(''),
+  // Apple ne transmet le nom qu'à la première connexion, hors du jeton.
+  prenom: Joi.string().max(100).optional().allow(''),
+  nom:    Joi.string().max(100).optional().allow(''),
+}).options({ allowUnknown: false });

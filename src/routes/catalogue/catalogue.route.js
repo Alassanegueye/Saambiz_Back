@@ -11,7 +11,8 @@ router.use(authOptionnel);
 router.get('/produits', CatalogueController.lister);
 router.get('/produits/:id', CatalogueController.detail);
 router.get('/promotions', CatalogueController.promotions);
-// ?q= &limit= : recherche de boutiques en ligne (accueil).
+// ?q= &limit= &page= : boutiques en ligne — recherche (accueil) ou, sans
+// q, toutes les boutiques, les plus récentes d'abord (onglet Boutiques).
 router.get('/boutiques', CatalogueController.rechercherBoutiques);
 router.get('/boutiques/:id', CatalogueController.boutique);
 

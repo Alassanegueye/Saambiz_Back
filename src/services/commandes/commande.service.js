@@ -249,7 +249,9 @@ class CommandeService {
       // 3) Statut initial : le vendeur décide d'abord, et le stock n'est réservé
       //    qu'à son acceptation. Seule une commande saisie par l'administration
       //    et réglée à la livraison est engagée d'emblée.
-      const engageeDEmblee = origine === 'admin' && modePaiement !== 'en_ligne';
+      //    Une commande saisie par le vendeur lui-même l'est aussi : il l'a
+      //    déjà acceptée en la prenant.
+      const engageeDEmblee = ['admin', 'dashboard'].includes(origine) && modePaiement !== 'en_ligne';
 
       const commande = await Commande.create({
         referenceCommande: CommandeService._genererReference(),
@@ -289,7 +291,10 @@ class CommandeService {
       await t.commit();
 
       // 6) Notifier le vendeur (hors transaction)
-      CommandeService._notifierVendeurNouvelleCommande(commande).catch(() => {});
+      // (inutile quand c'est lui qui vient de la saisir).
+      if (origine !== 'dashboard') {
+        CommandeService._notifierVendeurNouvelleCommande(commande).catch(() => {});
+      }
       // Le client reçoit un accusé de réception au nom de la boutique.
       CommandeService._emailClient(commande, 'recue').catch(() => {});
 
@@ -461,6 +466,33 @@ class CommandeService {
 
     // Notifier l'acheteur de l'avancement
     CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+    return commande;
+  }
+
+  // -------------------- VENDEUR : confirmer un paiement reçu en main propre --------------------
+  // Pour une commande réglée à la livraison (ou au retrait) : le vendeur
+  // confirme qu'il a bien été payé, et la commande entre dans sa comptabilité.
+  // Les paiements en ligne, eux, sont confirmés par la passerelle.
+  static async confirmerPaiementVendeur(commandeId, vendeurId) {
+    const commande = await Commande.findByPk(commandeId);
+    if (!commande) throw new NotFoundError('Commande introuvable');
+    if (commande.vendeurId !== vendeurId) {
+      throw new ForbiddenError('Cette commande ne vous appartient pas');
+    }
+    if (commande.modePaiement === 'en_ligne') {
+      throw new BadRequestError('Cette commande se règle en ligne : son paiement est confirmé automatiquement.');
+    }
+    if (['annulee', 'rejetee'].includes(commande.statut)) {
+      throw new BadRequestError('Cette commande est annulée.');
+    }
+    if (commande.statut === 'en_attente') {
+      throw new BadRequestError('Acceptez d\'abord la commande.');
+    }
+    // Déjà confirmé : rien à refaire.
+    if (commande.statutPaiement === 'paye') return commande;
+
+    commande.statutPaiement = 'paye';
+    await commande.save();
     return commande;
   }
 

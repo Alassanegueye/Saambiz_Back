@@ -8,6 +8,7 @@ const validate = require('../middlewares/validate.middleware');
 const {
   registerSchema,
   loginSchema,
+  connexionSocialeSchema,
   envoyerCodeInscriptionSchema,
   verifierCodeInscriptionSchema,
 } = require('../validators/auth.validator');
@@ -162,6 +163,38 @@ router.post(
 );
 
 router.post('/login', limiteConnexion, validate(loginSchema), authController.login);
+
+/**
+ * @swagger
+ * /auth/social:
+ *   post:
+ *     summary: Connexion avec un compte Google ou Apple
+ *     description: >
+ *       L'application transmet le jeton d'identité reçu du fournisseur. Le
+ *       serveur en vérifie la signature, l'émetteur et le destinataire, puis
+ *       ouvre la session du compte portant cette adresse e-mail — ou crée un
+ *       compte client s'il n'en existe aucun. Réponse identique à /auth/login,
+ *       plus `nouveauCompte`.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [fournisseur, idToken]
+ *             properties:
+ *               fournisseur: { type: string, enum: [google, apple] }
+ *               idToken: { type: string }
+ *               nonce: { type: string, description: 'Nonce brut (Apple)' }
+ *               prenom: { type: string }
+ *               nom: { type: string }
+ *     responses:
+ *       200: { description: Connexion réussie }
+ *       400: { description: Fournisseur non activé ou compte non autorisé }
+ *       401: { description: Jeton invalide ou adresse non vérifiée }
+ */
+router.post('/social', limiteConnexion, validate(connexionSocialeSchema), authController.connexionSociale);
 
 /**
  * @swagger

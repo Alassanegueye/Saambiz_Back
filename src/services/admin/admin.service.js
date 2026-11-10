@@ -8,7 +8,7 @@ const { BadRequestError, ForbiddenError, ConflictError, NotFoundError } = requir
 const bcrypt = require('bcryptjs');
 const { generatePassword } = require('../../utils/generatePassword');
 const { bcryptConfig } = require('../../config/security');
-const { sendAccesUtilisateurEmail } = require('../resend.service');
+const { sendAccesUtilisateurEmail, sendCertificationEmail } = require('../resend.service');
 
 class AdminService {
 
@@ -388,7 +388,7 @@ class AdminService {
       where: { role: 'Vendeur', statutValidation: 'en_attente' },
       attributes: [
         'id', 'prenom', 'nom', 'email', 'telephone',
-        'pieceIdentite', 'typePiece', 'dateSoumission', 'createdAt',
+        'pieceIdentite', 'pieceIdentiteVerso', 'typePiece', 'dateSoumission', 'createdAt',
       ],
       include: [{
         model: Boutique,
@@ -401,6 +401,24 @@ class AdminService {
     return { message: 'Profils vendeurs en attente de validation', vendeurs };
   }
 
+  /** E-mail de réponse à une demande de certification. Un échec d'envoi
+   *  est journalisé, il n'annule pas la décision de l'administrateur. */
+  static async _emailCertification(vendeur, approuvee, motif = null) {
+    if (!vendeur.email) return;
+    try {
+      const boutique = await Boutique.findOne({ where: { vendeurId: vendeur.id }, attributes: ['nom'] });
+      await sendCertificationEmail({
+        to: vendeur.email,
+        prenom: vendeur.prenom,
+        boutique: boutique ? boutique.nom : null,
+        approuvee,
+        motif,
+      });
+    } catch (err) {
+      logger.warn(`[certification] e-mail non envoyé à ${vendeur.email} : ${err.message}`);
+    }
+  }
+
   static async validerProfilVendeur(vendeurId, adminId) {
     const vendeur = await Utilisateur.findOne({ where: { id: vendeurId, role: 'Vendeur' } });
     if (!vendeur) throw new NotFoundError('Vendeur introuvable');
@@ -411,6 +429,16 @@ class AdminService {
       validePar: adminId,
       motifRejet: null,
     });
+
+    // Le vendeur est prévenu dans l'application (chargé ici : évite une
+    // dépendance circulaire au démarrage). Un échec d'envoi n'annule rien.
+    require('../notifications/notification.service').creerNotification({
+      utilisateurId: vendeurId,
+      titre: 'Votre boutique est certifiée',
+      message: 'Félicitations ! Le badge de certification s\'affiche maintenant sur votre boutique.',
+      type: 'systeme',
+    }).catch(() => {});
+    AdminService._emailCertification(vendeur, true);
 
     return { message: 'Profil vendeur approuvé', vendeurId };
   }
@@ -428,6 +456,14 @@ class AdminService {
       dateValidation: new Date(),
       validePar: adminId,
     });
+
+    require('../notifications/notification.service').creerNotification({
+      utilisateurId: vendeurId,
+      titre: 'Certification refusée',
+      message: `Motif : ${motif.trim()} Vous pouvez renvoyer vos photos depuis votre compte.`,
+      type: 'systeme',
+    }).catch(() => {});
+    AdminService._emailCertification(vendeur, false, motif.trim());
 
     return { message: 'Profil vendeur rejeté', vendeurId };
   }
