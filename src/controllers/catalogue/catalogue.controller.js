@@ -50,9 +50,11 @@ exports.promotions = asyncHandler(async (req, res) => {
 });
 
 exports.rechercherBoutiques = asyncHandler(async (req, res) => {
-  const { q, limit } = req.query;
-  const resultat = await CatalogueService.rechercherBoutiques({ q, limit });
+  const { q, limit, page } = req.query;
+  const resultat = await CatalogueService.rechercherBoutiques({ q, limit, page });
   res.json({ success: true, ...resultat });
+  // Parcourir la liste sans rien chercher n'apprend rien sur les goûts.
+  if (!String(q || '').trim()) return;
   // Le terme lui-même est mémorisé par la recherche de produits lancée en
   // même temps ; ici, seules les catégories des boutiques trouvées comptent.
   apprendre(req, () => AccueilService.enregistrerAffinites(

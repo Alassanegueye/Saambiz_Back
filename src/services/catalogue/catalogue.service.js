@@ -275,33 +275,55 @@ class CatalogueService {
 
   /** Fiche publique d'une boutique (sans ses produits, chargés à part). */
   /**
-   * Boutiques en ligne dont le nom, le slogan, la catégorie ou la ville
-   * contient `q`. Sert à la recherche de l'accueil, qui annonce « un produit,
-   * une boutique » : sans elle, seules les boutiques étaient introuvables.
+   * Boutiques en ligne, pour la recherche de l'accueil (« un produit, une
+   * boutique ») et l'onglet Boutiques de l'explorateur.
+   *
+   * - Avec `q` : celles dont le nom, le slogan, la catégorie ou la ville le
+   *   contient, par ordre alphabétique.
+   * - Sans `q` : toutes, les plus récentes d'abord — de quoi parcourir les
+   *   boutiques sans savoir ce qu'on cherche.
+   *
+   * Paginé (`page`, `limit` ≤ 30). `verifiee` : vendeur approuvé par
+   * l'administration.
    */
-  static async rechercherBoutiques({ q, limit } = {}) {
+  static async rechercherBoutiques({ q, limit, page } = {}) {
     const texte = String(q || '').trim().slice(0, 80);
-    if (!texte) return { boutiques: [] };
-    const motif = `%${texte.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-    const boutiques = await Boutique.findAll({
-      where: {
-        statut: 'actif',
-        [Op.or]: [
-          { nom: { [Op.iLike]: motif } },
-          { slogan: { [Op.iLike]: motif } },
-          { categorie: { [Op.iLike]: motif } },
-          { ville: { [Op.iLike]: motif } },
-        ],
-      },
+    const parPage = Math.min(Math.max(Number(limit) || 10, 1), 30);
+    const numero = Math.max(parseInt(page, 10) || 1, 1);
+
+    const where = { statut: 'actif' };
+    if (texte) {
+      const motif = `%${texte.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+      where[Op.or] = [
+        { nom: { [Op.iLike]: motif } },
+        { slogan: { [Op.iLike]: motif } },
+        { categorie: { [Op.iLike]: motif } },
+        { ville: { [Op.iLike]: motif } },
+      ];
+    }
+
+    const { rows, count } = await Boutique.findAndCountAll({
+      where,
       attributes: ['id', 'nom', 'slug', 'slogan', 'logo', 'ville', 'localisation', 'categorie'],
       include: [{
-        model: Utilisateur, as: 'vendeur', attributes: [],
+        model: Utilisateur, as: 'vendeur', attributes: ['statutValidation'],
         where: { statut: 'actif' }, required: true,
       }],
-      order: [['nom', 'ASC']],
-      limit: Math.min(Math.max(Number(limit) || 10, 1), 20),
+      order: texte ? [['nom', 'ASC']] : [['createdAt', 'DESC']],
+      limit: parPage,
+      offset: (numero - 1) * parPage,
+      distinct: true,
     });
-    return { boutiques: boutiques.map((b) => b.toJSON()) };
+
+    return {
+      boutiques: rows.map((b) => {
+        const { vendeur, ...boutique } = b.toJSON();
+        return { ...boutique, verifiee: vendeur?.statutValidation === 'approuve' };
+      }),
+      total: count,
+      page: numero,
+      pages: Math.ceil(count / parPage),
+    };
   }
 
   static async boutique(id) {
