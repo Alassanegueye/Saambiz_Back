@@ -29,15 +29,18 @@ class PromotionService {
     // Reflète le prix barré sur le produit pour l'affichage marketplace
     await produit.update({ prix_promo: prixPromo });
 
-    // 🔔 Notifie les abonnés de la boutique ayant activé la cloche
-    const remise = Math.round((1 - prixPromo / Number(produit.prix)) * 100);
-    NotificationService.notifierAbonnesDuVendeur(
-      vendeurId,
-      `🔥 Promo : ${produit.nom}`,
-      `${titre} — -${remise}% sur "${produit.nom}"`,
-      'promotion',
-      { produitId }
-    ).catch(() => {});
+    // 🔔 Les clients ne sont prévenus que si le vendeur l'a demandé, avec son
+    // propre message, et seulement ceux qui ont activé la cloche.
+    if (data.notifier === true && String(description || '').trim()) {
+      NotificationService.notifierAbonnesDuVendeur(
+        vendeurId,
+        titre,
+        String(description).trim().slice(0, 500),
+        'promotion',
+        { produitId },
+        { image: data.image },
+      ).catch(() => {});
+    }
 
     return { success: true, message: 'Promotion créée', promotion };
   }
@@ -52,11 +55,26 @@ class PromotionService {
    * dans tous les cas seulement ceux qui ont activé la cloche de la boutique.
    */
   static async creerCampagne(vendeurId, data = {}) {
+    // La requête peut arriver en multipart (avec une image) : les listes y
+    // voyagent en JSON, les booléens en texte.
+    const liste = (v) => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string' && v.trim().startsWith('[')) {
+        try { return JSON.parse(v); } catch { return []; }
+      }
+      return v;
+    };
+    data = { ...data, produitIds: liste(data.produitIds), destinataires: liste(data.destinataires) };
+
     const type = data.type === 'information' ? 'information' : 'promotion';
+    // Une information est faite pour être envoyée ; une promotion peut être
+    // créée sans prévenir personne si le vendeur décoche « Notifier ».
+    const notifier = type === 'information' || !(data.notifier === false || data.notifier === 'false');
     const titre = String(data.titre || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     const message = String(data.message || '').trim().slice(0, 500);
-    if (!titre) throw new BadRequestError('Donnez un titre à votre message.');
-    if (!message) throw new BadRequestError('Écrivez le message à envoyer à vos clients.');
+    const image = /^https:\/\//.test(String(data.image || '')) ? String(data.image) : null;
+    if (notifier && !titre) throw new BadRequestError('Donnez un titre à votre message.');
+    if (notifier && !message) throw new BadRequestError('Écrivez le message à envoyer à vos clients.');
 
     const boutique = await Boutique.findOne({ where: { vendeurId }, attributes: ['id', 'nom', 'logo'] });
     if (!boutique) throw new NotFoundError('Créez d\'abord votre boutique.');
@@ -84,12 +102,23 @@ class PromotionService {
       promotions = await Promise.all(produits.map(async (produit) => {
         const prixPromo = Math.max(1, Math.round(Number(produit.prix) * (1 - pourcentage / 100)));
         const promo = await Promotion.create({
-          titre, description: message, prixPromo, produitId: produit.id, vendeurId, dateDebut: debut, dateFin: fin,
+          titre: titre || `Promotion -${Math.round(pourcentage)} %`,
+          description: message || null,
+          prixPromo, produitId: produit.id, vendeurId, dateDebut: debut, dateFin: fin,
         });
         // Prix barré visible tout de suite si la promotion a déjà commencé.
         if (debut <= new Date()) await produit.update({ prix_promo: prixPromo });
         return promo;
       }));
+    }
+
+    if (!notifier) {
+      return {
+        success: true,
+        message: `Promotion créée sur ${promotions.length} produit${promotions.length > 1 ? 's' : ''}. Aucun client n'a été notifié.`,
+        promotions: promotions.length,
+        destinataires: 0,
+      };
     }
 
     // ── Destinataires : abonnés avec la cloche activée ────────────────
@@ -111,7 +140,8 @@ class PromotionService {
         boutiqueId: boutique.id,
         ...(promotions.length === 1 ? { produitId: promotions[0].produitId } : {}),
       },
-      { image: boutique.logo },
+      // L'image jointe par le vendeur (Cloudinary), sinon le logo de la boutique.
+      { image: image || boutique.logo },
     );
 
     return {

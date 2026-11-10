@@ -8,7 +8,9 @@ const creerPromotionSchema = Joi.object({
   pourcentage: Joi.number().min(1).max(99).optional().messages({ 'number.min': 'Le rabais doit être entre 1 et 99 %', 'number.max': 'Le rabais doit être entre 1 et 99 %' }),
   produitId: Joi.string().uuid().required().messages({ 'any.required': 'L\'identifiant du produit est requis' }),
   dateDebut: Joi.date().required().messages({ 'any.required': 'La date de début est requise' }),
-  dateFin: Joi.date().required().messages({ 'any.required': 'La date de fin est requise' })
+  dateFin: Joi.date().required().messages({ 'any.required': 'La date de fin est requise' }),
+  // Prévenir les abonnés (cloche active) avec `titre` et `description`.
+  notifier: Joi.boolean().optional()
 }).or('prixPromo', 'pourcentage').messages({ 'object.missing': 'Indiquez un prix promo ou un pourcentage de rabais' });
 
 const modifierPromotionSchema = Joi.object({

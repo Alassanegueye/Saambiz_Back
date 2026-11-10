@@ -1,6 +1,7 @@
 const PromotionService = require('../../services/promotions/promotion.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { BadRequestError, NotFoundError } = require('../../errors/AppError');
+const { uploadImage } = require('../../services/stockage/upload.service');
 
 exports.creerPromotion = asyncHandler(async (req, res) => {
   const result = await PromotionService.creerPromotion(req.user.id, req.body);
@@ -20,7 +21,11 @@ exports.modifierPromotion = asyncHandler(async (req, res) => {
 });
 
 exports.creerCampagne = asyncHandler(async (req, res) => {
-  const result = await PromotionService.creerCampagne(req.user.id, req.body);
+  const data = { ...req.body };
+  // Image jointe au message : elle passe par Cloudinary, comme tous les fichiers.
+  if (req.file) data.image = await uploadImage(req.file.buffer);
+  else delete data.image;
+  const result = await PromotionService.creerCampagne(req.user.id, data);
   return res.status(201).json(result);
 });
 

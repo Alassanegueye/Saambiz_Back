@@ -59,7 +59,7 @@ class NotificationService {
    * 🔔 Notifie les abonnés (cloche active) de toutes les boutiques d'un vendeur.
    * Utilisé lors de la publication d'un nouveau produit ou d'une promotion.
    */
-  static async notifierAbonnesDuVendeur(vendeurId, titre, message, type, data = {}) {
+  static async notifierAbonnesDuVendeur(vendeurId, titre, message, type, data = {}, { image } = {}) {
     const boutiques = await Boutique.findAll({
       where: { vendeurId },
       attributes: ['id', 'logo'],
@@ -73,7 +73,7 @@ class NotificationService {
     });
     const ids = abonnes.map(a => a.acheteurId);
     // Le push porte le logo de la boutique, pas celui de SaamBiz.
-    return this.notifierUtilisateurs(ids, titre, message, type, { boutiqueId: boutiques[0].id, ...data }, { image: boutiques[0].logo });
+    return this.notifierUtilisateurs(ids, titre, message, type, { boutiqueId: boutiques[0].id, ...data }, { image: image || boutiques[0].logo });
   }
 
   static async mesNotifications(userId) {

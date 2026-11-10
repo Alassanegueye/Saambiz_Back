@@ -22,6 +22,24 @@ try {
   logger.error('[FCM] Erreur initialisation Firebase Admin', { message: err.message });
 }
 
+/** Canal Android créé par l'application (FcmService) : les deux doivent correspondre. */
+const CANAL_ANDROID = 'saambiz_push_channel';
+
+/**
+ * Image d'une notification. Les fichiers passent par Cloudinary : on demande
+ * à Cloudinary une version légère (≤ 1024 px, JPEG compressé), car Android
+ * abandonne l'image d'une notification au-delà d'1 Mo environ. Une adresse
+ * https hors Cloudinary est gardée telle quelle ; tout le reste est ignoré.
+ */
+function imagePourPush(url) {
+  const u = String(url || '').trim();
+  if (!/^https:\/\//.test(u)) return undefined;
+  if (/res\.cloudinary\.com\/.+\/image\/upload\//.test(u)) {
+    return u.replace('/image/upload/', '/image/upload/c_limit,w_1024,h_1024,q_auto:good,f_jpg/');
+  }
+  return u;
+}
+
 /**
  * Envoie une notification push à un ou plusieurs utilisateurs via leurs device tokens FCM.
  * @param {string|string[]} utilisateurIds
@@ -44,7 +62,7 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
   const tokens = rows.map(r => r.token);
 
   // data doit être Record<string,string> pour FCM
-  const imageUrl = /^https:\/\//.test(image || '') ? image : undefined;
+  const imageUrl = imagePourPush(image);
   const safeData = Object.fromEntries(
     Object.entries({ ...data, ...(imageUrl && { image: imageUrl }) })
       .filter(([, v]) => v !== undefined && v !== null)
@@ -55,11 +73,28 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
     const response = await getMessaging().sendEachForMulticast({
       notification: { title, body, ...(imageUrl && { imageUrl }) },
       data: safeData,
-      // Le logo accompagne la notification sur Android comme sur iOS.
-      ...(imageUrl && {
-        android: { notification: { imageUrl } },
-        apns: { payload: { aps: { 'mutable-content': 1 } }, fcmOptions: { imageUrl } },
-      }),
+
+      // Priorité haute : sans elle, Android garde le message en file d'attente
+      // quand le téléphone est en veille, et la promo arrive des dizaines de
+      // minutes plus tard. Le canal doit être celui créé par l'application.
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: CANAL_ANDROID,
+          sound: 'default',
+          ...(imageUrl && { imageUrl }),
+        },
+      },
+
+      // iOS : priorité 10 = livraison immédiate ; `sound` fait apparaître la
+      // bannière téléphone verrouillé ; `mutable-content` laisse iOS
+      // télécharger l'image.
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default', 'mutable-content': 1 } },
+        ...(imageUrl && { fcmOptions: { imageUrl } }),
+      },
+
       tokens
     });
 
@@ -114,4 +149,4 @@ async function removeDeviceToken(utilisateurId, token = null) {
   await DeviceToken.destroy({ where });
 }
 
-module.exports = { sendPushToUsers, saveDeviceToken, removeDeviceToken };
+module.exports = { sendPushToUsers, saveDeviceToken, removeDeviceToken, imagePourPush };

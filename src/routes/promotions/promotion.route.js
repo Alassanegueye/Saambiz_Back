@@ -6,6 +6,7 @@ const checkActiveUser = require('../../middlewares/checkActiveUser.middleware');
 const isVendeur = require('../../middlewares/isVendeur.middleware');
 const finAbonnement = require('../../middlewares/finAbonnement.middleware');
 const validate = require('../../middlewares/validate.middleware');
+const upload = require('../../middlewares/upload.middleware');
 const { creerPromotionSchema, modifierPromotionSchema } = require('../../validations/promotion.validation');
 
 // Route publique
@@ -14,7 +15,10 @@ router.get('/actives', promotionController.getPromotionsActives);
 // Routes vendeur
 router.post('/', auth, checkActiveUser, isVendeur, finAbonnement, validate(creerPromotionSchema), promotionController.creerPromotion);
 // Promotion sur des produits, ou simple message, envoyé aux abonnés choisis.
-router.post('/campagne', auth, checkActiveUser, isVendeur, finAbonnement, promotionController.creerCampagne);
+// Multipart possible : une image facultative jointe au message (envoyée sur Cloudinary).
+router.post('/campagne', auth, checkActiveUser, isVendeur, finAbonnement,
+  upload.single('image'), upload.verifyMagicBytes,
+  promotionController.creerCampagne);
 router.put('/:id', auth, checkActiveUser, isVendeur, finAbonnement, validate(modifierPromotionSchema), promotionController.modifierPromotion);
 router.delete('/:id', auth, checkActiveUser, isVendeur, promotionController.supprimerPromotion);
 router.get('/', auth, checkActiveUser, isVendeur, promotionController.mesPromotions);

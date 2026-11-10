@@ -39,6 +39,13 @@ class FavoriService {
    * Si l'acheteur ne suit pas encore la boutique, le suivi est créé avec la cloche à l'état demandé.
    */
   static async toggleCloche(acheteurId, boutiqueId, active) {
+    // Éteindre la cloche d'une boutique non suivie ne doit pas créer de suivi.
+    if (!active) {
+      const existant = await Favori.findOne({ where: { acheteurId, boutiqueId } });
+      if (!existant) {
+        return { success: true, message: 'Cloche désactivée 🔕', clocheActive: false };
+      }
+    }
     const [favori] = await Favori.findOrCreate({
       where: { acheteurId, boutiqueId },
       defaults: { acheteurId, boutiqueId, clocheActive: active },
