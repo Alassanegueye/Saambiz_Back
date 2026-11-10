@@ -21,7 +21,7 @@
  * Les deux adresses sont couvertes : `/saambiz/v1` (référence) et `/saambiz`
  * (alias historique, encore appelé par les applications installées).
  *
- * 123 routes, dont 101 protégées.
+ * 126 routes, dont 103 protégées.
  */
 
 const request = require('supertest');
@@ -67,6 +67,7 @@ const ROUTES = [
   { methode: 'POST', chemin: '/auth/refresh', url: '/auth/refresh', protegee: false },
   { methode: 'POST', chemin: '/auth/register', url: '/auth/register', protegee: false },
   { methode: 'POST', chemin: '/auth/resend-verification', url: '/auth/resend-verification', protegee: false },
+  { methode: 'POST', chemin: '/auth/social', url: '/auth/social', protegee: false },
   { methode: 'GET', chemin: '/auth/verify-email', url: '/auth/verify-email', protegee: false },
   { methode: 'POST', chemin: '/auth/verify-email', url: '/auth/verify-email', protegee: false },
   { methode: 'POST', chemin: '/avis', url: '/avis', protegee: true },
@@ -86,9 +87,11 @@ const ROUTES = [
   { methode: 'GET', chemin: '/commandes/:id', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000', protegee: true },
   { methode: 'PUT', chemin: '/commandes/:id/annuler', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/annuler', protegee: true },
   { methode: 'POST', chemin: '/commandes/:id/demande-retour', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/demande-retour', protegee: true },
+  { methode: 'PATCH', chemin: '/commandes/:id/paiement', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/paiement', protegee: true },
   { methode: 'POST', chemin: '/commandes/:id/payer', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/payer', protegee: true },
   { methode: 'PATCH', chemin: '/commandes/:id/statut', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/statut', protegee: true },
   { methode: 'GET', chemin: '/commandes/vendeur', url: '/commandes/vendeur', protegee: true },
+  { methode: 'POST', chemin: '/commandes/vendeur', url: '/commandes/vendeur', protegee: true },
   { methode: 'POST', chemin: '/device-token/register', url: '/device-token/register', protegee: true },
   { methode: 'DELETE', chemin: '/device-token/unregister', url: '/device-token/unregister', protegee: true },
   { methode: 'GET', chemin: '/favoris', url: '/favoris', protegee: true },
@@ -162,8 +165,8 @@ function appeler(base, route) {
 
 describe('Contrat des routes mobiles', () => {
   it('l\'inventaire couvre bien toutes les routes attendues', () => {
-    expect(ROUTES).toHaveLength(123);
-    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(101);
+    expect(ROUTES).toHaveLength(126);
+    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(103);
   });
 
   describe.each(['/saambiz/v1', '/saambiz'])('adresse %s', (base) => {
