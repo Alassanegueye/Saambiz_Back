@@ -1101,19 +1101,25 @@ class VendeurService {
 
     const dernierOrdre = await ProduitImage.count({ where: { produitId } });
 
-    const images = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file.buffer) continue;
-      const url = await uploadImage(file.buffer);
-      const image = await ProduitImage.create({
-        produitId,
-        url,
-        ordre: dernierOrdre + i,
-      });
-      images.push(image);
-    }
-    return images;
+    // Les téléversements partaient un par un, chacun attendant le précédent :
+    // huit images, c'était huit allers-retours vers Cloudinary mis bout à
+    // bout, là où ils ne dépendent pas les uns des autres. Sur une connexion
+    // mobile c'est la différence entre une attente et un délai dépassé.
+    // Le plafond de huit fichiers est posé par `upload.array('images', 8)` :
+    // le parallélisme reste donc borné.
+    const aTeleverser = files.filter((f) => f.buffer);
+    const urls = await Promise.all(
+      aTeleverser.map((f) => uploadImage(f.buffer)),
+    );
+
+    if (urls.length === 0) return [];
+
+    // Une seule écriture au lieu d'une par image. `ordre` suit la position
+    // d'origine, comme avant.
+    return ProduitImage.bulkCreate(
+      urls.map((url, i) => ({ produitId, url, ordre: dernierOrdre + i })),
+      { returning: true },
+    );
   }
 
   // Supprime une image d'un produit du vendeur connecté (et côté Cloudinary si possible)

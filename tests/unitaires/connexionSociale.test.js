@@ -108,6 +108,21 @@ describe('ConnexionSociale.verifier', () => {
       await expect(ConnexionSociale.verifier('apple', signer(appleValide('graine')), { nonce: 'autre' }))
         .rejects.toThrow('identité non vérifiée');
     });
+
+    test('refuse un jeton SANS nonce', async () => {
+      // Le contrôle ne portait que sur les jetons qui en comportaient un :
+      // un jeton emis sans nonce passait donc sans etre confronte a quoi que
+      // ce soit, et la protection contre le rejeu devenait contournable.
+      const sansNonce = appleValide('graine');
+      delete sansNonce.nonce;
+      await expect(ConnexionSociale.verifier('apple', signer(sansNonce), { nonce: 'graine' }))
+        .rejects.toThrow('identité non vérifiée');
+    });
+
+    test('refuse quand l\'application n\'envoie aucun nonce', async () => {
+      await expect(ConnexionSociale.verifier('apple', signer(appleValide('graine'))))
+        .rejects.toThrow('identité non vérifiée');
+    });
   });
 
   test('recharge les clés une seule fois tant qu\'elles sont en cache', async () => {
