@@ -48,3 +48,4 @@ coverage/
 
 # Sequelize
 *.sqlite
+tests/integration/.routes-inventaire.txt
