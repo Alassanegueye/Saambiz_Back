@@ -114,9 +114,15 @@ async function verifier(fournisseur, idToken, { nonce } = {}) {
     throw new UnauthorizedError(REFUS);
   }
 
-  if (fournisseur === 'apple' && charge.nonce) {
+  if (fournisseur === 'apple') {
+    // Le nonce est EXIGÉ, pas seulement vérifié s'il est présent : l'absence
+    // de nonce dans le jeton était auparavant acceptée en silence, ce qui
+    // rendait la protection contre le rejeu contournable par un jeton émis
+    // sans nonce. L'application en envoie toujours un.
     const attendu = crypto.createHash('sha256').update(String(nonce || '')).digest('hex');
-    if (charge.nonce !== attendu) throw new UnauthorizedError(REFUS);
+    if (!nonce || !charge.nonce || charge.nonce !== attendu) {
+      throw new UnauthorizedError(REFUS);
+    }
   }
 
   // Seule une adresse confirmée par le fournisseur peut ouvrir un compte
