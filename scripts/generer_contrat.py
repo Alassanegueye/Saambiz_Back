@@ -49,12 +49,18 @@ PROTEGEES_UNITAIRES = {
     ("GET", "/signalements/mes-signalements"),
 }
 
-# Routes ouvertes aux visiteurs sans compte malgré leur préfixe : elles
-# passent par `authOptionnel`, qui enrichit la réponse si un jeton est présent
-# mais n'en exige pas.
+# Routes ouvertes aux visiteurs sans compte malgré leur préfixe, pour deux
+# raisons distinctes : soit elles passent par `authOptionnel`, qui enrichit la
+# réponse si un jeton est présent mais n'en exige pas ; soit elles sont
+# déclarées AVANT le `router.use(auth)` de leur fichier, que cet inventaire
+# par préfixe ne sait pas voir.
 PUBLIQUES_UNITAIRES = {
     ("GET", "/acheteurs/accueil-personnalise"),
     ("GET", "/acheteurs/accueil-section/:cle"),
+    # Mot de passe oublié : demandé précisément par qui ne peut pas
+    # s'authentifier.
+    ("POST", "/account/forgot-password"),
+    ("POST", "/account/reset-password"),
 }
 
 # Valeur donnée aux segments dynamiques : un UUID bien formé, pour que les

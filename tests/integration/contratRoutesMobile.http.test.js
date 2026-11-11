@@ -21,7 +21,7 @@
  * Les deux adresses sont couvertes : `/saambiz/v1` (référence) et `/saambiz`
  * (alias historique, encore appelé par les applications installées).
  *
- * 126 routes, dont 103 protégées.
+ * 126 routes, dont 101 protégées.
  */
 
 const request = require('supertest');
@@ -29,11 +29,11 @@ const app = require('../../src/app');
 
 const ROUTES = [
   { methode: 'PUT', chemin: '/account/change-password', url: '/account/change-password', protegee: true },
-  { methode: 'POST', chemin: '/account/forgot-password', url: '/account/forgot-password', protegee: true },
+  { methode: 'POST', chemin: '/account/forgot-password', url: '/account/forgot-password', protegee: false },
   { methode: 'DELETE', chemin: '/account/me', url: '/account/me', protegee: true },
   { methode: 'GET', chemin: '/account/me', url: '/account/me', protegee: true },
   { methode: 'PUT', chemin: '/account/modifier-profil', url: '/account/modifier-profil', protegee: true },
-  { methode: 'POST', chemin: '/account/reset-password', url: '/account/reset-password', protegee: true },
+  { methode: 'POST', chemin: '/account/reset-password', url: '/account/reset-password', protegee: false },
   { methode: 'GET', chemin: '/acheteurs/accueil', url: '/acheteurs/accueil', protegee: true },
   { methode: 'GET', chemin: '/acheteurs/accueil-personnalise', url: '/acheteurs/accueil-personnalise', protegee: false },
   { methode: 'GET', chemin: '/acheteurs/accueil-section/:cle', url: '/acheteurs/accueil-section/nouveautes', protegee: false },
@@ -166,7 +166,7 @@ function appeler(base, route) {
 describe('Contrat des routes mobiles', () => {
   it('l\'inventaire couvre bien toutes les routes attendues', () => {
     expect(ROUTES).toHaveLength(126);
-    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(103);
+    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(101);
   });
 
   describe.each(['/saambiz/v1', '/saambiz'])('adresse %s', (base) => {

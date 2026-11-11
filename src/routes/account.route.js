@@ -19,6 +19,14 @@ const {
   resetPasswordSchema
 } = require('../validations/account.validation');
 
+// Mot de passe oublie : celui qui le demande n'est, par definition, pas
+// connecte. Ces deux routes doivent rester AVANT router.use(auth) ;
+// declarees apres, le middleware les rejette par « Token manquant ou
+// invalide » sans jamais atteindre le controleur. Ni l'une ni l'autre ne
+// lit req.user : tout vient du corps de la requete (email, otp).
+router.post('/forgot-password', limiteEnvoiCode, validate(forgotPasswordSchema), accountController.forgotPassword);
+router.post('/reset-password', limiteSaisieCode, validate(resetPasswordSchema), accountController.resetPassword);
+
 router.use(auth);
 router.use(checkActiveUser);
 
@@ -30,7 +38,5 @@ router.put('/modifier-profil',
   validate(modifierProfilSchema),
   accountController.updateProfile);
 router.put('/change-password', validate(changePasswordSchema), accountController.changePassword);
-router.post('/forgot-password', limiteEnvoiCode, validate(forgotPasswordSchema), accountController.forgotPassword);
-router.post('/reset-password', limiteSaisieCode, validate(resetPasswordSchema), accountController.resetPassword);
 
 module.exports = router;
