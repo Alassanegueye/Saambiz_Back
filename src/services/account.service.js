@@ -172,7 +172,21 @@ class AccountService {
     await utilisateur.update({ mot_de_passe: hash });
     await otpRecord.destroy();
 
-    return { success: true, message: 'Mot de passe réinitialisé avec succès' };
+    // `changerMotDePasse` ferme déjà les autres sessions, pour la raison
+    // qu'il expose : on change son mot de passe quand on soupçonne une
+    // fuite. Ce chemin-ci — « mot de passe oublié » — le mérite DAVANTAGE :
+    // c'est celui qu'emprunte la personne qui a perdu la main sur son
+    // compte. Sans cette révocation, celui qui détenait une session y
+    // restait connecté après la réinitialisation, et le geste ne reprenait
+    // rien.
+    const RefreshTokenService = require('./refreshToken.service');
+    await RefreshTokenService.revoquerTout(utilisateur.id);
+    require('./socket.service').couperSocketsUtilisateur(utilisateur.id);
+
+    return {
+      success: true,
+      message: 'Mot de passe réinitialisé avec succès. Vos sessions ouvertes ont été fermées.',
+    };
   }
 
   // ----
@@ -231,6 +245,10 @@ class AccountService {
           logger.warn('[deleteAccount] Échec révocation token', { message: blErr.message });
         }
       }
+
+      // Le compte est fermé : ses sockets ouverts n'ont plus à recevoir
+      // messages ni notifications.
+      require('../services/socket.service').couperSocketsUtilisateur(userId);
 
       // Journal interne du motif de suppression (analytics) — ne doit jamais faire échouer l'opération
       AuditService.enregistrer({

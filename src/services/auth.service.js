@@ -531,12 +531,16 @@ class AuthService {
    * naturelle, le refresh est révoqué en base. Sans le second, la session
    * pouvait se reconstituer aussitôt.
    */
-  static async logout(token, expiresAt, refreshToken = null) {
+  static async logout(token, expiresAt, refreshToken = null, utilisateurId = null) {
     await TokenBlacklist.create({ token, expiresAt });
     if (refreshToken) {
       const RefreshTokenService = require('./refreshToken.service');
       await RefreshTokenService.revoquer(refreshToken);
     }
+    // La liste noire ferme la porte aux prochaines requêtes, mais un socket
+    // déjà ouvert continuerait de recevoir messages et notifications.
+    const { couperSocketsUtilisateur } = require('./socket.service');
+    couperSocketsUtilisateur(utilisateurId);
     return { success: true, message: 'Déconnexion réussie' };
   }
 
@@ -569,6 +573,8 @@ class AuthService {
     // laisser vivre les sessions ouvertes ailleurs viderait le geste de son sens.
     const RefreshTokenService = require('./refreshToken.service');
     await RefreshTokenService.revoquerTout(userId);
+    const { couperSocketsUtilisateur } = require('./socket.service');
+    couperSocketsUtilisateur(userId);
 
     return { message: 'Mot de passe modifié avec succès. Vos autres sessions ont été fermées.' };
   }

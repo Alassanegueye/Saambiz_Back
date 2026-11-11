@@ -118,7 +118,7 @@ exports.logout = asyncHandler(async (req, res) => {
   const token = req.headers.authorization.split(' ')[1];
   const decoded = jwt.decode(token);
   const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 3600000);
-  const result = await AuthService.logout(token, expiresAt, req.body?.refreshToken);
+  const result = await AuthService.logout(token, expiresAt, req.body?.refreshToken, req.user?.id);
   return res.status(200).json(result);
 });
 

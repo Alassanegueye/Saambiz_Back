@@ -162,6 +162,26 @@ class PromotionService {
       return { success: false, message: 'La date de début doit être antérieure à la date de fin' };
     }
 
+    // La propriété du produit n'était vérifiée qu'à la CRÉATION, alors que
+    // `modifierPromotionSchema` accepte `produitId`. Une modification
+    // pouvait donc rattacher la promotion au produit d'un autre vendeur :
+    // `/promotions/actives` est public et joint le produit, la fausse
+    // promotion s'affichait donc sur le produit du concurrent, et
+    // `supprimerPromotion` remettait ensuite SON `prix_promo` à NULL.
+    //
+    // Le prix est contrôlé contre le produit réellement visé, comme à la
+    // création : annoncer un « prix promotionnel » supérieur au prix
+    // catalogue n'a pas de sens, et l'affichage barré devient trompeur.
+    const produitVise = data.produitId || promotion.produitId;
+    const changeDeProduit = data.produitId && data.produitId !== promotion.produitId;
+    if (changeDeProduit || data.prixPromo != null) {
+      const produit = await Produit.findOne({ where: { id: produitVise, vendeurId } });
+      if (!produit) return { success: false, message: 'Produit introuvable ou accès interdit' };
+      if (data.prixPromo != null && Number(data.prixPromo) >= Number(produit.prix)) {
+        return { success: false, message: 'Le prix promotionnel doit être inférieur au prix du produit' };
+      }
+    }
+
     await promotion.update(data);
     return { success: true, message: 'Promotion modifiée', promotion };
   }
