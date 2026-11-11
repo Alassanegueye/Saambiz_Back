@@ -20,6 +20,7 @@ const TokenBlacklist = require('./tokenBlacklist.model');
 const RefreshToken   = require('./refreshToken.model');
 const ConfigApp = require('./configApp.model');
 const QuestionFrequente = require('./questionFrequente.model');
+const MessageSite = require('./messageSite.model');
 const DeviceToken = require('./deviceToken.model');
 const ProduitImage = require('./produitImage.model');
 const DemandeRetour = require('./demandeRetour.model');
@@ -98,6 +99,10 @@ Utilisateur.hasMany(Message, { foreignKey: 'destinataireId', as: 'messagesRecus'
 Message.belongsTo(Utilisateur, { foreignKey: 'expediteurId', as: 'expediteur' });
 Message.belongsTo(Utilisateur, { foreignKey: 'destinataireId', as: 'destinataire' });
 
+// Messages laissés par les visiteurs sur la page Contact du site d'une boutique.
+Utilisateur.hasMany(MessageSite, { foreignKey: 'vendeurId', as: 'messagesSite' });
+MessageSite.belongsTo(Utilisateur, { foreignKey: 'vendeurId', as: 'vendeur' });
+
 // ===================== PROMOTIONS =====================
 
 Produit.hasMany(Promotion, { foreignKey: 'produitId', as: 'promotions' });
@@ -173,7 +178,7 @@ module.exports = {
   Utilisateur, Produit, Categorie, Boutique, Abonnement, Paiement,
   Commande, LigneCommande,
   UserOtp, Favori, Message, Promotion, Notification,
-  Signalement, TokenBlacklist, RefreshToken, ConfigApp, QuestionFrequente, DeviceToken,
+  Signalement, TokenBlacklist, RefreshToken, ConfigApp, QuestionFrequente, DeviceToken, MessageSite,
   Menu, Permission,
   ProduitImage, DemandeRetour, AuditLog, Avis, PreferenceClient,
   VerificationEmail, BoutiqueCategorie,

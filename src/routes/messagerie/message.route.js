@@ -12,6 +12,10 @@ router.use(checkActiveUser);
 router.post('/', validate(envoyerMessageSchema), messageController.envoyerMessage);
 router.get('/conversations', messageController.getConversations);
 router.get('/non-lus', messageController.getNbNonLus);
+// Messages laissés sur la page Contact du site de la boutique (avant `/:userId`).
+router.get('/site', messageController.listerMessagesSite);
+router.put('/site/:id/lire', messageController.marquerMessageSiteLu);
+router.delete('/site/:id', messageController.supprimerMessageSite);
 router.get('/:userId', messageController.getConversation);
 router.put('/:messageId/lire', messageController.marquerLu);
 

@@ -47,6 +47,12 @@ exports.creerCommande = asyncHandler(async (req, res) => {
   return created(res, data, 'Commande enregistrée.');
 });
 
+/** POST /vitrine/:slug/message — message laissé sur la page Contact. */
+exports.envoyerMessage = asyncHandler(async (req, res) => {
+  const data = await VitrineService.envoyerMessage(req.params.slug, req.body || {});
+  return created(res, data, 'Message envoyé.');
+});
+
 /**
  * GET /vitrine/commande/:reference?telephone=…
  *

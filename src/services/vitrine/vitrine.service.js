@@ -23,8 +23,9 @@
 const { Op, fn, col, literal } = require('sequelize');
 const {
   Boutique, Produit, ProduitImage, Categorie, Utilisateur, Avis,
-  Commande, LigneCommande, Promotion,
+  Commande, LigneCommande, Promotion, MessageSite,
 } = require('../../models');
+const NotificationService = require('../notifications/notification.service');
 const CommandeService = require('../commandes/commande.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const logger = require('../../utils/logger');
@@ -696,6 +697,58 @@ class VitrineService {
         telephone: boutique.telephone,
       },
     };
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  MESSAGE DEPUIS LA PAGE CONTACT
+  // ══════════════════════════════════════════════════════════════════
+
+  /**
+   * Le visiteur écrit au vendeur sans compte : son nom (facultatif), son
+   * numéro (pour qu'on puisse lui répondre) et son message. Le message
+   * rejoint « Messages » chez le vendeur, qui est prévenu par une
+   * notification.
+   *
+   * `site` est un piège à robots : un champ caché que personne ne remplit
+   * à la main. S'il l'est, on répond comme si tout s'était bien passé, sans
+   * rien enregistrer — un refus apprendrait au robot ce qui le trahit.
+   */
+  static async envoyerMessage(slug, { nom, telephone, message, site } = {}) {
+    const boutique = await VitrineService._chargerBoutique(slug);
+    if (site) return { envoye: true };
+
+    const tel = VitrineService.normaliserTelephone(telephone);
+    if (!VitrineService.estTelephoneValide(tel)) {
+      throw new BadRequestError('Le numéro de téléphone est invalide. Exemple : 77 123 45 67.');
+    }
+    const contenu = String(message || '').trim();
+    if (contenu.length < 2) {
+      throw new BadRequestError('Écrivez votre message.');
+    }
+    if (contenu.length > 2000) {
+      throw new BadRequestError('Votre message est trop long (2 000 caractères au plus).');
+    }
+    const nomNet = String(nom || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120) || null;
+
+    const enregistre = await MessageSite.create({
+      vendeurId: boutique.vendeurId,
+      nom: nomNet,
+      telephone: tel,
+      contenu,
+    });
+
+    // Prévenir le vendeur ne doit pas faire échouer l'envoi : le message est
+    // déjà enregistré, il le verra dans « Messages » de toute façon.
+    const extrait = contenu.length > 90 ? `${contenu.slice(0, 87)}…` : contenu;
+    NotificationService.creerNotification({
+      utilisateurId: boutique.vendeurId,
+      titre: `✉️ Message de ${nomNet || 'un visiteur'} via votre site`,
+      message: extrait,
+      type: 'systeme',
+      data: { categorie: 'message_site', messageId: enregistre.id },
+    }).catch((err) => logger.warn('vitrine:message_notification', { message: err.message }));
+
+    return { envoye: true };
   }
 
   // ══════════════════════════════════════════════════════════════════

@@ -5,7 +5,9 @@
 -- numéros à 9 chiffres, sénégalais, reçoivent l'indicatif +221. Un numéro
 -- déjà présent sous sa forme internationale n'est pas dupliqué (colonnes
 -- uniques) : l'ancienne forme reste alors telle quelle, et la connexion la
--- retrouve quand même.
+-- retrouve quand même. De même pour deux anciennes écritures d'un même numéro
+-- (« 771234567 » et « 77 123 45 67 ») : les convertir toutes deux violerait
+-- l'unicité et ferait échouer la migration, donc le démarrage du serveur.
 DO $$
 DECLARE
   cible record;
@@ -28,10 +30,15 @@ BEGIN
       'UPDATE %1$I AS x SET %2$I = ''+221'' || regexp_replace(x.%2$I, ''\D'', '''', ''g'')
         WHERE regexp_replace(x.%2$I, ''\D'', '''', ''g'') ~ ''^[0-9]{9}$''
           AND x.%2$I !~ ''^\+''
-          AND (%3$L = ''commande'' OR NOT EXISTS (
+          AND (%3$L = ''commande'' OR (NOT EXISTS (
             SELECT 1 FROM %1$I AS y
              WHERE y.%2$I = ''+221'' || regexp_replace(x.%2$I, ''\D'', '''', ''g'')
-          ))',
+          ) AND NOT EXISTS (
+            SELECT 1 FROM %1$I AS z
+             WHERE z.ctid <> x.ctid
+               AND z.%2$I !~ ''^\+''
+               AND regexp_replace(z.%2$I, ''\D'', '''', ''g'') = regexp_replace(x.%2$I, ''\D'', '''', ''g'')
+          )))',
       cible.t, cible.c, cible.t);
   END LOOP;
 END $$;

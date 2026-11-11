@@ -77,6 +77,17 @@ const limiteSuivi = rateLimit({
  *       200: { description: Commande retrouvée }
  *       404: { description: Aucune commande ne correspond }
  */
+const limiteMessage = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.VITRINE_MESSAGE_RATE_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de messages envoyés depuis cette connexion. Réessayez dans quelques minutes.',
+  },
+});
+
 // Déclarée avant `/:slug` : sans cela, « commande » serait pris pour un slug.
 router.get('/commande/:reference', limiteSuivi, VitrineController.suivreCommande);
 
@@ -170,5 +181,7 @@ router.get('/:slug/produits/:produitId', VitrineController.getProduit);
  *       400: { description: Panier vide, stock insuffisant ou numéro invalide }
  */
 router.post('/:slug/commande', limiteCommande, VitrineController.creerCommande);
+
+router.post('/:slug/message', limiteMessage, VitrineController.envoyerMessage);
 
 module.exports = router;
