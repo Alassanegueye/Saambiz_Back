@@ -10,10 +10,17 @@ CREATE TABLE IF NOT EXISTS question_frequente (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Au démarrage, sequelize.sync() a pu créer la table AVANT cette migration,
+-- d'après le modèle : ses colonnes de dates n'ont alors aucune valeur par
+-- défaut et le CREATE ci-dessus n'y change rien. On les pose ici.
+ALTER TABLE question_frequente ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE question_frequente ALTER COLUMN updated_at SET DEFAULT now();
+
 -- Les questions affichées jusqu'ici dans l'application, reprises une seule
--- fois (table vide) pour que l'admin parte de l'existant.
-INSERT INTO question_frequente (id, question, reponse, ordre)
-SELECT gen_random_uuid(), q.question, q.reponse, q.ordre
+-- fois (table vide) pour que l'admin parte de l'existant. Les dates sont
+-- écrites explicitement : la migration ne dépend d'aucune valeur par défaut.
+INSERT INTO question_frequente (id, question, reponse, ordre, active, created_at, updated_at)
+SELECT gen_random_uuid(), q.question, q.reponse, q.ordre, true, now(), now()
   FROM (VALUES
     (1, 'SaamBiz est-il gratuit ?', 'Oui. Ouvrir une boutique, publier des produits et recevoir des commandes ne coûte rien, et SaamBiz ne prélève aucune commission sur vos ventes.'),
     (2, 'Comment créer ma boutique ?', 'Créez un compte vendeur depuis l''écran de connexion (« Créer un compte », puis « Vendeur »), confirmez votre e-mail avec le code reçu, puis renseignez le nom, le logo et les catégories de votre boutique.'),

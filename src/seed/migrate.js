@@ -47,6 +47,11 @@ async function migrate() {
     .sort();
 
   let appliquees = 0;
+  // Une migration en échec n'arrête pas les suivantes : elles sont
+  // indépendantes, et en bloquer une (une colonne de refresh_token, par
+  // exemple) ferait échouer toutes les requêtes qui en dépendent — la
+  // connexion comprise. Le fichier fautif sera retenté au prochain démarrage.
+  const echecs = [];
   for (const fichier of fichiers) {
     if (passees.has(fichier)) continue;
 
@@ -64,8 +69,17 @@ async function migrate() {
       logger.info(`[migrate] ${fichier} appliquée`);
     } catch (err) {
       logger.error(`[migrate] Échec sur ${fichier}`, { message: err.message });
-      throw err;
+      echecs.push({ fichier, err });
     }
+  }
+
+  if (echecs.length > 0) {
+    const err = new Error(
+      `${echecs.length} migration(s) en échec : ${echecs.map((e) => `${e.fichier} (${e.err.message})`).join(' ; ')}`
+    );
+    err.echecs = echecs;
+    err.appliquees = appliquees;
+    throw err;
   }
 
   if (appliquees === 0) {
