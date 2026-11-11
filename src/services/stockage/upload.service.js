@@ -1,6 +1,7 @@
 const cloudinary = require('../../config/cloudinary');
 const streamifier = require('streamifier');
 const logger = require('../../utils/logger');
+const { ServiceUnavailableError } = require('../../errors/AppError');
 
 // Ce module vivait dans middlewares/ sous le nom uploadService.js alors qu'il
 // n'est pas un middleware : il ne reçoit ni `req` ni `res`, il envoie un
@@ -47,8 +48,11 @@ const uploadImage = (fileBuffer) => {
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
-      if (result) resolve(result.secure_url);
-      else reject(error);
+      if (result) return resolve(result.secure_url);
+      // Panne ou configuration Cloudinary : message clair (503) plutôt
+      // qu'une « erreur serveur interne », et la cause dans les journaux.
+      logger.error('[Cloudinary] envoi impossible', { message: error?.message, http_code: error?.http_code });
+      return reject(new ServiceUnavailableError('Envoi de la photo impossible pour le moment. Réessayez dans un instant.'));
     });
 
     streamifier.createReadStream(fileBuffer).pipe(stream);

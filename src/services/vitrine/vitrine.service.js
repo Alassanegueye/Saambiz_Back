@@ -20,14 +20,16 @@
 //      CommandeService — qui tient déjà les verrous de stock et la règle
 //      « une commande = une boutique ».
 
-const { Op, fn, col } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
 const {
   Boutique, Produit, ProduitImage, Categorie, Utilisateur, Avis,
-  Commande, LigneCommande,
+  Commande, LigneCommande, Promotion,
 } = require('../../models');
 const CommandeService = require('../commandes/commande.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const logger = require('../../utils/logger');
+const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
+const { estEmailValide } = require('../../utils/email');
 
 // Mises en page proposées au vendeur. Trois suffisent à couvrir ce que
 // vendent les boutiques sénégalaises : du prêt-à-porter qui se montre en
@@ -197,6 +199,60 @@ class VitrineService {
     };
   }
 
+  /**
+   * Les produits en promo : prix promo renseigné et inférieur au prix (voir
+   * prixEffectif), et encore achetables — une remise sur un article épuisé
+   * déçoit plus qu'elle n'attire.
+   */
+  static _filtrePromo() {
+    return {
+      prix_promo: { [Op.gt]: 0, [Op.lt]: col('Produit.prix') },
+      disponible: true,
+      quantite: { [Op.gt]: 0 },
+    };
+  }
+
+  /** La plus forte remise d'abord, puis la plus récente. */
+  static _ordrePromo() {
+    return [
+      [literal('"Produit"."prix_promo" / NULLIF("Produit"."prix", 0)'), 'ASC'],
+      ['createdAt', 'DESC'],
+    ];
+  }
+
+  /**
+   * Date de fin de la promotion en cours de chaque produit, pour afficher
+   * « Jusqu'au 23 nov. » sur le site. Une seule requête pour toute la liste.
+   */
+  static async _finsDePromo(produitIds) {
+    const ids = [...new Set(produitIds)].filter(Boolean);
+    if (!ids.length) return new Map();
+    const maintenant = new Date();
+    const lignes = await Promotion.findAll({
+      where: {
+        produitId: ids,
+        active: true,
+        dateDebut: { [Op.lte]: maintenant },
+        dateFin: { [Op.gte]: maintenant },
+      },
+      attributes: ['produitId', 'dateFin'],
+      raw: true,
+    });
+    const fins = new Map();
+    for (const l of lignes) {
+      const fin = new Date(l.dateFin);
+      if (!fins.has(l.produitId) || fin > fins.get(l.produitId)) fins.set(l.produitId, fin);
+    }
+    return fins;
+  }
+
+  /** Ajoute `finPromo` aux produits exposés qui sont en promo. */
+  static _avecFinPromo(produits, fins) {
+    return produits.map((p) => (p.prixBarre != null && fins.has(p.id)
+      ? { ...p, finPromo: fins.get(p.id).toISOString() }
+      : p));
+  }
+
   static _blocsPublics(blocs) {
     const b = blocs && typeof blocs === 'object' ? blocs : {};
     return {
@@ -267,7 +323,7 @@ class VitrineService {
   static async _accueilDe(boutique) {
     const where = VitrineService._filtreCatalogue(boutique.vendeurId);
 
-    const [produits, total, categoriesBrutes, avis, nouveautes] = await Promise.all([
+    const [produits, total, categoriesBrutes, avis, nouveautes, promosBrutes] = await Promise.all([
       // Les produits mis en avant : ce qui se vend d'abord. Un catalogue
       // trié par date met en tête ce que le vendeur a saisi en dernier,
       // pas ce que ses clients achètent.
@@ -304,6 +360,15 @@ class VitrineService {
         // après, et il doit en rester quelque chose.
         limit: LIMITE_DEFAUT + 8,
       }),
+      // Les promos du moment, pour la ligne « Nos promos » de l'accueil et
+      // le point à côté du lien « Nos promos » du menu.
+      Produit.findAll({
+        where: { ...where, ...VitrineService._filtrePromo() },
+        include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
+        attributes: ATTRIBUTS_PRODUIT,
+        order: VitrineService._ordrePromo(),
+        limit: LIMITE_DEFAUT,
+      }),
     ]);
 
     // Une boutique qui vient d'ouvrir a six produits. Sans ce retrait, « Les
@@ -330,11 +395,19 @@ class VitrineService {
       })
       : [];
     const parId = new Map(produitsSections.map((p) => [p.id, p]));
+
+    // Une seule requête pour les dates de fin de toutes les promos affichées.
+    const enPromo = [...produits, ...nouveautes, ...promosBrutes, ...produitsSections]
+      .filter((p) => VitrineService.prixEffectif(p) < parseFloat(p.prix))
+      .map((p) => p.id);
+    const fins = await VitrineService._finsDePromo(enPromo);
+    const exposer = (liste) => VitrineService._avecFinPromo(liste.map(VitrineService._exposerProduit), fins);
+
     const sections = sectionsPerso
       .map((s) => ({
         id: s.id,
         titre: s.titre,
-        produits: (s.produitIds || []).map((id) => parId.get(id)).filter(Boolean).map(VitrineService._exposerProduit),
+        produits: exposer((s.produitIds || []).map((id) => parId.get(id)).filter(Boolean)),
       }))
       .filter((s) => s.produits.length);
 
@@ -346,14 +419,16 @@ class VitrineService {
       categories: categoriesBrutes
         .filter((c) => c.categorie && c.categorie.id)
         .map((c) => ({ id: c.categorie.id, nom: c.categorie.nom, nombre: Number(c.nombre) })),
-      produitsVedettes: produits.map(VitrineService._exposerProduit),
-      nouveautes: nouveautesInedites.map(VitrineService._exposerProduit),
+      produitsVedettes: exposer(produits),
+      // Les promos du moment, la plus forte remise d'abord.
+      promos: exposer(promosBrutes),
+      nouveautes: exposer(nouveautesInedites),
       // Sections « Nouveautés » et « Meilleures ventes » du site : les dix
       // derniers produits, et ceux qui se sont réellement vendus (une
       // boutique qui démarre n'a pas encore de meilleures ventes).
-      derniersProduits: nouveautes.slice(0, 10).map(VitrineService._exposerProduit),
-      meilleuresVentes: produits.filter((p) => Number(p.get ? p.get('nombre_ventes') : p.nombre_ventes) > 0)
-        .slice(0, 10).map(VitrineService._exposerProduit),
+      derniersProduits: exposer(nouveautes.slice(0, 10)),
+      meilleuresVentes: exposer(produits.filter((p) => Number(p.get ? p.get('nombre_ventes') : p.nombre_ventes) > 0)
+        .slice(0, 10)),
       avis: avis.map((a) => ({
         id: a.id,
         note: a.note,
@@ -372,7 +447,7 @@ class VitrineService {
   //  CATALOGUE
   // ══════════════════════════════════════════════════════════════════
 
-  static async listerProduits(slug, { q, categorie, tri = 'pertinence', page = 1, limit = LIMITE_DEFAUT } = {}) {
+  static async listerProduits(slug, { q, categorie, tri = 'pertinence', page = 1, limit = LIMITE_DEFAUT, promo } = {}) {
     const boutique = await VitrineService._chargerBoutique(slug);
 
     const l = Math.min(Math.max(parseInt(limit, 10) || LIMITE_DEFAUT, 1), LIMITE_MAX);
@@ -396,6 +471,10 @@ class VitrineService {
       where.categorieId = categorie;
     }
 
+    // « Nos promos » : seulement les produits dont le prix est réduit.
+    const enPromo = ['1', 'true', true].includes(promo);
+    if (enPromo) Object.assign(where, VitrineService._filtrePromo());
+
     const ORDRES = {
       pertinence: [['disponible', 'DESC'], ['nombre_ventes', 'DESC'], ['createdAt', 'DESC']],
       nouveaute:  [['createdAt', 'DESC']],
@@ -408,14 +487,18 @@ class VitrineService {
       where,
       include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
       attributes: ATTRIBUTS_PRODUIT,
-      order: ORDRES[tri] || ORDRES.pertinence,
+      order: enPromo ? VitrineService._ordrePromo() : (ORDRES[tri] || ORDRES.pertinence),
       limit: l,
       offset: (p - 1) * l,
       distinct: true,
     });
 
+    const fins = await VitrineService._finsDePromo(
+      rows.filter((r) => VitrineService.prixEffectif(r) < parseFloat(r.prix)).map((r) => r.id),
+    );
+
     return {
-      produits: rows.map(VitrineService._exposerProduit),
+      produits: VitrineService._avecFinPromo(rows.map(VitrineService._exposerProduit), fins),
       total: count,
       page: p,
       pages: Math.ceil(count / l) || 1,
@@ -466,9 +549,12 @@ class VitrineService {
       limit: 4,
     });
 
+    const fins = await VitrineService._finsDePromo([produit.id]);
+    const [produitExpose] = VitrineService._avecFinPromo([VitrineService._exposerProduit(produit)], fins);
+
     return {
       boutique: VitrineService._exposerBoutique(boutique),
-      produit: VitrineService._exposerProduit(produit),
+      produit: produitExpose,
       similaires: similaires.map(VitrineService._exposerProduit),
     };
   }
@@ -483,18 +569,12 @@ class VitrineService {
    * désignent la même personne et doivent retomber sur le même compte.
    */
   static normaliserTelephone(brut) {
-    let t = String(brut || '').replace(/[^0-9+]/g, '');
-    if (t.startsWith('00')) t = `+${t.slice(2)}`;
-    if (!t.startsWith('+')) {
-      // Neuf chiffres : numéro local sénégalais, on préfixe l'indicatif.
-      if (/^\d{9}$/.test(t)) t = `+221${t}`;
-      else if (/^221\d{9}$/.test(t)) t = `+${t}`;
-    }
-    return t;
+    // Règles communes à toute l'application : utils/telephone.js.
+    return normaliserTelephone(brut);
   }
 
   static estTelephoneValide(tel) {
-    return /^\+\d{8,15}$/.test(tel);
+    return erreurTelephone(tel) === null;
   }
 
   /**
@@ -527,7 +607,7 @@ class VitrineService {
     // L'email reste facultatif : l'exiger ferait abandonner des commandes
     // pour une information dont le vendeur n'a pas besoin — il appelle.
     const emailNet = String(email || '').trim().toLowerCase();
-    const emailValide = emailNet && /\S+@\S+\.\S+/.test(emailNet) ? emailNet : null;
+    const emailValide = emailNet && estEmailValide(emailNet) ? emailNet : null;
 
     return { nom: nomNet, prenom: prenomNet, telephone: tel, email: emailValide };
   }

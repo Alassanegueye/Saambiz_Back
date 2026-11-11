@@ -5,6 +5,7 @@ const ConfigService = require('../config/config.service');
 const NotificationService = require('../notifications/notification.service');
 const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resend.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
+const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 
 // Transitions de statut autorisées (qui mène où) — le vendeur fait avancer la commande
 const TRANSITIONS = {
@@ -84,7 +85,9 @@ class CommandeService {
   }
 
   // Décrémente le stock des produits d'une commande (dans une transaction)
-  static async _decrementerStock(commande, transaction) {
+  // `forcer` : la quantité ne descend pas sous zéro, sans refuser la commande
+  // (commande saisie par le vendeur au-delà de son stock).
+  static async _decrementerStock(commande, transaction, { forcer = false } = {}) {
     const lignes = await LigneCommande.findAll({
       where: { commandeId: commande.id },
       transaction,
@@ -101,12 +104,14 @@ class CommandeService {
       const produit = produits.get(ligne.produitId);
       if (!produit) continue;
 
-      if (produit.quantite < ligne.quantite) {
+      if (!forcer && produit.quantite < ligne.quantite) {
         throw new BadRequestError(`Stock insuffisant pour "${produit.nom}" (reste ${produit.quantite}).`);
       }
 
-      produit.quantite -= ligne.quantite;
-      if (produit.quantite === 0) produit.disponible = false;
+      produit.quantite = Math.max(0, produit.quantite - ligne.quantite);
+      // Une commande du vendeur ne met pas son produit hors ligne : c'est lui
+      // qui décide de l'interrupteur « En ligne ».
+      if (produit.quantite === 0 && !forcer) produit.disponible = false;
       await produit.save({ transaction });
     }
 
@@ -162,6 +167,11 @@ class CommandeService {
     if (!Array.isArray(items) || items.length === 0) {
       throw new BadRequestError('La commande doit contenir au moins un produit.');
     }
+    if (numeroTelephone) {
+      const erreur = erreurTelephone(numeroTelephone);
+      if (erreur) throw new BadRequestError(erreur);
+      numeroTelephone = normaliserTelephone(numeroTelephone);
+    }
 
     const t = await sequelize.transaction();
     try {
@@ -194,9 +204,12 @@ class CommandeService {
 
         const produit = produits.get(item.produitId);
         if (!produit) throw new BadRequestError(`Produit introuvable : ${item.produitId}`);
-        if (!produit.disponible) throw new BadRequestError(`Le produit "${produit.nom}" n'est pas disponible.`);
+        // Commande saisie par le vendeur lui-même : il peut y mettre un
+        // produit hors ligne ou en rupture de stock — il sait ce qu'il a.
+        const saisieVendeur = origine === 'dashboard';
+        if (!saisieVendeur && !produit.disponible) throw new BadRequestError(`Le produit "${produit.nom}" n'est pas disponible.`);
         const cumul = (dejaDemande.get(produit.id) || 0) + quantite;
-        if (produit.quantite < cumul) {
+        if (!saisieVendeur && produit.quantite < cumul) {
           throw new BadRequestError(`Stock insuffisant pour "${produit.nom}" (reste ${produit.quantite}).`);
         }
         dejaDemande.set(produit.id, cumul);
@@ -285,7 +298,8 @@ class CommandeService {
 
       // 5) Réserver le stock d'une commande engagée d'emblée
       if (engageeDEmblee) {
-        await CommandeService._decrementerStock(commande, t);
+        // Saisie du vendeur : le stock descend jusqu'à zéro sans bloquer.
+        await CommandeService._decrementerStock(commande, t, { forcer: origine === 'dashboard' });
       }
 
       await t.commit();

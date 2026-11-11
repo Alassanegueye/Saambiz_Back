@@ -25,6 +25,7 @@ const { sendVerificationEmail } = require('./resend.service');
 const { bcryptConfig } = require('../config/security');
 const { BadRequestError, ConflictError, TooManyRequestsError } = require('../errors/AppError');
 const logger = require('../utils/logger');
+const { estEmailValide } = require('../utils/email');
 
 // Quinze minutes : le temps d'ouvrir sa boîte mail, y compris quand le message
 // traîne quelques minutes en route.
@@ -57,7 +58,7 @@ class InscriptionService {
 
   static async envoyerCode(email, { prenom } = {}) {
     const adresse = normaliser(email);
-    if (!/^\S+@\S+\.\S+$/.test(adresse)) {
+    if (!estEmailValide(adresse)) {
       throw new BadRequestError('Adresse email invalide.');
     }
 
@@ -65,6 +66,11 @@ class InscriptionService {
     // est explicite plutôt que de laisser l'utilisateur saisir un code pour
     // découvrir l'échec à l'étape suivante.
     const existant = await Utilisateur.findOne({ where: { email: adresse } });
+    if (existant?.compteSupprime) {
+      throw new ConflictError(
+        'Cette adresse e-mail appartient à un compte supprimé : elle ne peut pas servir à un nouveau compte.'
+      );
+    }
     if (existant) {
       throw new ConflictError(
         'Cette adresse est déjà associée à un compte. Connectez-vous, ou utilisez « mot de passe oublié ».'

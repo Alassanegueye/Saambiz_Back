@@ -8,6 +8,7 @@ const CategorieBoutiqueService = require('../categories/categorieBoutique.servic
 const { validerAttributs } = require('../categories/specifications');
 const { Op, fn, col } = require('sequelize');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
+const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -248,6 +249,7 @@ class VendeurService {
     for (const field of BOUTIQUE_FIELDS) {
       if (data[field] !== undefined) safeData[field] = data[field];
     }
+    VendeurService._verifierNumerosBoutique(safeData);
 
     // Uploads logo & bannière
     if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer);
@@ -270,6 +272,23 @@ class VendeurService {
 
   // -------------------- MODIFIER BOUTIQUE --------------------
   // HIGH-01 : whitelist stricte des champs modifiables
+  /**
+   * Téléphone et WhatsApp de la boutique : vérifiés selon leur pays et
+   * enregistrés au format international (« +221771234567 »). Vide = effacé.
+   */
+  static _verifierNumerosBoutique(safeData) {
+    for (const champ of ['telephone', 'whatsapp']) {
+      if (safeData[champ] === undefined) continue;
+      if (!String(safeData[champ] ?? '').trim()) {
+        safeData[champ] = null;
+        continue;
+      }
+      const erreur = erreurTelephone(safeData[champ]);
+      if (erreur) throw new BadRequestError(champ === 'whatsapp' ? `WhatsApp : ${erreur}` : erreur);
+      safeData[champ] = normaliserTelephone(safeData[champ]);
+    }
+  }
+
   static async modifierBoutique(vendeurId, data, files = {}) {
     const boutique = await Boutique.findOne({ where: { vendeurId } });
     if (!boutique) throw new NotFoundError('Boutique introuvable');
@@ -278,6 +297,7 @@ class VendeurService {
     for (const field of BOUTIQUE_FIELDS) {
       if (data[field] !== undefined) safeData[field] = data[field];
     }
+    VendeurService._verifierNumerosBoutique(safeData);
 
     if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer);
     if (files.banniere?.buffer) safeData.banniere = await uploadImage(files.banniere.buffer);

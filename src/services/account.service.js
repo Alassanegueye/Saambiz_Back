@@ -1,4 +1,4 @@
-const { Utilisateur, Boutique, UserOtp, Commande, TokenBlacklist } = require('../models');
+const { Utilisateur, Boutique, UserOtp, Commande, TokenBlacklist, RefreshToken } = require('../models');
 const { sendOtpEmail } = require('./resend.service');
 const logger = require('../utils/logger');
 const bcrypt = require('bcryptjs');
@@ -9,6 +9,8 @@ const { uploadImage } = require('./stockage/upload.service');
 const { bcryptConfig } = require('../config/security');
 const AuditService = require('./audit.service');
 const { NotFoundError, TooManyRequestsError } = require('../errors/AppError');
+const { normaliserTelephone, erreurTelephone, variantesTelephone } = require('../utils/telephone');
+const { estEmailValide } = require('../utils/email');
 
 // HIGH-04 : protection brute-force OTP par email (en mémoire — Redis recommandé en prod)
 const _otpAttempts = new Map();
@@ -48,7 +50,26 @@ class AccountService {
       const utilisateur = await Utilisateur.findByPk(userId, { transaction: t });
       if (!utilisateur) throw new NotFoundError('Utilisateur introuvable');
 
-      const { nom, prenom, email, telephone, adresse, ville } = data;
+      const { nom, prenom, adresse, ville } = data;
+      let { email, telephone } = data;
+
+      if (email !== undefined && email !== null && email !== '') {
+        email = String(email).trim().toLowerCase();
+        if (!estEmailValide(email)) {
+          await t.rollback();
+          return { success: false, message: 'Adresse e-mail invalide.' };
+        }
+      }
+
+      // Numéro au format international, vérifié selon son pays.
+      if (telephone) {
+        const erreur = erreurTelephone(telephone);
+        if (erreur) {
+          await t.rollback();
+          return { success: false, message: erreur };
+        }
+        telephone = normaliserTelephone(telephone);
+      }
 
       if (email && email !== utilisateur.email) {
         const exist = await Utilisateur.findOne({ where: { email }, transaction: t });
@@ -59,8 +80,8 @@ class AccountService {
       }
 
       if (telephone && telephone !== utilisateur.telephone) {
-        const exist = await Utilisateur.findOne({ where: { telephone }, transaction: t });
-        if (exist) {
+        const exist = await Utilisateur.findOne({ where: { telephone: variantesTelephone(telephone) }, transaction: t });
+        if (exist && exist.id !== utilisateur.id) {
           await t.rollback();
           return { success: false, message: 'Ce numéro de téléphone est déjà utilisé' };
         }
@@ -185,23 +206,20 @@ class AccountService {
         };
       }
 
-      // Anonymisation des champs personnels (droit à l'oubli)
-      const emailAnonyme = `compte-supprime-${randomUUID()}@deleted.local`;
-      const motDePasseAleatoire = await bcrypt.hash(randomUUID(), bcryptConfig.saltRounds);
-
+      // Les données du compte restent en base : il est seulement marqué
+      // supprimé. La connexion est refusée (« Ce compte a été supprimé »), et
+      // son e-mail comme son numéro ne peuvent pas ouvrir un nouveau compte.
       await utilisateur.update({
-        nom: 'Compte',
-        prenom: 'supprimé',
-        email: emailAnonyme,
-        telephone: null,
-        adresse: null,
-        photoProfil: null,
-        mot_de_passe: motDePasseAleatoire,
-        statut: 'inactif'
+        compteSupprime: true,
+        dateSuppression: new Date(),
+        statut: 'inactif',
       }, { transaction: t });
 
-      // Sequelize paranoid: true → positionne deletedAt sans supprimer la ligne ni casser les FK
-      await utilisateur.destroy({ transaction: t });
+      // La boutique d'un vendeur disparaît avec son compte.
+      await Boutique.update({ statut: 'inactif' }, { where: { vendeurId: userId }, transaction: t });
+
+      // Toutes ses sessions sont fermées.
+      await RefreshToken.destroy({ where: { utilisateurId: userId }, transaction: t });
 
       await t.commit();
 

@@ -19,6 +19,7 @@ const Signalement = require('./signalement.model');
 const TokenBlacklist = require('./tokenBlacklist.model');
 const RefreshToken   = require('./refreshToken.model');
 const ConfigApp = require('./configApp.model');
+const QuestionFrequente = require('./questionFrequente.model');
 const DeviceToken = require('./deviceToken.model');
 const ProduitImage = require('./produitImage.model');
 const DemandeRetour = require('./demandeRetour.model');
@@ -172,7 +173,7 @@ module.exports = {
   Utilisateur, Produit, Categorie, Boutique, Abonnement, Paiement,
   Commande, LigneCommande,
   UserOtp, Favori, Message, Promotion, Notification,
-  Signalement, TokenBlacklist, RefreshToken, ConfigApp, DeviceToken,
+  Signalement, TokenBlacklist, RefreshToken, ConfigApp, QuestionFrequente, DeviceToken,
   Menu, Permission,
   ProduitImage, DemandeRetour, AuditLog, Avis, PreferenceClient,
   VerificationEmail, BoutiqueCategorie,

@@ -12,6 +12,9 @@ const logger = require('../utils/logger');
  * ces jetons finissent toujours par diverger sur un détail — et le détail,
  * en sécurité, c'est la faille.
  */
+// Délai pendant lequel un jeton déjà remplacé peut encore être présenté.
+const DELAI_GRACE_MS = 10 * 60 * 1000;
+
 class RefreshTokenService {
   /** Empreinte stockée en base. Le jeton en clair ne sort jamais d'ici. */
   static _hash(token) {
@@ -38,7 +41,7 @@ class RefreshTokenService {
       Date.now() + refreshTokenConfig.dureeJours * 24 * 60 * 60 * 1000
     );
 
-    await RefreshToken.create({
+    const ligne = await RefreshToken.create({
       utilisateurId,
       tokenHash: this._hash(token),
       expiresAt,
@@ -47,7 +50,7 @@ class RefreshTokenService {
     });
 
     await this._appliquerPlafond(utilisateurId);
-    return token;
+    return contexte.avecLigne ? { token, ligne } : token;
   }
 
   /**
@@ -94,13 +97,57 @@ class RefreshTokenService {
    * passer inaperçu.
    */
   static async faireTourner(ancienToken, contexte = {}) {
-    const controle = await this.verifier(ancienToken);
-    if (!controle.valide) return controle;
+    let controle = await this.verifier(ancienToken);
 
-    await controle.enregistrement.update({ revokedAt: new Date() });
-    const nouveau = await this.emettre(controle.utilisateurId, contexte);
+    // Délai de grâce : le jeton vient d'être remplacé par une rotation, mais
+    // le téléphone n'a jamais reçu le remplaçant (réseau coupé, application
+    // fermée pendant la réponse, deux renouvellements simultanés). Plutôt que
+    // de déconnecter l'utilisateur, on coupe le remplaçant perdu et on en
+    // émet un autre. Une déconnexion (révocation sans rotation) n'en profite
+    // jamais.
+    if (!controle.valide) {
+      const grace = await this._dansLeDelaiDeGrace(ancienToken);
+      if (!grace) return controle;
+      if (grace.remplacePar) {
+        await RefreshToken.update(
+          { revokedAt: new Date() },
+          { where: { id: grace.remplacePar, revokedAt: null } }
+        );
+      }
+      controle = { valide: true, utilisateurId: grace.utilisateurId, enregistrement: grace };
+      logger.info('refresh_delai_de_grace', { utilisateurId: grace.utilisateurId });
+    }
+
+    const { token: nouveau, ligne } = await this.emettre(
+      controle.utilisateurId,
+      { ...contexte, avecLigne: true },
+    );
+    await controle.enregistrement.update({
+      revokedAt: controle.enregistrement.revokedAt || new Date(),
+      rotatedAt: new Date(),
+      remplacePar: ligne.id,
+    });
 
     return { valide: true, utilisateurId: controle.utilisateurId, token: nouveau };
+  }
+
+  /** Jeton remplacé par une rotation il y a moins de DELAI_GRACE_MS. */
+  static async _dansLeDelaiDeGrace(token) {
+    try {
+      jwt.verify(token, jwtConfig.refreshSecret);
+    } catch {
+      return null;
+    }
+    const ligne = await RefreshToken.findOne({ where: { tokenHash: this._hash(token) } });
+    if (!ligne || !ligne.rotatedAt) return null;
+    if (Date.now() - new Date(ligne.rotatedAt).getTime() > DELAI_GRACE_MS) return null;
+    if (ligne.expiresAt < new Date()) return null;
+    // Le remplaçant a été fermé par une déconnexion : pas de grâce.
+    if (ligne.remplacePar) {
+      const suivant = await RefreshToken.findByPk(ligne.remplacePar);
+      if (suivant && suivant.revokedAt && !suivant.rotatedAt) return null;
+    }
+    return ligne;
   }
 
   /** Révoque un jeton précis — appelé à la déconnexion. */

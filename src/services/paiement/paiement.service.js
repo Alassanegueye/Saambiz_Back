@@ -38,7 +38,9 @@ class PaiementService {
       if (methode === 'orange_money') {
         // Appel Orange Money — retourne payment_url + pay_token
         const omResponse = await OrangeMoneyService.initiePaiement({
-          phone: numeroTelephone,
+          // Orange Money attend le numéro national (9 chiffres) : les numéros
+          // sont désormais enregistrés au format international (+221…).
+          phone: String(numeroTelephone || '').replace(/[^\d+]/g, '').replace(/^(\+|00)?221(?=\d{9}$)/, ''),
           amount: montant,
           orderId,
         });

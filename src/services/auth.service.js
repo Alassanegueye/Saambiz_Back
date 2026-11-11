@@ -16,6 +16,7 @@ const sequelize = require('../config/db');
 const { uploadImage } = require('./stockage/upload.service');
 const { appliquerDefautsBoutique, genererSlugUnique } = require('../utils/boutiqueDefaults');
 const CategorieBoutiqueService = require('./categories/categorieBoutique.service');
+const { normaliserTelephone, erreurTelephone, variantesTelephone } = require('../utils/telephone');
 
 class AuthService {
 
@@ -53,23 +54,46 @@ class AuthService {
 
       if (exist) {
         await t.rollback();
-        return { success: false, message: "Cet email est déjà utilisé" };
+        return {
+          success: false,
+          message: exist.compteSupprime
+            ? 'Cette adresse e-mail appartient à un compte supprimé : elle ne peut pas servir à un nouveau compte.'
+            : 'Cet email est déjà utilisé',
+        };
       }
 
       const hashedPassword = await bcrypt.hash(mot_de_passe, bcryptConfig.saltRounds);
+
+      // Numéro au format international (« +221771234567 »), vérifié selon
+      // les règles de son pays (un numéro sénégalais a 9 chiffres…).
+      if (telephone) {
+        const erreur = erreurTelephone(telephone);
+        if (erreur) {
+          await t.rollback();
+          return { success: false, message: erreur };
+        }
+        telephone = normaliserTelephone(telephone);
+      } else {
+        telephone = null;
+      }
 
       // `telephone` est unique : sans ce contrôle, l'insertion échouerait sur
       // une contrainte et l'utilisateur verrait une erreur technique là où il
       // attend une phrase.
       if (telephone) {
         const parTelephone = await Utilisateur.findOne({
-          where: { telephone },
+          where: { telephone: variantesTelephone(telephone) },
           transaction: t,
         });
 
         if (parTelephone) {
           await t.rollback();
-          return { success: false, message: 'Ce numéro de téléphone est déjà utilisé' };
+          return {
+            success: false,
+            message: parTelephone.compteSupprime
+              ? 'Ce numéro appartient à un compte supprimé : il ne peut pas servir à un nouveau compte.'
+              : 'Ce numéro de téléphone est déjà utilisé',
+          };
         }
       }
 
@@ -118,10 +142,20 @@ class AuthService {
         };
 
         if (boutique) {
+          if (boutique.telephone) {
+            const erreur = erreurTelephone(boutique.telephone);
+            if (erreur) {
+              await t.rollback();
+              return { success: false, message: erreur };
+            }
+            boutique.telephone = normaliserTelephone(boutique.telephone);
+          } else {
+            boutique.telephone = null;
+          }
           // Téléphone de boutique facultatif (inscription web ou mobile) :
           // `where: { telephone: undefined }` ferait échouer la requête.
           const existBoutique = boutique.telephone
-            ? await Boutique.findOne({ where: { telephone: boutique.telephone }, transaction: t })
+            ? await Boutique.findOne({ where: { telephone: variantesTelephone(boutique.telephone) }, transaction: t })
             : null;
 
           if (existBoutique) {
@@ -275,8 +309,12 @@ class AuthService {
     try {
       const isEmail = /\S+@\S+\.\S+/.test(identifiant);
 
+      // Par téléphone : « 77 123 45 67 » ou « +221771234567 » désignent le même
+      // compte, enregistré au format international ou (anciens comptes) local.
       const utilisateur = await Utilisateur.findOne({
-        where: isEmail ? { email: identifiant } : { telephone: identifiant },
+        where: isEmail
+          ? { email: String(identifiant).trim().toLowerCase() }
+          : { telephone: variantesTelephone(identifiant) },
         include: [
           {
             model: Abonnement,
@@ -295,6 +333,11 @@ class AuthService {
         // prix dans les deux cas.
         await bcrypt.compare(mot_de_passe, HASH_FACTICE);
         return { success: false, error: 'Identifiant ou mot de passe incorrect' };
+      }
+
+      if (utilisateur.compteSupprime) {
+        await bcrypt.compare(mot_de_passe, HASH_FACTICE);
+        return { success: false, error: 'Ce compte a été supprimé.' };
       }
 
       if (utilisateur.statut !== 'actif') {
@@ -349,6 +392,9 @@ class AuthService {
     if (utilisateur) {
       if (!['Acheteur', 'Vendeur'].includes(utilisateur.role)) {
         return { success: false, message: 'Ce compte se connecte avec son mot de passe.' };
+      }
+      if (utilisateur.compteSupprime) {
+        return { success: false, message: 'Ce compte a été supprimé.' };
       }
       if (utilisateur.statut !== 'actif') {
         return { success: false, message: `Votre compte est ${utilisateur.statut}` };
@@ -550,9 +596,12 @@ class AuthService {
       return { success: false, message: 'Utilisateur introuvable' };
     }
     if (utilisateur.statut !== 'actif') {
-      // Compte suspendu entre-temps : on coupe toutes ses sessions.
+      // Compte suspendu (ou supprimé) entre-temps : on coupe toutes ses sessions.
       await RefreshTokenService.revoquerTout(utilisateur.id);
-      return { success: false, message: `Votre compte est ${utilisateur.statut}` };
+      return {
+        success: false,
+        message: utilisateur.compteSupprime ? 'Ce compte a été supprimé.' : `Votre compte est ${utilisateur.statut}`,
+      };
     }
 
     const newToken = jwt.sign({

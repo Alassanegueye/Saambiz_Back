@@ -30,6 +30,7 @@ exports.listerProduits = asyncHandler(async (req, res) => {
     tri: req.query.tri,
     page: req.query.page,
     limit: req.query.limit,
+    promo: req.query.promo,
   });
   return ok(res, data, 'Catalogue chargé.');
 });

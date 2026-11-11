@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../../controllers/admin/admin.controller');
 const configController = require('../../controllers/admin/config.controller');
+const centreAideController = require('../../controllers/admin/centreAide.controller');
 const auth = require('../../middlewares/auth.middleware');
 const isAdmin = require('../../middlewares/isAdmin.middleware');
 const checkActiveUser = require('../../middlewares/checkActiveUser.middleware');
@@ -276,6 +277,25 @@ router.post('/configs',
 router.put('/configs/:cle',
   requirePermission('CONFIG', 'update'),
   configController.modifierConfig);
+// Centre d'aide de l'application : questions fréquentes et contacts.
+router.get('/centre-aide',
+  requirePermission('CONFIG', 'view'),
+  centreAideController.lire);
+router.put('/centre-aide/contacts',
+  requirePermission('CONFIG', 'update'),
+  centreAideController.modifierContacts);
+router.post('/centre-aide/questions',
+  requirePermission('CONFIG', 'create'),
+  centreAideController.ajouterQuestion);
+router.put('/centre-aide/questions/ordre',
+  requirePermission('CONFIG', 'update'),
+  centreAideController.ordonner);
+router.put('/centre-aide/questions/:id',
+  requirePermission('CONFIG', 'update'),
+  centreAideController.modifierQuestion);
+router.delete('/centre-aide/questions/:id',
+  requirePermission('CONFIG', 'update'),
+  centreAideController.supprimerQuestion);
 // Alias pratique pour le dashboard : mise à jour directe du prix d'abonnement
 router.put('/prix-abonnement',
   requirePermission('ABONNEMENTS', 'update'),

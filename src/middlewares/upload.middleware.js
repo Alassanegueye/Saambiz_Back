@@ -1,5 +1,6 @@
 const multer = require('multer');
 const { uploadConfig } = require('../config/security');
+const { BadRequestError } = require('../errors/AppError');
 
 // ──────────────────────────────────────────────────────────────────────────────
 // H-02 : vérification des magic bytes réels (pas du Content-Type client)
@@ -23,11 +24,15 @@ function detectMimeFromBuffer(buffer) {
 }
 
 // Filtre Multer — premier contrôle sur le Content-Type déclaré
+// « application/octet-stream » est accepté ici : c'est ce qu'envoient par
+// défaut les applications mobiles (Dio). Le vrai type est de toute façon
+// contrôlé sur le contenu par `verifyMagicBytes`. Un refus est une erreur
+// 400 lisible, et non plus une erreur 500 « Erreur serveur interne ».
 const fileFilter = (req, file, cb) => {
-  if (uploadConfig.allowedMimeTypes.includes(file.mimetype)) {
+  if (uploadConfig.allowedMimeTypes.includes(file.mimetype) || file.mimetype === 'application/octet-stream') {
     cb(null, true);
   } else {
-    cb(new Error('Type de fichier non autorisé'), false);
+    cb(new BadRequestError('Format de fichier non accepté : envoyez une photo JPEG ou PNG.'), false);
   }
 };
 
@@ -53,7 +58,7 @@ upload.verifyMagicBytes = (req, res, next) => {
     if (!realMime || !uploadConfig.allowedMimeTypes.includes(realMime)) {
       return res.status(400).json({
         success: false,
-        message: `Fichier "${file.originalname}" rejeté : type réel non autorisé.`,
+        message: 'Format de photo non accepté : envoyez une image JPEG ou PNG.',
       });
     }
     // Corriger le mimetype avec la valeur réelle

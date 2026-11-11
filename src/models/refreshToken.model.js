@@ -41,6 +41,18 @@ const RefreshToken = sequelize.define('RefreshToken', {
     allowNull: true,
     field: 'revoked_at',
   },
+  // Remplacé par une rotation (et non coupé par une déconnexion) : quand, et
+  // par quel jeton. Sert au délai de grâce de `faireTourner`.
+  rotatedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'rotated_at',
+  },
+  remplacePar: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'remplace_par',
+  },
   // Contexte de création, utile pour présenter « vos appareils connectés ».
   userAgent: {
     type: DataTypes.STRING(255),

@@ -1,5 +1,6 @@
 const ConfigService = require('../../services/config/config.service');
 const logger = require('../../utils/logger');
+const CentreAideService = require('../../services/config/centreAide.service');
 
 /**
  * Réglages publics — lus sans compte par l'application mobile et les sites.
@@ -40,5 +41,18 @@ exports.getConfigApplication = async (req, res) => {
       maintenance: false,
       message: null,
     });
+  }
+};
+
+/** Centre d'aide de l'application : questions fréquentes et contacts. */
+exports.getCentreAide = async (req, res) => {
+  try {
+    const centre = await CentreAideService.publique();
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.status(200).json(centre);
+  } catch (err) {
+    // L'application garde alors ses textes intégrés.
+    logger.warn('config_publique:centre_aide_par_defaut', { message: err.message });
+    return res.status(200).json({ contacts: CentreAideService.CONTACTS_DEFAUT, questions: [] });
   }
 };

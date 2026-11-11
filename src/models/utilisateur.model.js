@@ -48,6 +48,17 @@ const User = sequelize.define('User', {
     type: DataTypes.ENUM('actif', 'inactif'),
     defaultValue: 'actif'
   },
+  // Compte supprimé par son titulaire : les données restent en base, mais
+  // on ne peut plus s'y connecter, ni réutiliser son e-mail ou son numéro.
+  compteSupprime: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  dateSuppression: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   // Adresse email confirmée (code à 6 chiffres reçu à l'inscription).
   verifie: {
     type: DataTypes.BOOLEAN,

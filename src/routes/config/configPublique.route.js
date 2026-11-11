@@ -7,5 +7,6 @@ const router = express.Router();
 
 router.get('/prix-abonnement', ConfigPubliqueController.getPrixAbonnement);
 router.get('/app/config', ConfigPubliqueController.getConfigApplication);
+router.get('/centre-aide', ConfigPubliqueController.getCentreAide);
 
 module.exports = router;
