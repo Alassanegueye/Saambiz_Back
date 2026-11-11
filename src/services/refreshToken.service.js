@@ -125,7 +125,9 @@ class RefreshTokenService {
     await controle.enregistrement.update({
       revokedAt: controle.enregistrement.revokedAt || new Date(),
       rotatedAt: new Date(),
-      remplacePar: ligne.id,
+      // La ligne du remplaçant sert au délai de grâce ; sans elle, la
+      // rotation reste valable, seul ce filet manque.
+      remplacePar: ligne?.id ?? null,
     });
 
     return { valide: true, utilisateurId: controle.utilisateurId, token: nouveau };

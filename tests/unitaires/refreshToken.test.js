@@ -13,7 +13,7 @@ jest.mock('../../src/utils/logger', () => ({ warn: jest.fn(), error: jest.fn(), 
 
 const { RefreshToken } = require('../../src/models');
 const RefreshTokenService = require('../../src/services/refreshToken.service');
-const { jwtConfig } = require('../../src/config/security');
+const { jwtConfig, refreshTokenConfig } = require('../../src/config/security');
 
 /**
  * Cycle de vie des jetons de rafraîchissement.
@@ -58,15 +58,17 @@ describe('RefreshTokenService', () => {
     });
 
     test('révoque les sessions les plus anciennes au-delà du plafond', async () => {
-      // Six sessions actives pour un plafond de cinq : la plus ancienne tombe.
-      const sessions = Array.from({ length: 6 }, (_, i) => ({ id: `s${i}` }));
+      // Une session de plus que le plafond (lu dans la configuration) : la
+      // plus ancienne tombe.
+      const plafond = refreshTokenConfig.maxParUtilisateur;
+      const sessions = Array.from({ length: plafond + 1 }, (_, i) => ({ id: `s${i}` }));
       RefreshToken.findAll.mockResolvedValue(sessions);
 
       await RefreshTokenService.emettre('u1');
 
       expect(RefreshToken.update).toHaveBeenCalledWith(
         expect.objectContaining({ revokedAt: expect.any(Date) }),
-        expect.objectContaining({ where: { id: ['s5'] } })
+        expect.objectContaining({ where: { id: [`s${plafond}`] } })
       );
     });
   });
@@ -124,11 +126,12 @@ describe('RefreshTokenService', () => {
         update: jest.fn().mockResolvedValue(true),
       };
       RefreshToken.findOne.mockResolvedValue(enregistrement);
+      RefreshToken.create.mockResolvedValue({ id: 'nouvelle-ligne' });
 
       const resultat = await RefreshTokenService.faireTourner(ancien, {});
 
       expect(enregistrement.update).toHaveBeenCalledWith(
-        expect.objectContaining({ revokedAt: expect.any(Date) })
+        expect.objectContaining({ revokedAt: expect.any(Date), remplacePar: 'nouvelle-ligne' })
       );
       expect(resultat.valide).toBe(true);
       expect(resultat.token).not.toBe(ancien);
