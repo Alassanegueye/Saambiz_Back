@@ -26,6 +26,17 @@ try {
 const CANAL_ANDROID = 'saambiz_push_channel';
 
 /**
+ * Empreinte d'un jeton d'appareil pour les journaux : les 8 derniers
+ * caractères, rien de plus.
+ *
+ * Un jeton FCM complet dans un fichier de log, c'est une donnée d'appareil
+ * recopiée sur disque, exportée vers l'agrégateur, et lue par qui sait lire
+ * les journaux. Huit caractères suffisent à reconnaître « encore le même
+ * téléphone » d'une ligne à l'autre, qui est tout ce qu'on cherche ici.
+ */
+const empreinte = (jeton) => `…${String(jeton || '').slice(-8)}`;
+
+/**
  * Image d'une notification. Les fichiers passent par Cloudinary : on demande
  * à Cloudinary une version légère (≤ 1024 px, JPEG compressé), car Android
  * abandonne l'image d'une notification au-delà d'1 Mo environ. Une adresse
@@ -48,18 +59,52 @@ function imagePourPush(url) {
  *   de la boutique quand la notification vient d'une boutique.
  */
 async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }) {
-  if (!fcmReady) return;
-
   const ids = Array.isArray(utilisateurIds) ? utilisateurIds : [utilisateurIds];
+
+  // Premier silence possible : sans compte de service, l'envoi ne part jamais.
+  // L'avertissement existait au démarrage seulement — invisible une fois le
+  // serveur lancé, et introuvable quand on cherche pourquoi rien n'arrive.
+  if (!fcmReady) {
+    logger.warn('[FCM] envoi ignoré : Firebase Admin non initialisé', {
+      raison: process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+        ? 'FIREBASE_SERVICE_ACCOUNT_JSON présent mais illisible (voir l\'erreur au démarrage)'
+        : 'FIREBASE_SERVICE_ACCOUNT_JSON absent de l\'environnement',
+      destinataires: ids.length,
+      titre: title,
+    });
+    return;
+  }
 
   const rows = await DeviceToken.findAll({
     where: { utilisateurId: ids },
-    attributes: ['token']
+    attributes: ['token', 'platform']
   });
 
-  if (!rows.length) return;
+  // Deuxième silence possible, et le plus fréquent : personne n'a d'appareil
+  // enregistré. Le téléphone n'a jamais appelé /notifications/device-token —
+  // parce que l'autorisation a été refusée, parce que les fichiers Firebase
+  // manquaient dans le build, ou parce que l'utilisateur ne s'est pas
+  // reconnecté depuis.
+  if (!rows.length) {
+    logger.warn('[FCM] envoi ignoré : aucun appareil enregistré', {
+      destinataires: ids.length,
+      utilisateurs: ids,
+      titre: title,
+    });
+    return;
+  }
 
   const tokens = rows.map(r => r.token);
+  const parPlateforme = rows.reduce((acc, r) => {
+    acc[r.platform || 'inconnue'] = (acc[r.platform || 'inconnue'] || 0) + 1;
+    return acc;
+  }, {});
+  logger.info('[FCM] envoi en préparation', {
+    destinataires: ids.length,
+    appareils: tokens.length,
+    parPlateforme,
+    titre: title,
+  });
 
   // data doit être Record<string,string> pour FCM
   const imageUrl = imagePourPush(image);
@@ -100,9 +145,16 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
 
     // Supprimer les tokens invalides (app désinstallée, token expiré)
     const invalidTokens = [];
+    const echecs = [];
     response.responses.forEach((res, idx) => {
       if (!res.success) {
         const code = res.error?.code;
+        echecs.push({
+          appareil: empreinte(tokens[idx]),
+          plateforme: rows[idx]?.platform || 'inconnue',
+          code: code || 'inconnu',
+          message: res.error?.message,
+        });
         if (
           code === 'messaging/invalid-registration-token' ||
           code === 'messaging/registration-token-not-registered'
@@ -117,9 +169,38 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
       logger.info(`[FCM] ${invalidTokens.length} token(s) invalide(s) supprimé(s)`);
     }
 
+    // Troisième silence possible, et le plus trompeur : FCM répond 200 et
+    // compte les échecs un par un. `successCount` à 0 ne levait aucune
+    // exception — le journal disait « 0/3 envoyées » sans dire pourquoi.
+    //
+    // Les codes à connaître :
+    //   messaging/third-party-auth-error  → clé APNs absente ou invalide
+    //                                        dans Firebase : c'est la cause
+    //                                        habituelle d'un iPhone muet ;
+    //   messaging/registration-token-not-registered → application
+    //                                        désinstallée, jeton périmé ;
+    //   messaging/invalid-argument        → charge utile refusée (canal,
+    //                                        image trop lourde, data non
+    //                                        textuelle).
+    if (echecs.length) {
+      logger.error('[FCM] envois refusés par Firebase', {
+        titre: title,
+        refuses: echecs.length,
+        sur: tokens.length,
+        detail: echecs,
+      });
+    }
+
     logger.info(`[FCM] ${response.successCount}/${tokens.length} notif(s) envoyée(s) — "${title}"`);
   } catch (err) {
-    logger.error('[FCM] Erreur envoi multicast', { message: err.message });
+    // L'exception ne survient que si l'appel lui-même échoue (réseau,
+    // identifiants refusés). Les refus par jeton, eux, passent par `echecs`.
+    logger.error('[FCM] Erreur envoi multicast', {
+      message: err.message,
+      code: err.code,
+      titre: title,
+      appareils: tokens.length,
+    });
   }
 }
 
@@ -135,6 +216,14 @@ async function saveDeviceToken(utilisateurId, token, platform = 'android') {
     { utilisateurId, token, platform },
     { conflictFields: ['token'] }
   );
+  // Sans cette trace, impossible de distinguer « le serveur n'envoie pas » de
+  // « le téléphone ne s'est jamais annoncé ». C'est la première chose à
+  // regarder quand quelqu'un dit ne rien recevoir.
+  logger.info('[FCM] appareil enregistré', {
+    utilisateur: utilisateurId,
+    plateforme: platform,
+    appareil: empreinte(token),
+  });
 }
 
 /**
@@ -146,7 +235,13 @@ async function removeDeviceToken(utilisateurId, token = null) {
   const where = token
     ? { utilisateurId, token }
     : { utilisateurId };
-  await DeviceToken.destroy({ where });
+  const retires = await DeviceToken.destroy({ where });
+  logger.info('[FCM] appareil(s) retiré(s)', {
+    utilisateur: utilisateurId,
+    appareil: token ? empreinte(token) : 'tous',
+    retires,
+  });
+  return retires;
 }
 
 module.exports = { sendPushToUsers, saveDeviceToken, removeDeviceToken, imagePourPush };
