@@ -69,6 +69,19 @@ try {
         'JSON lu mais incomplet : project_id, client_email et private_key sont requis'
       );
     }
+    // Gabarit recopié tel quel depuis .env.example : les trois champs sont
+    // bien là, mais remplis de « ... ». L'initialisation passait, le journal
+    // annonçait « Firebase Admin initialisé », et chaque envoi était refusé
+    // plus tard sans que rien ne désigne la cause. Mieux vaut refuser ici.
+    const gabarit = [compte.project_id, compte.client_email, compte.private_key].find((v) =>
+      String(v).includes('...')
+    );
+    if (gabarit) {
+      throw new Error(
+        'gabarit non remplacé : le compte de service contient encore des « ... » ' +
+          '— télécharger la vraie clé depuis Firebase Console → Comptes de service'
+      );
+    }
     if (!getApps().length) {
       initializeApp({ credential: cert(compte) });
     }

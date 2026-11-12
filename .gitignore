@@ -6,6 +6,10 @@ node_modules/
 .env.*
 !.env.example
 
+# Secrets déposés sur le serveur : compte de service Firebase, et tout ce qui
+# porte une clé privée. Montés dans le conteneur au démarrage, jamais commités.
+deploy/secrets/
+
 # Builds
 dist/
 build/

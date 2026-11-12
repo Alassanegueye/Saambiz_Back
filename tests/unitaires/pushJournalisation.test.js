@@ -225,6 +225,27 @@ describe('Lecture du compte de service, quelle que soit sa forme', () => {
     expect(meta.commencePar.length).toBeLessThanOrEqual(18);
   });
 
+  test('le gabarit de .env.example est refuse, pas initialise', () => {
+    // Le piege : l'ancien .env.example portait un JSON d'exemple ACTIF, dont
+    // les champs valaient « ... ». Recopie dans le .env, il passait la lecture
+    // — project_id, client_email et private_key etaient tous les trois
+    // presents —, le journal annoncait « Firebase Admin initialise », et
+    // chaque envoi etait refuse bien plus tard sans que rien ne designe la
+    // cause. Un echec au demarrage vaut mieux qu'un faux succes.
+    avec(
+      JSON.stringify({
+        type: 'service_account',
+        project_id: '...',
+        client_email: '...',
+        private_key: '-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n',
+      })
+    );
+    expect(mockInfo.mock.calls.some(([m]) => /initialis/.test(m))).toBe(false);
+    const [message, meta] = mockErreur.mock.calls.at(-1);
+    expect(message).toMatch(/Erreur initialisation/);
+    expect(meta.message).toMatch(/gabarit non remplac/);
+  });
+
   test('le diagnostic ne recopie jamais la cle privee', () => {
     avec('ceci-nest-ni-du-json-ni-du-base64-ni-un-chemin');
     const [, meta] = mockErreur.mock.calls.at(-1);

@@ -77,6 +77,20 @@ services:
     # en succès, /health répondait 200, et les routes touchant une colonne
     # récente échouaient sur « column … does not exist ».
     command: sh -c "node src/seed/bootstrap.js && node src/server.js"
+    # Secrets trop encombrants pour l'environnement — aujourd'hui le compte de
+    # service Firebase. Son JSON porte une clé privée PEM, donc des retours à
+    # la ligne, et un `.env` ne sait pas porter de valeur multiligne : collée
+    # là, elle arrive tronquée ou avec des `\n` restés littéraux, et
+    # l'initialisation échoue sur « présent mais illisible ».
+    #
+    # Le dossier est ignoré par git ET par .dockerignore (`deploy/`) : la clé
+    # ne peut donc entrer ni dans un commit, ni dans l'image. Elle n'existe que
+    # sur le disque du VPS, montée en LECTURE SEULE au démarrage.
+    #
+    # Le dossier peut rester vide — Docker le crée au besoin, et sans la
+    # variable qui le désigne le serveur démarre simplement sans push.
+    volumes:
+      - ./deploy/secrets:/app/secrets:ro
     env_file:
       - .env
     environment:
