@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const DeviceToken = require('../models/deviceToken.model');
@@ -6,20 +8,91 @@ const logger = require('../utils/logger');
 // Initialise Firebase Admin une seule fois au démarrage
 let fcmReady = false;
 
+/**
+ * Lit le compte de service, quelle que soit la forme qu'il a prise en route.
+ *
+ * Le JSON de Firebase contient une clé privée PEM, donc des retours à la
+ * ligne. Un fichier `.env` ne sait pas porter une valeur multiligne : selon
+ * l'outil qui le lit, elle arrive tronquée à la première ligne, ou avec des
+ * `\n` restés littéraux que `JSON.parse` refuse. C'est l'échec le plus
+ * courant, et il ne dit rien de lui-même — d'où ce qui suit.
+ *
+ * Trois formes sont acceptées, dans cet ordre :
+ *   1. un CHEMIN vers le fichier téléchargé depuis Firebase (le plus sûr :
+ *      aucun passage par l'environnement, donc rien à échapper) ;
+ *   2. du BASE64 — une seule ligne, insensible aux retours à la ligne ;
+ *   3. le JSON brut, avec rattrapage des `\n` laissés littéraux dans la clé.
+ */
+function lireCompteDeService(valeur) {
+  const v = String(valeur || '').trim();
+  if (!v) return null;
+
+  // 1. Chemin de fichier
+  if (!v.startsWith('{') && !/^[A-Za-z0-9+/=\s]+$/.test(v)) {
+    const chemin = path.isAbsolute(v) ? v : path.resolve(process.cwd(), v);
+    if (!fs.existsSync(chemin)) {
+      throw new Error(`chemin indiqué mais fichier introuvable : ${chemin}`);
+    }
+    return { compte: JSON.parse(fs.readFileSync(chemin, 'utf8')), forme: 'fichier' };
+  }
+
+  // 2. Base64
+  if (!v.startsWith('{')) {
+    const decode = Buffer.from(v, 'base64').toString('utf8');
+    if (!decode.trim().startsWith('{')) {
+      throw new Error('valeur ni JSON, ni base64 d\'un JSON, ni chemin existant');
+    }
+    return { compte: JSON.parse(decode), forme: 'base64' };
+  }
+
+  // 3. JSON brut. Les `\n` de la clé privée survivent rarement au .env :
+  // s'ils sont restés littéraux, JSON.parse échoue, et on réessaie en les
+  // rétablissant.
+  try {
+    return { compte: JSON.parse(v), forme: 'json' };
+  } catch (err) {
+    const repare = v.replace(/\r?\n/g, '\\n');
+    try {
+      return { compte: JSON.parse(repare), forme: 'json (retours à la ligne rétablis)' };
+    } catch {
+      throw err; // on remonte l'erreur d'origine, plus parlante
+    }
+  }
+}
+
 try {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (raw) {
-    const serviceAccount = JSON.parse(raw);
+  const resultat = lireCompteDeService(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  if (resultat) {
+    const { compte, forme } = resultat;
+    if (!compte.private_key || !compte.client_email || !compte.project_id) {
+      throw new Error(
+        'JSON lu mais incomplet : project_id, client_email et private_key sont requis'
+      );
+    }
     if (!getApps().length) {
-      initializeApp({ credential: cert(serviceAccount) });
+      initializeApp({ credential: cert(compte) });
     }
     fcmReady = true;
-    logger.info('[FCM] Firebase Admin initialisé');
+    // Le projet est journalisé : un compte de service du MAUVAIS projet
+    // s'initialise sans broncher et n'atteint jamais vos téléphones.
+    logger.info('[FCM] Firebase Admin initialisé', {
+      projet: compte.project_id,
+      compte: compte.client_email,
+      forme,
+    });
   } else {
     logger.warn('[FCM] FIREBASE_SERVICE_ACCOUNT_JSON non défini — notifications push désactivées');
   }
 } catch (err) {
-  logger.error('[FCM] Erreur initialisation Firebase Admin', { message: err.message });
+  const brut = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '');
+  logger.error('[FCM] Erreur initialisation Firebase Admin', {
+    message: err.message,
+    // De quoi diagnostiquer sans recopier la clé privée dans le journal.
+    longueur: brut.length,
+    commencePar: brut.slice(0, 18),
+    contientRetourLigne: /\r?\n/.test(brut),
+    ressembleAUnChemin: !brut.trim().startsWith('{') && brut.includes('/'),
+  });
 }
 
 /** Canal Android créé par l'application (FcmService) : les deux doivent correspondre. */

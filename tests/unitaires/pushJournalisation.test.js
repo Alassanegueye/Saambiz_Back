@@ -54,7 +54,14 @@ const mockEnvoi = jest.fn();
 function chargerService({ avecFirebase }) {
   jest.resetModules();
   if (avecFirebase) {
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = JSON.stringify({ project_id: 'test' });
+    // Les trois champs que l'initialisation exige désormais : un compte de
+    // service amputé s'initialisait sans bruit et n'atteignait jamais les
+    // téléphones.
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      project_id: 'saambiz-test',
+      client_email: 'test@saambiz-test.iam.gserviceaccount.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\nFACTICE\n-----END PRIVATE KEY-----\n',
+    });
   } else {
     delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   }
@@ -160,5 +167,67 @@ describe('Les jetons ne fuient pas dans les journaux', () => {
     expect(journal).toContain('appareil enregistré');
     expect(journal).not.toContain(JETON);
     expect(journal).toContain('…ABCD1234');
+  });
+});
+
+describe('Lecture du compte de service, quelle que soit sa forme', () => {
+  const COMPTE = {
+    project_id: 'saambiz-test',
+    client_email: 'test@saambiz-test.iam.gserviceaccount.com',
+    private_key: '-----BEGIN PRIVATE KEY-----\nFACTICE\n-----END PRIVATE KEY-----\n',
+  };
+
+  /** Recharge le service avec la valeur brute donnee a l'environnement. */
+  function avec(valeur) {
+    jest.resetModules();
+    jest.clearAllMocks();
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = valeur;
+    require('../../src/services/push.service');
+  }
+
+  test('base64 : une seule ligne, insensible aux .env', () => {
+    avec(Buffer.from(JSON.stringify(COMPTE)).toString('base64'));
+    const [message, meta] = mockInfo.mock.calls.at(-1);
+    expect(message).toMatch(/initialis/);
+    expect(meta.forme).toBe('base64');
+    expect(meta.projet).toBe('saambiz-test');
+  });
+
+  test('chemin de fichier : rien ne transite par l’environnement', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const fichier = path.join(os.tmpdir(), 'compte-service-test.json');
+    fs.writeFileSync(fichier, JSON.stringify(COMPTE));
+
+    avec(fichier);
+
+    const [, meta] = mockInfo.mock.calls.at(-1);
+    expect(meta.forme).toBe('fichier');
+    fs.unlinkSync(fichier);
+  });
+
+  test('JSON dont les retours a la ligne sont restes litteraux', () => {
+    // Exactement ce qu'un .env mal lu produit : la cle privee coupee en
+    // vraies lignes, que JSON.parse refuse.
+    avec(JSON.stringify(COMPTE).replace(/\\n/g, '\n'));
+    const [, meta] = mockInfo.mock.calls.at(-1);
+    expect(meta.forme).toMatch(/retours a la ligne retablis|retours à la ligne rétablis/);
+  });
+
+  test('un compte ampute est refuse, avec un diagnostic', () => {
+    avec(JSON.stringify({ project_id: 'saambiz-test' }));
+    const [message, meta] = mockErreur.mock.calls.at(-1);
+    expect(message).toMatch(/Erreur initialisation/);
+    expect(meta.message).toMatch(/incomplet/);
+    // Le diagnostic ne recopie pas la cle : longueur et debut seulement.
+    expect(meta).toHaveProperty('longueur');
+    expect(meta.commencePar.length).toBeLessThanOrEqual(18);
+  });
+
+  test('le diagnostic ne recopie jamais la cle privee', () => {
+    avec('ceci-nest-ni-du-json-ni-du-base64-ni-un-chemin');
+    const [, meta] = mockErreur.mock.calls.at(-1);
+    expect(JSON.stringify(meta)).not.toContain('PRIVATE KEY');
   });
 });
