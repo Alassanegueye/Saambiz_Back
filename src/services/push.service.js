@@ -218,8 +218,18 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
       },
 
       // iOS : priorité 10 = livraison immédiate ; `sound` fait apparaître la
-      // bannière téléphone verrouillé ; `mutable-content` laisse iOS
-      // télécharger l'image.
+      // bannière téléphone verrouillé.
+      //
+      // `mutable-content: 1` et `fcmOptions.imageUrl` sont envoyés, mais
+      // ATTENTION : contrairement à Android, iOS NE TÉLÉCHARGE PAS l'image de
+      // lui-même. `mutable-content` autorise seulement une « Notification
+      // Service Extension » de l'application à modifier la notification avant
+      // affichage ; sans cette extension — et l'application n'en a pas —
+      // l'iPhone affiche le titre et le texte, sans le logo de la boutique.
+      //
+      // Les deux clés sont conservées : elles ne coûtent rien, et le jour où
+      // l'extension sera ajoutée à la cible iOS, l'image apparaîtra sans
+      // toucher au serveur. Ne pas les retirer en croyant à du code mort.
       apns: {
         headers: { 'apns-priority': '10' },
         payload: { aps: { sound: 'default', 'mutable-content': 1 } },
