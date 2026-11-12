@@ -1,4 +1,4 @@
-const { Message, MessageSite, Utilisateur } = require('../../models');
+const { Message, MessageSite, Utilisateur, Boutique } = require('../../models');
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
 const { getIO } = require('../socket.service');
@@ -36,27 +36,57 @@ class MessageService {
   }
 
   static async getConversations(userId) {
-    // Récupère les derniers messages par interlocuteur
+    // Récupère les derniers messages par interlocuteur. La boutique de chaque
+    // participant vient avec : quand l'interlocuteur est un vendeur, l'écran
+    // affiche le nom et le logo de sa boutique plutôt que son nom personnel.
+    const participant = (as) => ({
+      model: Utilisateur,
+      as,
+      attributes: ['id', 'nom', 'prenom', 'photoProfil'],
+      include: [{ model: Boutique, as: 'boutiques', attributes: ['id', 'nom', 'logo'], required: false }]
+    });
     const messages = await Message.findAll({
       where: {
         [Op.or]: [{ expediteurId: userId }, { destinataireId: userId }]
       },
-      include: [
-        { model: Utilisateur, as: 'expediteur', attributes: ['id', 'nom', 'prenom', 'photoProfil'] },
-        { model: Utilisateur, as: 'destinataire', attributes: ['id', 'nom', 'prenom', 'photoProfil'] }
-      ],
+      include: [participant('expediteur'), participant('destinataire')],
       order: [['createdAt', 'DESC']]
     });
+    return MessageService.regrouperConversations(messages, userId);
+  }
 
-    // Dédupliquer par interlocuteur
-    const conversationsMap = new Map();
+  /**
+   * Un élément par interlocuteur, à partir des messages triés du plus récent
+   * au plus ancien : le dernier message (champs bruts, conservés pour les
+   * clients existants), `interlocuteur` (l'autre participant, avec sa
+   * boutique s'il en a une) et `nombreNonLus` (ses messages non lus).
+   */
+  static regrouperConversations(messages, userId) {
+    const conversations = new Map();
     for (const msg of messages) {
-      const interlocuteurId = msg.expediteurId === userId ? msg.destinataireId : msg.expediteurId;
-      if (!conversationsMap.has(interlocuteurId)) {
-        conversationsMap.set(interlocuteurId, msg);
+      const m = typeof msg.toJSON === 'function' ? msg.toJSON() : msg;
+      const moiExpediteur = String(m.expediteurId) === String(userId);
+      const interlocuteurId = moiExpediteur ? m.destinataireId : m.expediteurId;
+      const cle = String(interlocuteurId);
+      const nonLu = !moiExpediteur && !m.lu ? 1 : 0;
+
+      const existante = conversations.get(cle);
+      if (existante) {
+        existante.nombreNonLus += nonLu;
+        continue;
       }
+
+      const autre = (moiExpediteur ? m.destinataire : m.expediteur) || {};
+      const { boutiques, ...personne } = autre;
+      const boutique = Array.isArray(boutiques) && boutiques.length ? boutiques[0] : null;
+      conversations.set(cle, {
+        ...m,
+        interlocuteurId,
+        interlocuteur: { ...personne, id: interlocuteurId, boutique },
+        nombreNonLus: nonLu
+      });
     }
-    return Array.from(conversationsMap.values());
+    return Array.from(conversations.values());
   }
 
   static async marquerLu(messageId, destinataireId) {
