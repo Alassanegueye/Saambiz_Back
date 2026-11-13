@@ -283,6 +283,22 @@ const _originesAutorisees = _originesBrutes.length ? _originesBrutes : ['http://
 const _estOrigineSaamBiz = (origine) =>
   /^https:\/\/([a-z0-9-]+\.)*saambiz\.com$/i.test(origine);
 
+/**
+ * Le back-office KODAFRIK (admin.kodafrik.com), pour la même raison et après
+ * la même panne : il sert les administrations des trois SaaS et proxifie
+ * cette API sous /api/saambiz/. La connexion unique vient donc de cette
+ * origine-là, et un CORS_ORIGIN incomplet sur l'hébergeur y faisait échouer
+ * toute connexion SaamBiz.
+ *
+ * Le symptôme ne désignait pas la cause : `origin()` rend une Error pour une
+ * origine refusée, le middleware cors la transmet au gestionnaire d'erreurs,
+ * et l'API répondait 500. Le portail, qui lit un 5xx comme « API injoignable »,
+ * affichait l'espace « Indisponible pour le moment » — alors que la même
+ * requête en curl, sans en-tête Origin, réussissait.
+ */
+const _estOrigineKodafrik = (origine) =>
+  /^https:\/\/([a-z0-9-]+\.)*kodafrik\.com$/i.test(origine);
+
 /** Une origine de la machine de développement, quel que soit son port. */
 const _estOrigineLocale = (origine) =>
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origine);
@@ -306,6 +322,7 @@ const corsConfig = {
     if (!origine) return retour(null, true);
     if (_originesAutorisees.includes(origine)) return retour(null, true);
     if (_estOrigineSaamBiz(origine)) return retour(null, true);
+    if (_estOrigineKodafrik(origine)) return retour(null, true);
     if (!EN_PRODUCTION && _estOrigineLocale(origine)) return retour(null, true);
     return retour(new Error(`Origine non autorisée : ${origine}`));
   },
