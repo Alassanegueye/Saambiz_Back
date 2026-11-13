@@ -19,10 +19,37 @@ const app = express();
 // la connexion pour l'ensemble des utilisateurs, et les journaux attribuaient
 // chaque requête à la passerelle Docker au lieu du client réel.
 //
-// `1` : on ne fait confiance qu'au dernier maillon, le proxy que l'on
-// administre. Faire confiance à toute la chaîne laisserait n'importe qui
-// forger `X-Forwarded-For` et échapper aux limites.
-app.set('trust proxy', 1);
+// Pourquoi une LISTE et non un nombre : deux voies mènent ici, et elles n'ont
+// pas la même longueur de chaîne.
+//   - en direct (api.saambiz.com, qu'utilisent le tableau de bord, le
+//     dashboard vendeur et le site vitrine) : UN proxy, le nginx de cette
+//     machine ;
+//   - par le back-office (admin.kodafrik.com) : DEUX, celui du dashboard puis
+//     celui-ci.
+//
+// Aucun nombre ne convient aux deux. `1` attribue toutes les requêtes du
+// back-office à l'adresse du dashboard : ses utilisateurs partagent alors un
+// seul compteur, et l'un d'eux verrouille les autres. `2` corrige cela mais
+// rend `X-Forwarded-For` FORGEABLE sur la voie directe — un client qui envoie
+// « X-Forwarded-For: 1.2.3.4 » se voit attribuer cette adresse et échappe à
+// toutes les limites. Vérifié avec proxy-addr : c'est strictement pire que le
+// problème corrigé.
+//
+// Une liste, elle, remonte la chaîne de droite à gauche et s'arrête au premier
+// maillon inconnu — quelle que soit sa longueur.
+//   - `loopback` et `uniquelocal` : le port du conteneur n'est publié que sur
+//     127.0.0.1 (docker-compose.prod.yml), donc le pair direct est forcément
+//     une adresse privée, la passerelle Docker. Rien venant d'Internet ne peut
+//     se présenter ainsi.
+//   - TRUST_PROXY_SUPPLEMENTAIRE : les proxys PUBLICS placés devant celui-ci,
+//     séparés par des virgules. C'est là que se met l'adresse du VPS du
+//     back-office. Laissé vide, le comportement est celui d'avant.
+const proxiesDeConfiance = ['loopback', 'uniquelocal'];
+const proxiesSupplementaires = String(process.env.TRUST_PROXY_SUPPLEMENTAIRE || '')
+  .split(',')
+  .map((adresse) => adresse.trim())
+  .filter(Boolean);
+app.set('trust proxy', [...proxiesDeConfiance, ...proxiesSupplementaires]);
 
 // F-02 : Helmet avec CSP personnalisée + HSTS explicite
 app.use(helmet({
