@@ -232,6 +232,18 @@ router.get('/ma-vitrine', VendeurController.maVitrine);
 // Aperçu du site, publié ou non, pour l'écran de personnalisation.
 router.get('/ma-vitrine/apercu', VendeurController.apercuVitrine);
 router.put('/ma-vitrine', finAbonnement, VendeurController.majVitrine);
+// Photos du haut du site (au plus 10), qui défilent dans le bandeau de
+// l'accueil. Retirer une photo reste possible sans abonnement : on enlève,
+// on n'ajoute rien.
+router.post(
+  '/ma-vitrine/photos',
+  finAbonnement,
+  upload.array('photos', 10),
+  upload.verifyMagicBytes,
+  VendeurController.ajouterPhotosVitrine
+);
+router.put('/ma-vitrine/photos/ordre', finAbonnement, VendeurController.ordonnerPhotosVitrine);
+router.delete('/ma-vitrine/photos/:photoId', VendeurController.supprimerPhotoVitrine);
 // Supprimer le site : possible même sans abonnement (on retire, on n'ajoute rien).
 router.delete('/ma-vitrine', VendeurController.supprimerVitrine);
 

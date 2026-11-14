@@ -23,6 +23,14 @@ const Notification = sequelize.define('Notification', {
     type: DataTypes.ENUM('nouveau_produit', 'promotion', 'abonnement', 'systeme', 'commande'),
     allowNull: false,
   },
+  // Ce que la notification concerne, pour l'ouvrir d'un geste dans
+  // l'application : interlocuteurId / interlocuteurNom (la conversation à
+  // ouvrir), commandeId, boutiqueId…
+  donnees: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {},
+  },
   utilisateurId: {
     type: DataTypes.UUID,
     allowNull: false,

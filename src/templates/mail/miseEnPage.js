@@ -42,35 +42,33 @@ const entete = () => `
       </tr></table>
     </div>`;
 
-/** Initiale d'une boutique sans logo, sur une pastille. */
-const pastilleInitiale = (nom) => `
-          <div style="width:48px;height:48px;border-radius:12px;background:#FFFFFF;color:${NAVY};font-size:22px;font-weight:bold;text-align:center;line-height:48px;${POLICE}">${echapper(String(nom || '?').trim().charAt(0).toUpperCase())}</div>`;
-
 /**
  * Bandeau d'un email envoyé AU NOM d'une boutique (commande d'un client) :
- * le logo et le nom de la boutique, pas ceux de SaamBiz. Sans logo, une
- * pastille avec son initiale.
+ * le même bandeau que les emails SaamBiz (bleu marine, pictogramme, trait
+ * or), avec, sous le logo, le nom de la boutique. Le client voit d'un coup
+ * d'œil que c'est sa boutique qui lui écrit, dans les couleurs de SaamBiz.
  */
-const enteteBoutique = ({ nom, logo, couleur }) => {
-  const fond = /^#[0-9A-Fa-f]{6}$/.test(couleur || '') ? couleur : NAVY;
-  const visuel = /^https:\/\//.test(logo || '')
-    ? `<img src="${echapper(logo)}" width="48" height="48" alt="${echapper(nom)}" style="display:block;width:48px;height:48px;border:0;border-radius:12px;object-fit:cover;background:#FFFFFF" />`
-    : pastilleInitiale(nom);
-  return `
-    <div style="background:${fond};padding:20px 24px">
+const enteteBoutique = ({ nom }) => `
+    <div style="background:${NAVY};padding:20px 24px">
       <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-        <td style="vertical-align:middle;padding-right:14px">${visuel}</td>
+        <td style="vertical-align:middle;padding-right:14px">
+          <img src="${LOGO_URL}" width="48" height="48" alt="SaamBiz" style="display:block;width:48px;height:48px;border:0;border-radius:12px" />
+        </td>
         <td style="vertical-align:middle">
-          <div style="color:#FFFFFF;font-size:20px;font-weight:bold;${POLICE}">${echapper(nom)}</div>
+          <div style="color:#FFFFFF;font-size:20px;font-weight:bold;${POLICE}">Saam<span style="color:${OR}">Biz</span></div>
+          <div style="width:36px;height:4px;background:${OR};border-radius:2px;margin-top:8px"></div>
         </td>
       </tr></table>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.15);${POLICE}">
+        <span style="color:${OR};font-size:12px;font-weight:bold;letter-spacing:0.3px">Boutique</span>
+        <span style="color:#FFFFFF;font-size:17px;font-weight:bold;margin-left:6px">${echapper(nom)}</span>
+      </div>
     </div>`;
-};
 
 /**
  * Email complet autour d'un contenu HTML déjà échappé.
- * Avec `boutique` ({ nom, logo, couleur }), l'email porte l'identité de la
- * boutique ; SaamBiz n'apparaît qu'en pied de page.
+ * Avec `boutique` ({ nom }), le bandeau SaamBiz porte en plus le nom de la
+ * boutique qui écrit au client.
  */
 const miseEnPage = (contenu, { titre = 'SaamBiz', apercu = '', boutique = null } = {}) => `<!DOCTYPE html>
 <html lang="fr">

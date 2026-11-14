@@ -156,6 +156,12 @@ class VitrineService {
       // logo rond rogné en carré perd ses bords.
       logoForme: b.vitrineLogoForme || 'libre',
       banniere: b.banniere,
+      // Les photos du haut du site, dans l'ordre où elles défilent. Seules
+      // les adresses sortent : les identifiants ne servent qu'au vendeur.
+      photos: (Array.isArray(b.vitrinePhotos) ? b.vitrinePhotos : [])
+        .map((p) => p && p.url)
+        .filter((url) => /^https:\/\//i.test(String(url || '')))
+        .slice(0, 10),
       categorie: b.categorie,
       ville: b.ville,
       localisation: b.localisation,

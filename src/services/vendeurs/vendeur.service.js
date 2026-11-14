@@ -7,10 +7,15 @@ const { appliquerDefautsBoutique, genererSlugUnique } = require('../../utils/bou
 const CategorieBoutiqueService = require('../categories/categorieBoutique.service');
 const { validerAttributs } = require('../categories/specifications');
 const { Op, fn, col } = require('sequelize');
-const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
+const crypto = require('crypto');
+const { BadRequestError, ConflictError, NotFoundError, ServiceUnavailableError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 
 const DEFAULT_PAGE_SIZE = 20;
+
+// Photos du haut du site : assez pour un défilé, pas au point d'alourdir la
+// page d'un client sur forfait mobile.
+const PHOTOS_VITRINE_MAX = 10;
 
 // Mises en page proposées pour la vitrine — la liste du service fait foi.
 const { MODELES_VITRINE, ICONES_VITRINE } = require('../vitrine/vitrine.service');
@@ -367,6 +372,9 @@ class VendeurService {
         paiementLivraison: boutique.vitrinePaiementLivraison !== false,
         vues: boutique.vitrineVues || 0,
         sectionsPerso: Array.isArray(boutique.vitrineSectionsPerso) ? boutique.vitrineSectionsPerso : [],
+        // Photos du haut du site, dans l'ordre où elles défilent.
+        photos: VendeurService._photosVitrine(boutique.vitrinePhotos),
+        photosMax: PHOTOS_VITRINE_MAX,
 
         // Distinct de `active` : « configurée » dit que le vendeur est passé
         // par l'assistant de l'application mobile. Le tableau de bord web s'y
@@ -630,10 +638,130 @@ class VendeurService {
   // -------------------- SUPPRIMER MON SITE --------------------
   // Seule la présence en ligne disparaît : les produits restent dans
   // l'application et dans le tableau de bord.
+  // ── Photos du haut du site ────────────────────────────────────────
+  //
+  //  Elles défilent en boucle dans le grand bandeau de l'accueil. Le
+  //  vendeur les ajoute (plusieurs d'un coup), les retire et les range ;
+  //  il ne saisit jamais d'adresse d'image : seules les photos téléversées
+  //  ici entrent dans la liste, une page publique n'affiche donc rien qui
+  //  vienne d'ailleurs.
+
+  /** La liste enregistrée, nettoyée : [{ id, url }], au plus PHOTOS_VITRINE_MAX. */
+  static _photosVitrine(brutes) {
+    if (!Array.isArray(brutes)) return [];
+    return brutes
+      .filter((p) => p && typeof p.id === 'string' && /^https:\/\//i.test(String(p.url || '')))
+      .slice(0, PHOTOS_VITRINE_MAX)
+      .map((p) => ({ id: p.id, url: p.url }));
+  }
+
+  /**
+   * Relit la liste sous verrou, la modifie, l'enregistre. Deux ajouts
+   * envoyés en même temps (deux onglets, un double appui) s'additionnent
+   * au lieu que le second efface le premier.
+   */
+  static async _modifierPhotosVitrine(vendeurId, modifier) {
+    return sequelize.transaction(async (transaction) => {
+      const boutique = await Boutique.findOne({
+        where: { vendeurId },
+        lock: transaction.LOCK.UPDATE,
+        transaction,
+      });
+      if (!boutique) throw new NotFoundError("Créez d'abord votre boutique pour ouvrir votre site.");
+      const avant = VendeurService._photosVitrine(boutique.vitrinePhotos);
+      const resultat = modifier(avant);
+      await boutique.update({ vitrinePhotos: resultat.photos.length ? resultat.photos : null }, { transaction });
+      return resultat;
+    });
+  }
+
+  /**
+   * Ajoute des photos à la fin du défilé. Les envois partent en parallèle ;
+   * une photo refusée par l'hébergeur n'empêche pas les autres d'entrer.
+   * Au-delà de PHOTOS_VITRINE_MAX, les dernières sont écartées et le
+   * message le dit.
+   */
+  static async ajouterPhotosVitrine(vendeurId, files = []) {
+    const fichiers = (files || []).filter((f) => f?.buffer);
+    if (!fichiers.length) throw new BadRequestError('Choisissez au moins une photo.');
+
+    const boutique = await Boutique.findOne({ where: { vendeurId }, attributes: ['id', 'vitrinePhotos'] });
+    if (!boutique) throw new NotFoundError("Créez d'abord votre boutique pour ouvrir votre site.");
+    const place = PHOTOS_VITRINE_MAX - VendeurService._photosVitrine(boutique.vitrinePhotos).length;
+    if (place <= 0) {
+      throw new BadRequestError(
+        `Votre site a déjà ${PHOTOS_VITRINE_MAX} photos : retirez-en une pour en ajouter une autre.`
+      );
+    }
+
+    const envois = await Promise.allSettled(fichiers.slice(0, place).map((f) => uploadImage(f.buffer)));
+    const urls = envois.filter((e) => e.status === 'fulfilled').map((e) => e.value);
+    if (!urls.length) {
+      throw new ServiceUnavailableError("Les photos n'ont pas pu être envoyées. Réessayez dans un instant.");
+    }
+
+    const nouvelles = urls.map((url) => ({ id: crypto.randomBytes(6).toString('hex'), url }));
+    const { retenues } = await VendeurService._modifierPhotosVitrine(vendeurId, (avant) => {
+      // Relue sous verrou : un autre ajout a pu passer entre-temps.
+      const restantes = Math.max(0, PHOTOS_VITRINE_MAX - avant.length);
+      const gardees = nouvelles.slice(0, restantes);
+      return { photos: [...avant, ...gardees], retenues: gardees };
+    });
+
+    // Envoyées mais sans place (ajout concurrent) : on ne laisse rien traîner
+    // chez l'hébergeur.
+    const idsRetenus = new Set(retenues.map((p) => p.id));
+    await Promise.allSettled(nouvelles.filter((p) => !idsRetenus.has(p.id)).map((p) => deleteImage(p.url)));
+    if (!retenues.length) {
+      throw new BadRequestError(
+        `Votre site a déjà ${PHOTOS_VITRINE_MAX} photos : retirez-en une pour en ajouter une autre.`
+      );
+    }
+
+    // Le message dit ce qui est entré, et pourquoi le reste ne l'est pas.
+    const horsPlace = (fichiers.length - envois.length) + (urls.length - retenues.length);
+    const echouees = envois.length - urls.length;
+    const accord = (n, verbe) => `${n} n'${n > 1 ? 'ont' : 'a'} pas ${verbe}${n > 1 ? 's' : ''}`;
+    let message = retenues.length > 1 ? `${retenues.length} photos ajoutées à votre site.` : 'Photo ajoutée à votre site.';
+    if (horsPlace > 0) message += ` ${accord(horsPlace, 'été ajoutée')} : ${PHOTOS_VITRINE_MAX} photos au plus.`;
+    if (echouees > 0) message += ` ${accord(echouees, 'pu être envoyée')}, réessayez.`;
+    return { ...(await VendeurService.maVitrine(vendeurId)), message };
+  }
+
+  /** Retire une photo du défilé, puis de l'hébergeur. */
+  static async supprimerPhotoVitrine(vendeurId, photoId) {
+    const { retiree } = await VendeurService._modifierPhotosVitrine(vendeurId, (avant) => {
+      const photo = avant.find((p) => p.id === String(photoId));
+      if (!photo) throw new NotFoundError('Cette photo a déjà été retirée.');
+      return { photos: avant.filter((p) => p !== photo), retiree: photo };
+    });
+    await deleteImage(retiree.url);
+    return VendeurService.maVitrine(vendeurId);
+  }
+
+  /**
+   * Range les photos dans l'ordre reçu (liste d'identifiants). Une photo
+   * absente de la liste garde sa place relative, à la fin : un écran en
+   * retard d'un ajout ne la fait pas disparaître.
+   */
+  static async ordonnerPhotosVitrine(vendeurId, ids) {
+    if (!Array.isArray(ids)) throw new BadRequestError("L'ordre des photos est invalide.");
+    await VendeurService._modifierPhotosVitrine(vendeurId, (avant) => {
+      const parId = new Map(avant.map((p) => [p.id, p]));
+      const enTete = [...new Set(ids.map(String))].filter((id) => parId.has(id)).map((id) => parId.get(id));
+      const reste = avant.filter((p) => !enTete.includes(p));
+      return { photos: [...enTete, ...reste] };
+    });
+    return VendeurService.maVitrine(vendeurId);
+  }
+
   static async supprimerVitrine(vendeurId) {
     const boutique = await Boutique.findOne({ where: { vendeurId } });
     if (!boutique) throw new NotFoundError('Boutique introuvable');
+    const photos = VendeurService._photosVitrine(boutique.vitrinePhotos);
     await boutique.update(Boutique.reglagesSiteParDefaut());
+    // Le site parti, ses photos n'ont plus de raison d'être hébergées.
+    await Promise.allSettled(photos.map((p) => deleteImage(p.url)));
     return VendeurService.maVitrine(vendeurId);
   }
 

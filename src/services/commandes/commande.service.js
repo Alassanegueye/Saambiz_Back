@@ -591,11 +591,12 @@ class CommandeService {
       } else if (parQui === 'vendeur') {
         CommandeService._notifierAcheteurStatut(commande, 'Votre commande a été annulée par le vendeur.').catch(() => {});
       } else {
-        CommandeService._notifierUtilisateur(
+        CommandeService._nomAcheteur(commande.acheteurId).then(nom => CommandeService._notifierUtilisateur(
           commande.vendeurId,
           'Commande annulée',
           `La commande ${commande.referenceCommande} a été annulée par l'acheteur.`,
-        ).catch(() => {});
+          { data: CommandeService._donneesNotification(commande, commande.acheteurId, nom) },
+        )).catch(() => {});
       }
       return commande;
     } catch (err) {
@@ -611,10 +612,18 @@ class CommandeService {
    * quand la notification parle au client d'une boutique. (Le push part
    * depuis NotificationService : un second envoi ici doublait chaque push.)
    */
-  static async _notifierUtilisateur(utilisateurId, titre, message, { image } = {}) {
+  static async _notifierUtilisateur(utilisateurId, titre, message, { image, data = {} } = {}) {
     await NotificationService.creerNotification({
-      utilisateurId, titre, message, type: 'commande', image,
+      utilisateurId, titre, message, type: 'commande', image, data,
     });
+  }
+
+  /** Ce qu'il faut pour ouvrir, depuis la notification, la conversation liée. */
+  static _donneesNotification(commande, interlocuteurId, interlocuteurNom) {
+    return {
+      commandeId: commande.id,
+      ...(interlocuteurId ? { interlocuteurId, interlocuteurNom: interlocuteurNom || '' } : {}),
+    };
   }
 
   /** Identité de la boutique d'un vendeur, pour les messages au client. */
@@ -658,7 +667,10 @@ class CommandeService {
   static async _notifierVendeurNouvelleCommande(commande, paiementConfirme = false) {
     const titre = paiementConfirme ? '💰 Commande payée' : '🛒 Nouvelle commande';
     const message = `Commande ${commande.referenceCommande} — ${commande.montantTotal} FCFA.`;
-    await CommandeService._notifierUtilisateur(commande.vendeurId, titre, message);
+    const nomAcheteur = await CommandeService._nomAcheteur(commande.acheteurId);
+    await CommandeService._notifierUtilisateur(commande.vendeurId, titre, message, {
+      data: CommandeService._donneesNotification(commande, commande.acheteurId, nomAcheteur),
+    });
     Utilisateur.findByPk(commande.vendeurId).then(vendeur => vendeur && sendNouvelleCommandeEmail({ to: vendeur.email, nom: `${vendeur.prenom || ''} ${vendeur.nom || ''}`.trim(), referenceCommande: commande.referenceCommande, montantTotal: commande.montantTotal })).catch(() => {});
   }
 
@@ -690,8 +702,15 @@ class CommandeService {
       commande.acheteurId,
       `${boutique.nom} — Commande ${commande.referenceCommande}`,
       message,
-      { image: boutique.logo },
+      { image: boutique.logo, data: CommandeService._donneesNotification(commande, commande.vendeurId, boutique.nom) },
     );
+  }
+
+  /** Nom affiché d'un acheteur (titre de la conversation côté vendeur). */
+  static async _nomAcheteur(acheteurId) {
+    if (!acheteurId) return '';
+    const a = await Utilisateur.findByPk(acheteurId, { attributes: ['prenom', 'nom'] });
+    return a ? `${a.prenom || ''} ${a.nom || ''}`.trim() : '';
   }
 }
 

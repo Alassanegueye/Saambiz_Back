@@ -204,6 +204,13 @@ const Boutique = sequelize.define('Boutique', {
     type: DataTypes.JSONB,
     allowNull: true,
   },
+  // Les photos du haut du site, dans l'ordre où elles défilent :
+  // [{ id, url }] — voir VendeurService.ajouterPhotosVitrine. Remises à
+  // zéro avec le reste du site (reglagesSiteParDefaut).
+  vitrinePhotos: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+  },
 
   vendeurId: {
     type: DataTypes.UUID,

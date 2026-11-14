@@ -218,6 +218,22 @@ class VendeurController {
     return ok(res, result, 'Aperçu de votre site.');
   });
 
+  // Photos du haut du site : elles défilent dans le grand bandeau.
+  static ajouterPhotosVitrine = asyncHandler(async (req, res) => {
+    const { message, ...result } = await VendeurService.ajouterPhotosVitrine(req.user.id, req.files || []);
+    return ok(res, result, message);
+  });
+
+  static supprimerPhotoVitrine = asyncHandler(async (req, res) => {
+    const result = await VendeurService.supprimerPhotoVitrine(req.user.id, req.params.photoId);
+    return ok(res, result, 'Photo retirée de votre site.');
+  });
+
+  static ordonnerPhotosVitrine = asyncHandler(async (req, res) => {
+    const result = await VendeurService.ordonnerPhotosVitrine(req.user.id, req.body?.ids);
+    return ok(res, result, 'Ordre des photos enregistré.');
+  });
+
   static supprimerVitrine = asyncHandler(async (req, res) => {
     const result = await VendeurService.supprimerVitrine(req.user.id);
     return ok(res, result, 'Votre site a été supprimé. Vos produits restent dans l’application.');

@@ -10,7 +10,7 @@ class NotificationService {
    * @param {object} [p.data]  données jointes au push
    */
   static async creerNotification({ utilisateurId, titre, message, type, image, data = {} }) {
-    const notification = await Notification.create({ utilisateurId, titre, message, type });
+    const notification = await Notification.create({ utilisateurId, titre, message, type, donnees: data });
     try {
       getIO().to('user:' + utilisateurId).emit('notification:new', notification);
     } catch (_) { /* Socket.IO pas encore initialisé — on ignore silencieusement */ }
@@ -27,7 +27,7 @@ class NotificationService {
     const ids = [...new Set((Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean))];
     if (!ids.length) return { destinataires: 0 };
 
-    const notifications = ids.map(id => ({ utilisateurId: id, titre, message, type }));
+    const notifications = ids.map(id => ({ utilisateurId: id, titre, message, type, donnees: data }));
     const crees = await Notification.bulkCreate(notifications, { returning: true });
 
     // Temps réel
@@ -62,7 +62,7 @@ class NotificationService {
   static async notifierAbonnesDuVendeur(vendeurId, titre, message, type, data = {}, { image } = {}) {
     const boutiques = await Boutique.findAll({
       where: { vendeurId },
-      attributes: ['id', 'logo'],
+      attributes: ['id', 'logo', 'nom'],
     });
     if (!boutiques.length) return { destinataires: 0 };
 
@@ -72,8 +72,13 @@ class NotificationService {
       attributes: ['acheteurId'],
     });
     const ids = abonnes.map(a => a.acheteurId);
-    // Le push porte le logo de la boutique, pas celui de SaamBiz.
-    return this.notifierUtilisateurs(ids, titre, message, type, { boutiqueId: boutiques[0].id, ...data }, { image: image || boutiques[0].logo });
+    // Le push porte le logo de la boutique, pas celui de SaamBiz. Toucher la
+    // notification ouvre la conversation avec la boutique.
+    return this.notifierUtilisateurs(
+      ids, titre, message, type,
+      { boutiqueId: boutiques[0].id, interlocuteurId: vendeurId, interlocuteurNom: boutiques[0].nom, ...data },
+      { image: image || boutiques[0].logo },
+    );
   }
 
   static async mesNotifications(userId) {
