@@ -101,3 +101,36 @@ describe('Diffusion du statut', () => {
     expect(mockEmit).not.toHaveBeenCalled();
   });
 });
+
+describe('Les donnees jointes a une notification de commande', () => {
+  // Elles voyagent jusque dans la charge du push. Touchee telephone
+  // verrouille, la notification doit pouvoir ouvrir la bonne version de la
+  // fiche : l'acheteur et le vendeur n'y ont pas les memes boutons, et rien
+  // d'autre, dans un push, ne dit qui est destinataire.
+  test('le cote du destinataire est joint', () => {
+    const vendeur = CommandeService._donneesNotification(
+      COMMANDE, COMMANDE.acheteurId, 'Balla BEYE', { pourVendeur: true }
+    );
+    expect(vendeur).toMatchObject({
+      commandeId: 'cmd-1',
+      pourVendeur: true,
+      interlocuteurId: 'acheteur-1',
+      interlocuteurNom: 'Balla BEYE',
+    });
+
+    const acheteur = CommandeService._donneesNotification(
+      COMMANDE, COMMANDE.vendeurId, 'Aloushop', { pourVendeur: false }
+    );
+    expect(acheteur.pourVendeur).toBe(false);
+    expect(acheteur.interlocuteurId).toBe('vendeur-1');
+  });
+
+  test('une commande sans compte acheteur n’invente pas d’interlocuteur', () => {
+    const d = CommandeService._donneesNotification(
+      COMMANDE, null, '', { pourVendeur: true }
+    );
+    expect(d.commandeId).toBe('cmd-1');
+    expect(d.pourVendeur).toBe(true);
+    expect(d).not.toHaveProperty('interlocuteurId');
+  });
+});

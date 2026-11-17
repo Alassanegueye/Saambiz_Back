@@ -669,7 +669,7 @@ class CommandeService {
           commande.vendeurId,
           'Commande annulée',
           `La commande ${commande.referenceCommande} a été annulée par l'acheteur.`,
-          { data: CommandeService._donneesNotification(commande, commande.acheteurId, nom) },
+          { data: CommandeService._donneesNotification(commande, commande.acheteurId, nom, { pourVendeur: true }) },
         )).catch(() => {});
       }
       return commande;
@@ -693,9 +693,15 @@ class CommandeService {
   }
 
   /** Ce qu'il faut pour ouvrir, depuis la notification, la conversation liée. */
-  static _donneesNotification(commande, interlocuteurId, interlocuteurNom) {
+  static _donneesNotification(commande, interlocuteurId, interlocuteurNom, { pourVendeur }) {
     return {
       commandeId: commande.id,
+      // De quel cote est celui qui lit. La fiche d'une commande n'affiche pas
+      // les memes boutons a l'acheteur et au vendeur : sans cette indication,
+      // une notification touchee DEPUIS LE TELEPHONE, hors de l'application,
+      // ne peut pas ouvrir la bonne version de l'ecran — rien d'autre, dans
+      // la charge du push, ne dit qui est destinataire.
+      pourVendeur,
       ...(interlocuteurId ? { interlocuteurId, interlocuteurNom: interlocuteurNom || '' } : {}),
     };
   }
@@ -743,7 +749,7 @@ class CommandeService {
     const message = `Commande ${commande.referenceCommande} — ${commande.montantTotal} FCFA.`;
     const nomAcheteur = await CommandeService._nomAcheteur(commande.acheteurId);
     await CommandeService._notifierUtilisateur(commande.vendeurId, titre, message, {
-      data: CommandeService._donneesNotification(commande, commande.acheteurId, nomAcheteur),
+      data: CommandeService._donneesNotification(commande, commande.acheteurId, nomAcheteur, { pourVendeur: true }),
     });
     Utilisateur.findByPk(commande.vendeurId).then(vendeur => vendeur && sendNouvelleCommandeEmail({ to: vendeur.email, nom: `${vendeur.prenom || ''} ${vendeur.nom || ''}`.trim(), referenceCommande: commande.referenceCommande, montantTotal: commande.montantTotal })).catch(() => {});
   }
@@ -776,7 +782,7 @@ class CommandeService {
       commande.acheteurId,
       `${boutique.nom} — Commande ${commande.referenceCommande}`,
       message,
-      { image: boutique.logo, data: CommandeService._donneesNotification(commande, commande.vendeurId, boutique.nom) },
+      { image: boutique.logo, data: CommandeService._donneesNotification(commande, commande.vendeurId, boutique.nom, { pourVendeur: false }) },
     );
   }
 
