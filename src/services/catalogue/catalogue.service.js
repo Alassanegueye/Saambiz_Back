@@ -247,8 +247,8 @@ class CatalogueService {
     });
     if (!produit) throw new NotFoundError("Ce produit n'existe pas ou n'est plus en vente.");
 
-    // Compteur de vues, sans bloquer la réponse.
-    Produit.increment('vues', { where: { id: produit.id } }).catch(() => {});
+    // La vue est comptée par le contrôleur (VisiteService), qui sait si c'est
+    // le vendeur ou un robot.
 
     const [fiche] = await this._enrichir([produit]);
 

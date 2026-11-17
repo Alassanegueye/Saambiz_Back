@@ -8,6 +8,7 @@
 // dix-huit autres du projet : le fichier de routes n'a pas à le savoir.
 
 const VitrineService = require('../../services/vitrine/vitrine.service');
+const VisiteService = require('../../services/visites/visite.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { ok, created } = require('../../utils/response');
 
@@ -16,8 +17,17 @@ exports.accueil = asyncHandler(async (req, res) => {
   const data = await VitrineService.accueil(req.params.slug);
 
   // La visite est comptée sans attendre : le rendu de la page ne dépend pas
-  // du compteur, et le service avale déjà ses propres erreurs.
-  VitrineService.enregistrerVisite(req.params.slug);
+  // du compteur, et le service avale déjà ses propres erreurs. Une fois par
+  // visiteur et par jour ; le vendeur qui ouvre son site depuis
+  // l'application (`?apercu`) ne compte pas.
+  if (req.query.apercu === undefined) {
+    VisiteService.enregistrer({
+      boutiqueId: data?.boutique?.id,
+      canal: 'site',
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+  }
 
   return ok(res, data, 'Boutique chargée.');
 });
@@ -38,6 +48,12 @@ exports.listerProduits = asyncHandler(async (req, res) => {
 /** GET /vitrine/:slug/produits/:produitId — fiche produit + similaires. */
 exports.getProduit = asyncHandler(async (req, res) => {
   const data = await VitrineService.getProduit(req.params.slug, req.params.produitId);
+  if (req.query.apercu === undefined) {
+    VisiteService.compterVueProduit({
+      produitId: data?.produit?.id,
+      userAgent: req.get('user-agent'),
+    });
+  }
   return ok(res, data, 'Produit chargé.');
 });
 

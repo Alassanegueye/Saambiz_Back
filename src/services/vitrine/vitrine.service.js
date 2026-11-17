@@ -539,9 +539,8 @@ class VitrineService {
 
     if (!produit) throw new NotFoundError("Ce produit n'existe pas ou n'est plus en vente.");
 
-    // Compteur de vues — best-effort : une visite perdue ne doit pas faire
-    // échouer l'affichage de la fiche.
-    Produit.increment('vues', { where: { id: produit.id } }).catch(() => {});
+    // La vue est comptée par le contrôleur (VisiteService) : il connaît le
+    // navigateur, et donc les robots.
 
     const similaires = await Produit.findAll({
       where: {
@@ -824,24 +823,6 @@ class VitrineService {
       })),
       boutique: boutique ? boutique.get({ plain: true }) : null,
     };
-  }
-
-  // ══════════════════════════════════════════════════════════════════
-  //  COMPTEUR DE VISITES
-  // ══════════════════════════════════════════════════════════════════
-
-  /**
-   * Une visite du site. Best-effort et silencieux : le compteur sert à
-   * montrer au vendeur que sa vitrine tourne, il ne vaut pas de casser
-   * l'affichage d'une page.
-   */
-  static async enregistrerVisite(slug) {
-    try {
-      await Boutique.increment('vitrineVues', { where: { slug: String(slug || '').toLowerCase() } });
-    } catch (err) {
-      logger.warn('[vitrine] visite non comptée', { message: err.message });
-    }
-    return { ok: true };
   }
 }
 

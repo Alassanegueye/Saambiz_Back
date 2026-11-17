@@ -95,17 +95,9 @@ class AcheteurController {
   });
 
   // 7. INCRÉMENTER VUES
+  // L'affinité de la consultation est apprise par GET /catalogue/produits/:id.
   static incrementerVues = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const result = await AcheteurService.incrementerVues(id);
-    // Consulter un produit renforce l'affinité pour sa catégorie : c'est le
-    // signal le plus fréquent, d'où son poids faible côté service.
-    if (req.user?.id) {
-      const categorie = result?.produit?.categorie?.nom
-        || result?.produit?.categorie
-        || null;
-      AccueilService.enregistrerAffinite(req.user.id, categorie, 'vue').catch(() => {});
-    }
+    const result = await AcheteurService.incrementerVues(req.params.id);
     return res.status(200).json({ success: true, ...result });
   });
 

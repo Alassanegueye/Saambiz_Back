@@ -1,6 +1,7 @@
 const CatalogueService = require('../../services/catalogue/catalogue.service');
 const AccueilService = require('../../services/acheteurs/accueil.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
+const VisiteService = require('../../services/visites/visite.service');
 
 /**
  * Ce que le client connecté regarde et cherche dans le catalogue nourrit ses
@@ -39,6 +40,12 @@ exports.lister = asyncHandler(async (req, res) => {
 exports.detail = asyncHandler(async (req, res) => {
   const resultat = await CatalogueService.detail(req.params.id);
   res.json({ success: true, ...resultat });
+  VisiteService.compterVueProduit({
+    produitId: resultat.produit?.id,
+    vendeurId: resultat.produit?.vendeurId,
+    utilisateurId: req.user?.id,
+    userAgent: req.get('user-agent'),
+  });
   apprendre(req, () => AccueilService.enregistrerAffinite(
     req.user.id, resultat.produit?.categorie?.nom, 'vue',
   ));
@@ -65,6 +72,21 @@ exports.rechercherBoutiques = asyncHandler(async (req, res) => {
 exports.boutique = asyncHandler(async (req, res) => {
   const resultat = await CatalogueService.boutique(req.params.id);
   res.json({ success: true, ...resultat });
+  // Une visite seulement quand l'application la signale : la page de la
+  // boutique envoie `X-Visiteur` ; la fiche d'une commande, qui relit aussi
+  // la boutique pour l'afficher, ne l'envoie pas.
+  const appareil = VisiteService.identifiantAppareil(req.get('x-visiteur'));
+  if (appareil) {
+    VisiteService.enregistrer({
+      boutiqueId: resultat.boutique?.id,
+      vendeurId: resultat.boutique?.vendeurId,
+      canal: 'app',
+      utilisateurId: req.user?.id,
+      appareil,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+  }
   apprendre(req, () => AccueilService.enregistrerAffinite(
     req.user.id, resultat.boutique?.categorie, 'vue',
   ));

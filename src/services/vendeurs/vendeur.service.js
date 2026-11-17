@@ -19,6 +19,7 @@ const PHOTOS_VITRINE_MAX = 10;
 
 // Mises en page proposées pour la vitrine — la liste du service fait foi.
 const { MODELES_VITRINE, ICONES_VITRINE } = require('../vitrine/vitrine.service');
+const VisiteService = require('../visites/visite.service');
 
 // Domaine qui sert les vitrines. Le vendeur voit l'adresse de son site dans
 // son tableau de bord, la partage sur WhatsApp et l'imprime sur ses cartes :
@@ -341,9 +342,10 @@ class VendeurService {
       await boutique.update({ slug: await genererSlugUnique(boutique.nom) });
     }
 
-    const nombreProduits = await Produit.count({
-      where: { vendeurId, statut: 'approuve' },
-    });
+    const [nombreProduits, visitesRecentes] = await Promise.all([
+      Produit.count({ where: { vendeurId, statut: 'approuve' } }),
+      VisiteService.recentes(boutique.id),
+    ]);
 
     return {
       vitrine: {
@@ -370,7 +372,10 @@ class VendeurService {
         blocs: VendeurService._blocsVides(boutique.vitrineBlocs),
         commande: boutique.vitrineCommande !== false,
         paiementLivraison: boutique.vitrinePaiementLivraison !== false,
+        // Visites uniques par jour, application et site : même nombre que
+        // « Visites » sur le tableau de bord.
         vues: boutique.vitrineVues || 0,
+        visitesRecentes,
         sectionsPerso: Array.isArray(boutique.vitrineSectionsPerso) ? boutique.vitrineSectionsPerso : [],
         // Photos du haut du site, dans l'ordre où elles défilent.
         photos: VendeurService._photosVitrine(boutique.vitrinePhotos),
@@ -863,7 +868,7 @@ class VendeurService {
     const [boutique, abonnementRaw, messagesNonLus, notifsNonLues, topProduits] = await Promise.all([
       Boutique.findOne({
         where: { vendeurId },
-        attributes: ['id', 'nom', 'logo', 'localisation', 'whatsapp']
+        attributes: ['id', 'nom', 'logo', 'localisation', 'whatsapp', 'vitrineVues']
       }),
       Abonnement.findOne({
         where: { utilisateurId: vendeurId },
@@ -888,12 +893,15 @@ class VendeurService {
 
     let totalVues = 0;
     let nombreProduits = 0;
+    let visitesRecentes = { aujourdHui: 0, septJours: 0, trenteJours: 0 };
 
     if (boutique) {
-      const [produitStats, favoriCount] = await Promise.all([
+      const [produitStats, favoriCount, recentes] = await Promise.all([
         Produit.findAll({ where: { vendeurId }, attributes: ['vues'] }),
-        Favori.count({ where: { boutiqueId: boutique.id } })
+        Favori.count({ where: { boutiqueId: boutique.id } }),
+        VisiteService.recentes(boutique.id),
       ]);
+      visitesRecentes = recentes;
 
       totalVues = produitStats.reduce((acc, p) => acc + (p.vues || 0), 0);
       nombreProduits = produitStats.length;
@@ -922,6 +930,13 @@ class VendeurService {
         joursRestants
       } : null,
       stats: {
+        // Visites de la boutique (application et site, une par personne et
+        // par jour) : LE nombre que « Ma boutique » affiche aussi.
+        visites: boutique ? boutique.vitrineVues || 0 : 0,
+        visitesRecentes,
+        // Ouvertures des fiches produit. `totalVues` reste pour le tableau
+        // de bord web, qui le lit sous ce nom.
+        vuesProduits: totalVues,
         totalVues,
         nombreProduits,
         nombreAbonnes: boutique ? boutique.dataValues.nombreFavoris : 0,

@@ -376,8 +376,10 @@ Merci.
   // ==============================
   // 7. INCRÉMENTER VUES
   // ==============================
-  static async incrementerVues(produitId) {
-    await Produit.increment({ vues: 1 }, { where: { id: produitId } });
+  // Conservé pour les versions de l'application qui l'appellent encore. La
+  // vue est comptée à l'ouverture de la fiche (GET /catalogue/produits/:id) :
+  // l'application appelait les deux, et chaque ouverture comptait double.
+  static async incrementerVues() {
     return { message: 'Vue enregistrée' };
   }
 
