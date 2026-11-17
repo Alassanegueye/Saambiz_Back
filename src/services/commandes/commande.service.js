@@ -22,6 +22,26 @@ const TRANSITIONS = {
   annulee:        [],
 };
 
+/**
+ * Les mêmes libellés que l'application, pour que le refus d'une transition
+ * se lise. « Transition impossible : livree → en_preparation » est une phrase
+ * de développeur ; le vendeur, lui, a besoin de savoir où en est sa commande.
+ */
+const LIBELLES_STATUT = {
+  en_attente:     'En attente',
+  acceptee:       'Acceptée',
+  rejetee:        'Rejetée',
+  payee:          'Payée',
+  confirmee:      'Confirmée',
+  en_preparation: 'En préparation',
+  prete:          'Prête',
+  en_livraison:   'En livraison',
+  livree:         'Livrée',
+  annulee:        'Annulée',
+};
+
+const libelle = (statut) => LIBELLES_STATUT[statut] || statut;
+
 class CommandeService {
 
   // -------------------- HELPERS --------------------
@@ -485,9 +505,24 @@ class CommandeService {
       throw new ForbiddenError('Cette commande ne vous appartient pas');
     }
 
+    // LA DEMANDE EST DÉJÀ SATISFAITE.
+    //
+    // Deuxième appui sur « Accepter » parce que le premier n'avait pas encore
+    // répondu, réessai après une coupure réseau, deux appareils du même
+    // vendeur : la commande est déjà dans l'état demandé. Il n'y a rien à
+    // faire, et surtout rien à reprocher. On rend la commande telle quelle.
+    //
+    // Avant, ce cas levait « Transition impossible : acceptee → acceptee » —
+    // une erreur technique, sur un écran qui montrait encore « en attente »
+    // puisque la première réponse n'était pas arrivée. Le vendeur se
+    // retrouvait bloqué devant une commande qu'il venait pourtant d'accepter.
+    if (commande.statut === nouveauStatut) return commande;
+
     const autorises = TRANSITIONS[commande.statut] || [];
     if (!autorises.includes(nouveauStatut)) {
-      throw new BadRequestError(`Transition impossible : ${commande.statut} → ${nouveauStatut}`);
+      throw new BadRequestError(
+        `Cette commande est « ${libelle(commande.statut)} » : elle ne peut pas passer à « ${libelle(nouveauStatut)} ».`
+      );
     }
 
     if (nouveauStatut === 'annulee') {
