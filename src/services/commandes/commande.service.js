@@ -3,6 +3,7 @@ const { Commande, LigneCommande, Produit, Utilisateur, Boutique } = require('../
 const sequelize = require('../../config/db');
 const ConfigService = require('../config/config.service');
 const NotificationService = require('../notifications/notification.service');
+const { getIO } = require('../socket.service');
 const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resend.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
@@ -352,6 +353,7 @@ class CommandeService {
 
       if (gererTransaction) await t.commit();
 
+      CommandeService._diffuserStatut(commande);
       CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(() => {});
       CommandeService._notifierAcheteurStatut(commande).catch(() => {});
       return commande;
@@ -396,6 +398,38 @@ class CommandeService {
     });
 
     return commandes.map(CommandeService.avecClient);
+  }
+
+  /**
+   * Annonce aux DEUX parties que cette commande a changé d'état.
+   *
+   * Les notifications existantes ne préviennent que l'acheteur, et seulement
+   * pour lui afficher un message : rien ne disait aux écrans de commandes de
+   * se relire. Resultat, le tableau de bord du vendeur et la fiche de
+   * l'acheteur pouvaient montrer deux statuts differents pour la meme
+   * commande, chacun figé sur ce qu'il avait lu en arrivant.
+   *
+   * La charge est volontairement minuscule : l'identifiant et les deux
+   * statuts. Le client relit la commande s'il en a besoin — on ne diffuse ni
+   * les lignes, ni le client, ni les montants sur un canal temps réel.
+   *
+   * Silencieux par construction : une diffusion ratée ne doit jamais faire
+   * échouer la transaction qui vient d'aboutir.
+   */
+  static _diffuserStatut(commande) {
+    try {
+      const charge = {
+        id: commande.id,
+        statut: commande.statut,
+        statutPaiement: commande.statutPaiement,
+      };
+      const io = getIO();
+      for (const destinataire of [commande.acheteurId, commande.vendeurId]) {
+        if (destinataire) io.to('user:' + destinataire).emit('commande:statut', charge);
+      }
+    } catch (_) {
+      /* Socket.IO pas encore initialisé, ou aucun client connecté. */
+    }
   }
 
   /**
@@ -478,6 +512,7 @@ class CommandeService {
       CommandeService._incrementerVentes(commande.id).catch(() => {});
     }
 
+    CommandeService._diffuserStatut(commande);
     // Notifier l'acheteur de l'avancement
     CommandeService._notifierAcheteurStatut(commande).catch(() => {});
     return commande;
@@ -507,6 +542,7 @@ class CommandeService {
 
     commande.statutPaiement = 'paye';
     await commande.save();
+    CommandeService._diffuserStatut(commande);
     return commande;
   }
 
@@ -525,6 +561,7 @@ class CommandeService {
       await commande.save({ transaction: t });
       await t.commit();
 
+      CommandeService._diffuserStatut(commande);
       CommandeService._notifierAcheteurStatut(commande, CommandeService._messageAcceptation(commande)).catch(() => {});
       return commande;
     } catch (err) {
@@ -584,6 +621,8 @@ class CommandeService {
       await commande.save({ transaction: t });
 
       await t.commit();
+
+      CommandeService._diffuserStatut(commande);
 
       // Notifier l'autre partie
       if (statutFinal === 'rejetee') {
