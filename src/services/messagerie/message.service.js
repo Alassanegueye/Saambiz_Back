@@ -1,4 +1,5 @@
 const { Message, MessageSite, Utilisateur, Boutique } = require('../../models');
+const { paginate, metaPagination } = require('../../utils/paginate');
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
 const { getIO } = require('../socket.service');
@@ -35,7 +36,7 @@ class MessageService {
     return messages;
   }
 
-  static async getConversations(userId) {
+  static async getConversations(userId, { page, limit } = {}) {
     // Récupère les derniers messages par interlocuteur. La boutique de chaque
     // participant vient avec : quand l'interlocuteur est un vendeur, l'écran
     // affiche le nom et le logo de sa boutique plutôt que son nom personnel.
@@ -52,7 +53,23 @@ class MessageService {
       include: [participant('expediteur'), participant('destinataire')],
       order: [['createdAt', 'DESC']]
     });
-    return MessageService.regrouperConversations(messages, userId);
+    const toutes = MessageService.regrouperConversations(messages, userId);
+
+    // PAGINATION EN MÉMOIRE, et c'est assumé : le regroupement se fait après
+    // la lecture — une conversation est le DERNIER message echange avec
+    // quelqu'un —, donc limiter les messages tronquerait les conversations
+    // au lieu de les compter. On lit, on regroupe, puis on decoupe.
+    //
+    // La lecture, elle, reste entiere : cette methode charge tout
+    // l'historique de messages de l'utilisateur pour en extraire une liste
+    // d'interlocuteurs. La borner demande une autre requete (un DISTINCT ON
+    // par interlocuteur) et un travail a part — signale dans le rapport
+    // d'audit, pas improvise ici.
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    return {
+      conversations: toutes.slice(offset, offset + l),
+      ...metaPagination(toutes.length, p, l),
+    };
   }
 
   /**

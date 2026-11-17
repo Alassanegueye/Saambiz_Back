@@ -35,8 +35,11 @@ describe('MessageService.getConversations', () => {
   });
 
   test('côté acheteur : l\'interlocuteur est le vendeur, avec sa boutique', async () => {
-    const [c, ...reste] = await MessageService.getConversations('a1');
-    expect(reste).toHaveLength(0);
+    // La liste est paginee : elle rend `{ conversations, total, page, pages }`.
+    const { conversations, total } = await MessageService.getConversations('a1');
+    expect(conversations).toHaveLength(1);
+    expect(total).toBe(1);
+    const [c] = conversations;
     expect(c.interlocuteurId).toBe('v1');
     expect(c.interlocuteur).toEqual({
       id: 'v1', nom: 'Diop', prenom: 'Alou', photoProfil: null,
@@ -47,7 +50,8 @@ describe('MessageService.getConversations', () => {
   });
 
   test('côté vendeur : l\'interlocuteur est l\'acheteur, sans boutique', async () => {
-    const [c] = await MessageService.getConversations('v1');
+    const { conversations } = await MessageService.getConversations('v1');
+    const [c] = conversations;
     expect(c.interlocuteurId).toBe('a1');
     expect(c.interlocuteur.prenom).toBe('Balla');
     expect(c.interlocuteur.boutique).toBeNull();

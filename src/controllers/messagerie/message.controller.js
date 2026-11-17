@@ -14,8 +14,11 @@ exports.getConversation = asyncHandler(async (req, res) => {
 });
 
 exports.getConversations = asyncHandler(async (req, res) => {
-  const conversations = await MessageService.getConversations(req.user.id);
-  return res.status(200).json({ conversations });
+  const resultat = await MessageService.getConversations(req.user.id, {
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  return res.status(200).json(resultat);
 });
 
 exports.marquerLu = asyncHandler(async (req, res) => {

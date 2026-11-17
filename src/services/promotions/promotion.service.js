@@ -1,4 +1,5 @@
 const { Promotion, Produit, Boutique, Favori } = require('../../models');
+const { paginate, metaPagination } = require('../../utils/paginate');
 const { BadRequestError, NotFoundError } = require('../../errors/AppError');
 const { Op } = require('sequelize');
 const NotificationService = require('../notifications/notification.service');
@@ -204,13 +205,17 @@ class PromotionService {
     return { success: true, message: 'Promotion supprimée' };
   }
 
-  static async mesPromotions(vendeurId) {
-    const promotions = await Promotion.findAll({
+  static async mesPromotions(vendeurId, { page, limit } = {}) {
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    const { rows, count } = await Promotion.findAndCountAll({
       where: { vendeurId },
       include: [{ model: Produit, as: undefined }],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: l,
+      offset,
+      distinct: true,
     });
-    return promotions;
+    return { promotions: rows, ...metaPagination(count, p, l) };
   }
 
   static async getPromotionsActives() {

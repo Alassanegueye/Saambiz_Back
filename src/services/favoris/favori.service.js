@@ -1,4 +1,5 @@
 const { Favori, Boutique, Utilisateur } = require('../../models');
+const { paginate, metaPagination } = require('../../utils/paginate');
 
 class FavoriService {
 
@@ -19,8 +20,9 @@ class FavoriService {
     return { success: true, message: 'Boutique retirée des favoris' };
   }
 
-  static async mesFavoris(acheteurId) {
-    const favoris = await Favori.findAll({
+  static async mesFavoris(acheteurId, { page, limit } = {}) {
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    const { rows, count } = await Favori.findAndCountAll({
       where: { acheteurId },
       include: [
         {
@@ -29,9 +31,13 @@ class FavoriService {
           include: [{ model: Utilisateur, as: 'vendeur', attributes: ['id', 'nom', 'prenom'] }]
         }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: l,
+      offset,
+      // Les boutiques jointes gonfleraient le compte sans ça.
+      distinct: true,
     });
-    return favoris;
+    return { favoris: rows, ...metaPagination(count, p, l) };
   }
 
   /**

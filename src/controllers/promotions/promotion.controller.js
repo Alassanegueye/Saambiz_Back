@@ -36,8 +36,11 @@ exports.supprimerPromotion = asyncHandler(async (req, res) => {
 });
 
 exports.mesPromotions = asyncHandler(async (req, res) => {
-  const promotions = await PromotionService.mesPromotions(req.user.id);
-  return res.status(200).json({ promotions });
+  const resultat = await PromotionService.mesPromotions(req.user.id, {
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  return res.status(200).json(resultat);
 });
 
 exports.getPromotionsActives = asyncHandler(async (req, res) => {

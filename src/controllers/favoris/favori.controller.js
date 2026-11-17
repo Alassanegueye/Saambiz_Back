@@ -21,8 +21,11 @@ exports.supprimerFavori = asyncHandler(async (req, res) => {
 });
 
 exports.mesFavoris = asyncHandler(async (req, res) => {
-  const favoris = await FavoriService.mesFavoris(req.user.id);
-  return res.status(200).json({ favoris });
+  const resultat = await FavoriService.mesFavoris(req.user.id, {
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  return res.status(200).json(resultat);
 });
 
 // 🔔 Active/désactive la cloche de notifications d'une boutique
