@@ -87,6 +87,34 @@ describe('La demande est deja satisfaite', () => {
   });
 });
 
+describe('Le cas courant en boutique', () => {
+  test('acceptee + reglement a la reception → en_preparation passe', async () => {
+    // Retrait sur place, paiement a la reception : le vendeur prepare tout de
+    // suite. C'est le chemin le plus frequent, et c'est celui qui etait casse
+    // cote mobile (le bouton n'envoyait rien du tout).
+    const commande = commandeEn('acceptee');
+    mockFindByPk.mockResolvedValue(commande);
+
+    const rendu = await CommandeService.changerStatut('cmd-1', VENDEUR, 'en_preparation');
+
+    expect(rendu.statut).toBe('en_preparation');
+    expect(mockSave).toHaveBeenCalledTimes(1);
+  });
+
+  test('la suite du parcours reste ouverte', async () => {
+    for (const [de, vers] of [
+      ['en_preparation', 'prete'],
+      ['prete', 'en_livraison'],
+      ['en_livraison', 'livree'],
+      ['prete', 'livree'], // retrait en boutique : pas d'etape de livraison
+    ]) {
+      mockFindByPk.mockResolvedValue(commandeEn(de));
+      const rendu = await CommandeService.changerStatut('cmd-1', VENDEUR, vers);
+      expect(rendu.statut).toBe(vers);
+    }
+  });
+});
+
 describe('Un refus se lit', () => {
   test('le message nomme les deux etats en francais', async () => {
     mockFindByPk.mockResolvedValue(commandeEn('livree'));
