@@ -433,7 +433,7 @@ class AccueilService {
     if (nouvelles.length) {
       sections.push({
         cle: 'nouvelles',
-        titre: 'Nouvelles boutiques',
+        titre: 'Nos boutiques',
         type: 'boutiques',
         elements: nouvelles,
       });
