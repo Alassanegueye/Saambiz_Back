@@ -85,19 +85,14 @@ exports.payerCommande = asyncHandler(async (req, res) => {
 
 // -------------------- ACHETEUR : mes commandes --------------------
 exports.mesCommandes = asyncHandler(async (req, res) => {
-  // `limit` est facultatif : sans lui, la reponse garde sa forme d'origine
-  // — `{ commandes }` — et rend tout. Avec lui, elle porte en plus `total`,
-  // `page` et `pages`. Un client existant ne voit donc aucun changement.
+  // Dix par page. La reponse porte `commandes`, `total`, `page` et `pages` :
+  // l'application sait s'il existe une page suivante.
   const resultat = await CommandeService.mesCommandes(req.user.id, {
     statut: req.query.statut,
     page: req.query.page,
     limit: req.query.limit,
   });
-  return res.status(200).json(
-    Array.isArray(resultat)
-      ? { success: true, commandes: resultat }
-      : { success: true, ...resultat },
-  );
+  return res.status(200).json({ success: true, ...resultat });
 });
 
 // -------------------- ACHETEUR/VENDEUR : détail d'une commande --------------------
@@ -178,11 +173,7 @@ exports.commandesVendeur = asyncHandler(async (req, res) => {
     page: req.query.page,
     limit: req.query.limit,
   });
-  return res.status(200).json(
-    Array.isArray(resultat)
-      ? { success: true, commandes: resultat }
-      : { success: true, ...resultat },
-  );
+  return res.status(200).json({ success: true, ...resultat });
 });
 
 // -------------------- VENDEUR : faire avancer le statut --------------------

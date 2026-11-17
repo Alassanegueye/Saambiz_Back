@@ -1,5 +1,6 @@
 const { Notification, Utilisateur, Favori, Boutique } = require('../../models');
 const { getIO } = require('../socket.service');
+const { paginate, metaPagination } = require('../../utils/paginate');
 const { sendPushToUsers } = require('../push.service');
 
 class NotificationService {
@@ -81,12 +82,21 @@ class NotificationService {
     );
   }
 
-  static async mesNotifications(userId) {
-    return await Notification.findAll({
+  /**
+   * Les notifications d'un utilisateur, dix par page.
+   *
+   * Elle en rendait cinquante d'un bloc, sans moyen de voir les suivantes :
+   * au-dela, l'historique etait simplement inaccessible.
+   */
+  static async mesNotifications(userId, { page, limit } = {}) {
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    const { rows, count } = await Notification.findAndCountAll({
       where: { utilisateurId: userId },
       order: [['createdAt', 'DESC']],
-      limit: 50
+      limit: l,
+      offset,
     });
+    return { notifications: rows, ...metaPagination(count, p, l) };
   }
 
   static async marquerLue(notifId, userId) {

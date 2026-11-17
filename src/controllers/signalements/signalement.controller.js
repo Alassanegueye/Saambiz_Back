@@ -23,7 +23,10 @@ class SignalementController {
   });
 
   static mesSignalements = asyncHandler(async (req, res) => {
-    const result = await SignalementService.mesSignalements(req.user.id);
+    const result = await SignalementService.mesSignalements(req.user.id, {
+      page: req.query.page,
+      limit: req.query.limit,
+    });
     return res.status(200).json({ success: true, ...result });
   });
 }

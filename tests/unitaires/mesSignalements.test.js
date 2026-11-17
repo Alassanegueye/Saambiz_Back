@@ -12,7 +12,7 @@ const mockBoutiques = jest.fn();
 const mockProduits = jest.fn();
 
 jest.mock('../../src/models', () => ({
-  Signalement: { findAll: (...a) => mockSignalements(...a) },
+  Signalement: { findAndCountAll: (...a) => mockSignalements(...a) },
   Boutique: { findAll: (...a) => mockBoutiques(...a), findByPk: jest.fn() },
   Produit: { findAll: (...a) => mockProduits(...a), findByPk: jest.fn() },
 }));
@@ -41,7 +41,7 @@ beforeEach(() => {
 
 describe('La cible est nommee', () => {
   test('une boutique rend son nom et son logo', async () => {
-    mockSignalements.mockResolvedValue([ligne()]);
+    mockSignalements.mockResolvedValue({ rows: [ligne()], count: 1 });
     mockBoutiques.mockResolvedValue([
       { id: 'b1', nom: 'Maison Ndiaye Couture', logo: 'https://x/l.png' },
     ]);
@@ -56,9 +56,9 @@ describe('La cible est nommee', () => {
   });
 
   test('un produit rend son nom et son image', async () => {
-    mockSignalements.mockResolvedValue([
+    mockSignalements.mockResolvedValue({ rows: [
       ligne({ id: 's2', type: 'produit', cibleId: 'p1' }),
-    ]);
+    ], count: 1 });
     mockProduits.mockResolvedValue([
       { id: 'p1', nom: 'Robe wax', image: 'https://x/p.jpg' },
     ]);
@@ -71,7 +71,7 @@ describe('La cible est nommee', () => {
   test('une cible disparue rend `null`, et le signalement reste', async () => {
     // Boutique fermee, produit retire : le signalement garde tout son
     // interet, c'est meme la qu'il en a le plus.
-    mockSignalements.mockResolvedValue([ligne({ cibleId: 'inconnu' })]);
+    mockSignalements.mockResolvedValue({ rows: [ligne({ cibleId: 'inconnu' })], count: 1 });
 
     const { signalements } = await SignalementService.mesSignalements('u1');
     expect(signalements).toHaveLength(1);
@@ -88,7 +88,7 @@ describe('Le nombre de requetes ne suit pas le nombre de signalements', () => {
       lignes.push(ligne({ id: `sb${i}`, type: 'boutique', cibleId: `b${i}` }));
       lignes.push(ligne({ id: `sp${i}`, type: 'produit', cibleId: `p${i}` }));
     }
-    mockSignalements.mockResolvedValue(lignes);
+    mockSignalements.mockResolvedValue({ rows: lignes, count: lignes.length });
 
     await SignalementService.mesSignalements('u1');
 
@@ -97,7 +97,7 @@ describe('Le nombre de requetes ne suit pas le nombre de signalements', () => {
   });
 
   test('aucune boutique signalee : aucune requete de boutiques', async () => {
-    mockSignalements.mockResolvedValue([ligne({ type: 'produit', cibleId: 'p1' })]);
+    mockSignalements.mockResolvedValue({ rows: [ligne({ type: 'produit', cibleId: 'p1' })], count: 1 });
 
     await SignalementService.mesSignalements('u1');
 
@@ -106,10 +106,10 @@ describe('Le nombre de requetes ne suit pas le nombre de signalements', () => {
   });
 
   test('une meme cible signalee deux fois n’est demandee qu’une', async () => {
-    mockSignalements.mockResolvedValue([
+    mockSignalements.mockResolvedValue({ rows: [
       ligne({ id: 's1', cibleId: 'b1' }),
       ligne({ id: 's2', cibleId: 'b1' }),
-    ]);
+    ], count: 1 });
 
     await SignalementService.mesSignalements('u1');
 
@@ -118,7 +118,7 @@ describe('Le nombre de requetes ne suit pas le nombre de signalements', () => {
   });
 
   test('une liste vide ne declenche aucune requete', async () => {
-    mockSignalements.mockResolvedValue([]);
+    mockSignalements.mockResolvedValue({ rows: [], count: 1 });
 
     const { signalements } = await SignalementService.mesSignalements('u1');
 

@@ -6,13 +6,14 @@
  * chargent donc le vendeur avec sa boutique (nom, logo).
  */
 
-const mockFindAll = jest.fn().mockResolvedValue([]);
+// `mesCommandes` est paginee : elle passe par `findAndCountAll`.
+const mockFindAll = jest.fn().mockResolvedValue({ rows: [], count: 0 });
 const mockFindByPk = jest.fn().mockResolvedValue(null);
 
 jest.mock('../../src/services/socket.service', () => ({ getIO: jest.fn() }));
 jest.mock('../../src/models', () => ({
   Commande: {
-    findAll: (...a) => mockFindAll(...a),
+    findAndCountAll: (...a) => mockFindAll(...a),
     findByPk: (...a) => mockFindByPk(...a),
   },
   LigneCommande: { name: 'LigneCommande' },

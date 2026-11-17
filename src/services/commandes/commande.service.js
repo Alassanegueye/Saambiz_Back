@@ -424,11 +424,10 @@ class CommandeService {
   /**
    * Les commandes d'un acheteur.
    *
-   * PAGINATION FACULTATIVE. Sans `limit`, tout est rendu — c'est le
-   * comportement d'origine, et poser une limite par defaut ferait
-   * disparaitre sans prevenir les commandes anciennes d'un client fidele.
-   * Avec `limit`, la reponse porte en plus `total`, `page` et `pages` :
-   * l'application peut charger par pages sans rien perdre.
+   * PAGINEE, dix par page. L'application affiche « Precedent / Suivant » :
+   * rien n'est perdu, tout se parcourt.
+   *
+   * Elle rendait auparavant TOUT, sans limite.
    *
    * Un client qui commande chaque semaine depuis deux ans telecharge
    * aujourd'hui cent commandes, leurs lignes et leurs vendeurs a chaque
@@ -447,8 +446,6 @@ class CommandeService {
       order: [['createdAt', 'DESC']],
     };
 
-    if (limit == null) return await Commande.findAll(requete);
-
     const { page: p, limit: l, offset } = paginate(page, limit);
     const { rows, count } = await Commande.findAndCountAll({
       ...requete,
@@ -460,8 +457,7 @@ class CommandeService {
     return { commandes: rows, ...metaPagination(count, p, l) };
   }
 
-  /** Les commandes recues par un vendeur. Pagination facultative, pour la
-   * meme raison et avec la meme precaution que `mesCommandes`. */
+  /** Les commandes recues par un vendeur. Paginee comme `mesCommandes`. */
   static async commandesVendeur(vendeurId, { statut, origine, page, limit } = {}) {
     const where = { vendeurId };
     if (statut) where.statut = statut;
@@ -479,11 +475,6 @@ class CommandeService {
       ],
       order: [['createdAt', 'DESC']],
     };
-
-    if (limit == null) {
-      const commandes = await Commande.findAll(requete);
-      return commandes.map(CommandeService.avecClient);
-    }
 
     const { page: p, limit: l, offset } = paginate(page, limit);
     const { rows, count } = await Commande.findAndCountAll({

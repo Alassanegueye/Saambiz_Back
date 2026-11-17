@@ -1,5 +1,6 @@
 const { Signalement, Produit, Boutique } = require('../../models');
 const { NotFoundError } = require('../../errors/AppError');
+const { paginate, metaPagination } = require('../../utils/paginate');
 
 class SignalementService {
 
@@ -35,10 +36,13 @@ class SignalementService {
    * Les cibles sont relues en DEUX requêtes, une par type, et non une par
    * signalement.
    */
-  static async mesSignalements(signaleurId) {
-    const lignes = await Signalement.findAll({
+  static async mesSignalements(signaleurId, { page, limit } = {}) {
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    const { rows: lignes, count } = await Signalement.findAndCountAll({
       where: { signaleurId },
       order: [['createdAt', 'DESC']],
+      limit: l,
+      offset,
     });
 
     const idsParType = { boutique: [], produit: [] };
@@ -76,7 +80,7 @@ class SignalementService {
       cible: parId.get(s.cibleId) || null,
     }));
 
-    return { signalements };
+    return { signalements, ...metaPagination(count, p, l) };
   }
 }
 

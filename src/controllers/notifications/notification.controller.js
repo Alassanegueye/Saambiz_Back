@@ -3,8 +3,11 @@ const asyncHandler = require('../../middlewares/asyncHandler');
 const { NotFoundError } = require('../../errors/AppError');
 
 exports.mesNotifications = asyncHandler(async (req, res) => {
-  const notifications = await NotificationService.mesNotifications(req.user.id);
-  return res.status(200).json({ notifications });
+  const resultat = await NotificationService.mesNotifications(req.user.id, {
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  return res.status(200).json(resultat);
 });
 
 exports.marquerLue = asyncHandler(async (req, res) => {

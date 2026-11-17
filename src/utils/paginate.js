@@ -5,7 +5,10 @@
  * charger toute une table en mémoire, sérialiser le résultat et l'envoyer.
  * C'est un déni de service à une requête, disponible pour n'importe qui.
  */
-const LIMITE_DEFAUT = 20;
+// Dix par page : la taille demandee pour toute l'application, et celle que
+// les boutons « Precedent / Suivant » du mobile supposent. Un ecran de
+// telephone en montre entre trois et six sans defiler.
+const LIMITE_DEFAUT = 10;
 const LIMITE_MAX = 100;
 
 /**

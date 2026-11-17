@@ -199,9 +199,8 @@ describe('Les gardes existantes tiennent', () => {
 });
 
 describe('Pagination des listes de commandes', () => {
-  // Sans `limit`, la reponse garde sa forme d'origine : un tableau, tout
-  // rendu. Poser une limite par defaut ferait disparaitre sans prevenir les
-  // commandes anciennes d'un client fidele.
+  // Dix par page, partout. L'application affiche « Precedent / Suivant » :
+  // rien n'est perdu, tout se parcourt.
   const mockFindAll = jest.fn();
   const mockFindAndCountAll = jest.fn();
 
@@ -214,12 +213,17 @@ describe('Pagination des listes de commandes', () => {
     });
   });
 
-  test('sans `limit` : tout est rendu, forme inchangee', async () => {
+  test('sans parametre : la premiere page de dix', async () => {
+    // Elle rendait TOUTES les commandes. Un client fidele en telechargeait
+    // des centaines a chaque ouverture de l'onglet.
     const rendu = await CommandeService.mesCommandes('u1', {});
 
-    expect(Array.isArray(rendu)).toBe(true);
-    expect(mockFindAll).toHaveBeenCalled();
-    expect(mockFindAndCountAll).not.toHaveBeenCalled();
+    expect(rendu.commandes).toBeDefined();
+    expect(rendu.page).toBe(1);
+    expect(mockFindAll).not.toHaveBeenCalled();
+    const [options] = mockFindAndCountAll.mock.calls[0];
+    expect(options.limit).toBe(10);
+    expect(options.offset).toBe(0);
   });
 
   test('avec `limit` : une page, et de quoi savoir combien il en reste', async () => {
@@ -242,8 +246,9 @@ describe('Pagination des listes de commandes', () => {
     expect(rendu.commandes[0]).toHaveProperty('client');
   });
 
-  test('cote vendeur sans `limit` : un tableau, comme avant', async () => {
+  test('cote vendeur aussi : dix par defaut', async () => {
     const rendu = await CommandeService.commandesVendeur(VENDEUR, {});
-    expect(Array.isArray(rendu)).toBe(true);
+    expect(rendu.page).toBe(1);
+    expect(rendu.pages).toBe(14); // 137 commandes, dix par page
   });
 });
