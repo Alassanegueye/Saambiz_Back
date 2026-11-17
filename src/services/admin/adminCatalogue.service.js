@@ -33,7 +33,6 @@ const aplatir = (instance) => {
 };
 
 const STATUTS_COMMANDE = ['en_attente', 'acceptee', 'rejetee', 'payee', 'confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree', 'annulee'];
-const STATUTS_PAIEMENT = ['non_paye', 'paye', 'rembourse'];
 // Statuts où la marchandise est engagée : le stock doit être réservé.
 const STATUTS_ENGAGES = ['acceptee', 'payee', 'confirmee', 'en_preparation', 'prete', 'en_livraison', 'livree'];
 
@@ -180,34 +179,68 @@ class AdminCatalogueService {
   }
 
   /** Statut, paiement et coordonnées. Les lignes ne changent pas après coup. */
-  static async modifierCommande(id, donnees) {
+  /**
+   * L'administration corrige une commande — SANS SORTIR DU WORKFLOW.
+   *
+   * Elle s'en affranchissait complètement : aucun appel à la table des
+   * transitions, donc `en_attente → livree` passait d'un trait, sur une
+   * commande que personne n'avait préparée ni expédiée. Et `statutPaiement`
+   * s'écrivait à la main : un administrateur pouvait déclarer « payé » sans
+   * le moindre encaissement, ou « remboursé » sans remboursement.
+   *
+   * Désormais : la MÊME table que le vendeur, et le statut de paiement
+   * n'est plus modifiable par cette route. Un encaissement se constate —
+   * par la passerelle, ou par le vendeur qui confirme avoir reçu l'argent.
+   */
+  static async modifierCommande(id, donnees, adminId = null) {
     const commande = await Commande.findByPk(id);
     if (!commande) throw new NotFoundError('Commande introuvable');
 
     const { statut, statutPaiement } = donnees;
     if (statut && !STATUTS_COMMANDE.includes(statut)) throw new BadRequestError('Statut inconnu');
-    if (statutPaiement && !STATUTS_PAIEMENT.includes(statutPaiement)) {
-      throw new BadRequestError('Statut de paiement inconnu');
+    if (statutPaiement && statutPaiement !== commande.statutPaiement) {
+      throw new BadRequestError(
+        'Le statut de paiement ne se modifie pas à la main : il suit l\'encaissement réel '
+        + '(passerelle de paiement, ou confirmation du vendeur pour un règlement à la réception).'
+      );
     }
     if (commande.statut === 'annulee' && statut && statut !== 'annulee') {
       throw new BadRequestError('Une commande annulée ne peut pas être relancée : créez-en une nouvelle');
     }
 
-    // Annulation : stock restauré, paiement passé en remboursé, acheteur prévenu.
+    // Annulation : stock restauré, acheteur prévenu. Une commande payée est
+    // refusée par `_annuler` lui-même, comme pour tout le monde.
     if (statut === 'annulee' && commande.statut !== 'annulee') {
-      await CommandeService._annuler(commande, 'vendeur');
+      await CommandeService._annuler(commande, 'admin', 'annulee', {
+        auteurId: adminId,
+        motif: donnees.motif,
+      });
       return AdminCatalogueService.detailCommande(id);
+    }
+
+    // La transition demandée doit exister dans le workflow, exactement comme
+    // pour le vendeur.
+    if (statut && statut !== commande.statut
+        && !CommandeService.transitionPermise(commande.statut, statut)) {
+      const possibles = CommandeService.transitionsDepuis(commande.statut)
+        .map((e) => `« ${CommandeService.libelleStatut(e)} »`)
+        .join(', ');
+      throw new BadRequestError(
+        `Cette commande est « ${CommandeService.libelleStatut(commande.statut)} » : `
+        + `elle ne peut pas passer à « ${CommandeService.libelleStatut(statut)} ». `
+        + (possibles ? `Transitions possibles : ${possibles}.` : 'Elle est arrivée au bout de son parcours.')
+      );
     }
 
     const CHAMPS = ['adresseLivraison', 'numeroTelephone', 'note', 'clientNom', 'clientPrenom', 'clientTelephone', 'clientEmail', 'modeLivraison', 'modePaiement'];
     const t = await sequelize.transaction();
+    const statutAvant = commande.statut;
     let devientLivree = false;
     let statutChange = false;
     try {
       for (const champ of CHAMPS) {
         if (donnees[champ] !== undefined) commande[champ] = donnees[champ] === '' ? null : donnees[champ];
       }
-      if (statutPaiement) commande.statutPaiement = statutPaiement;
       if (statut && statut !== commande.statut) {
         statutChange = true;
         devientLivree = statut === 'livree';
@@ -224,6 +257,17 @@ class AdminCatalogueService {
       throw err;
     }
 
+    if (statutChange) {
+      CommandeService._historiser({
+        commandeId: commande.id,
+        auteurId: adminId,
+        auteurRole: 'admin',
+        operation: 'statut',
+        statutAvant,
+        statutApres: commande.statut,
+        motif: donnees.motif || null,
+      });
+    }
     if (devientLivree) CommandeService._incrementerVentes(commande.id).catch(() => {});
     if (statutChange) CommandeService._notifierAcheteurStatut(commande).catch(() => {});
     return AdminCatalogueService.detailCommande(id);

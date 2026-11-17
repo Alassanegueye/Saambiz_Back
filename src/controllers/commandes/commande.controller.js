@@ -97,7 +97,14 @@ exports.getCommande = asyncHandler(async (req, res) => {
 
 // -------------------- ACHETEUR : annuler --------------------
 exports.annulerCommande = asyncHandler(async (req, res) => {
-  const { id } = await CommandeService.annulerCommande(req.params.id, req.user.id);
+  // Le motif est facultatif : l'imposer pousserait à écrire n'importe quoi
+  // pour passer. Quand il est là, il reste attaché à la commande et au
+  // journal.
+  const { id } = await CommandeService.annulerCommande(
+    req.params.id,
+    req.user.id,
+    req.body?.motif,
+  );
   const commande = await CommandeService.getCommandeComplete(id);
   return res.status(200).json({ success: true, commande });
 });

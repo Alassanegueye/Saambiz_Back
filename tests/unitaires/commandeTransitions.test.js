@@ -14,10 +14,12 @@
  */
 
 const mockFindByPk = jest.fn();
+const mockHistorique = jest.fn().mockResolvedValue(undefined);
 const mockSave = jest.fn();
 
 jest.mock('../../src/models', () => ({
   Commande: { findByPk: (...a) => mockFindByPk(...a) },
+  HistoriqueCommande: { create: (...a) => mockHistorique(...a) },
   LigneCommande: {},
   Produit: {},
   Utilisateur: {},
@@ -53,15 +55,17 @@ const CommandeService = require('../../src/services/commandes/commande.service')
 const VENDEUR = 'vendeur-1';
 
 /** Une commande en base, dans l'etat donne. */
-function commandeEn(statut) {
+function commandeEn(statut, modifs = {}) {
   return {
     id: 'cmd-1',
     statut,
     statutPaiement: 'non_paye',
     modePaiement: 'a_la_livraison',
+    modeLivraison: 'retrait',
     acheteurId: 'acheteur-1',
     vendeurId: VENDEUR,
     save: mockSave,
+    ...modifs,
   };
 }
 
@@ -120,6 +124,26 @@ describe('Le cas courant en boutique', () => {
       const rendu = await CommandeService.changerStatut('cmd-1', VENDEUR, vers);
       expect(rendu.statut).toBe(vers);
     }
+  });
+
+  test('une commande A LIVRER ne saute pas l\'expedition', async () => {
+    // `prete → livree` existe pour le RETRAIT EN BOUTIQUE. Ouvert a tous, il
+    // laissait declarer livree une commande dont personne n'avait enregistre
+    // le depart.
+    mockFindByPk.mockResolvedValue(commandeEn('prete', { modeLivraison: 'livraison' }));
+
+    await expect(
+      CommandeService.changerStatut('cmd-1', VENDEUR, 'livree')
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringMatching(/en livraison.*avant/i),
+    });
+  });
+
+  test('elle y passe par « en livraison »', async () => {
+    mockFindByPk.mockResolvedValue(commandeEn('prete', { modeLivraison: 'livraison' }));
+    const rendu = await CommandeService.changerStatut('cmd-1', VENDEUR, 'en_livraison');
+    expect(rendu.statut).toBe('en_livraison');
   });
 });
 

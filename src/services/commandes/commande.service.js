@@ -1,9 +1,10 @@
 // services/commandes/commande.service.js
-const { Commande, LigneCommande, Produit, Utilisateur, Boutique } = require('../../models');
+const { Commande, LigneCommande, Produit, Utilisateur, Boutique, HistoriqueCommande } = require('../../models');
 const sequelize = require('../../config/db');
 const ConfigService = require('../config/config.service');
 const NotificationService = require('../notifications/notification.service');
 const { getIO } = require('../socket.service');
+const logger = require('../../utils/logger');
 const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resend.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
@@ -119,6 +120,11 @@ class CommandeService {
   // `forcer` : la quantité ne descend pas sous zéro, sans refuser la commande
   // (commande saisie par le vendeur au-delà de son stock).
   static async _decrementerStock(commande, transaction, { forcer = false } = {}) {
+    // GARDE INTERNE. Les trois appelants la posaient chacun de leur côté ;
+    // un quatrième, distrait, sortait le stock une deuxième fois pour la
+    // même commande. La fonction refuse maintenant d'elle-même.
+    if (commande.stockDecremente) return;
+
     const lignes = await LigneCommande.findAll({
       where: { commandeId: commande.id },
       transaction,
@@ -340,6 +346,15 @@ class CommandeService {
       if (origine !== 'dashboard') {
         CommandeService._notifierVendeurNouvelleCommande(commande).catch(() => {});
       }
+      CommandeService._historiser({
+        commandeId: commande.id,
+        auteurId: commande.acheteurId,
+        auteurRole: origine === 'dashboard' ? 'vendeur' : 'acheteur',
+        operation: 'creation',
+        statutApres: commande.statut,
+        paiementApres: commande.statutPaiement,
+        details: { origine, montantTotal: commande.montantTotal },
+      });
       // Le client reçoit un accusé de réception au nom de la boutique.
       CommandeService._emailClient(commande, 'recue').catch(() => {});
 
@@ -383,6 +398,15 @@ class CommandeService {
 
       if (gererTransaction) await t.commit();
 
+      CommandeService._historiser({
+        commandeId: commande.id,
+        auteurRole: 'systeme',
+        operation: 'paiement',
+        statutApres: commande.statut,
+        paiementAvant: 'non_paye',
+        paiementApres: 'paye',
+        details: { source: 'passerelle' },
+      });
       CommandeService._diffuserStatut(commande);
       CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(() => {});
       CommandeService._notifierAcheteurStatut(commande).catch(() => {});
@@ -446,6 +470,49 @@ class CommandeService {
    * Silencieux par construction : une diffusion ratée ne doit jamais faire
    * échouer la transaction qui vient d'aboutir.
    */
+  /**
+   * Consigne une opération dans l'historique de la commande.
+   *
+   * SANS JAMAIS FAIRE ÉCHOUER L'OPÉRATION RÉELLE : l'écriture suit une
+   * transaction déjà validée, et une commande acceptée ne doit pas se
+   * dé-accepter parce que le journal est indisponible. L'échec est tracé
+   * dans les logs applicatifs, pas remonté à l'appelant.
+   *
+   * Aucune route ne modifie ni ne supprime ces lignes : le modèle n'a pas
+   * d'`updatedAt`, et rien n'expose d'écriture.
+   */
+  static _historiser({
+    commandeId,
+    auteurId = null,
+    auteurRole = 'systeme',
+    operation,
+    statutAvant = null,
+    statutApres = null,
+    paiementAvant = null,
+    paiementApres = null,
+    motif = null,
+    details = null,
+  }) {
+    HistoriqueCommande.create({
+      commandeId,
+      auteurId,
+      auteurRole,
+      operation,
+      statutAvant,
+      statutApres,
+      paiementAvant,
+      paiementApres,
+      motif,
+      details,
+    }).catch((err) =>
+      logger.error('[commande] historique non enregistré', {
+        message: err.message,
+        commandeId,
+        operation,
+      })
+    );
+  }
+
   static _diffuserStatut(commande) {
     try {
       const charge = {
@@ -507,6 +574,29 @@ class CommandeService {
     return commande;
   }
 
+  /**
+   * La transition `de → vers` est-elle prévue par le workflow ?
+   *
+   * Exposée pour que l'administration lise LA MÊME TABLE que le vendeur.
+   * Elle s'en passait : `modifierCommande` acceptait n'importe quel statut
+   * depuis n'importe quel autre, et pouvait faire passer une commande de
+   * « en attente » à « livrée » sans qu'elle ait jamais été préparée.
+   */
+  static transitionPermise(de, vers) {
+    if (de === vers) return true; // rien à faire, pas une erreur
+    return (TRANSITIONS[de] || []).includes(vers);
+  }
+
+  /** Les statuts atteignables depuis celui-ci, pour un message utile. */
+  static transitionsDepuis(de) {
+    return [...(TRANSITIONS[de] || [])];
+  }
+
+  /** Libellé français d'un statut, pour les messages destinés aux humains. */
+  static libelleStatut(statut) {
+    return libelle(statut);
+  }
+
   // -------------------- CHANGER LE STATUT (vendeur) --------------------
   static async changerStatut(commandeId, vendeurId, nouveauStatut) {
     // Lu sous verrou : deux appels simultanés sur la même commande se
@@ -518,6 +608,20 @@ class CommandeService {
     if (!commande) throw new NotFoundError('Commande introuvable');
     if (commande.vendeurId !== vendeurId) {
       throw new ForbiddenError('Cette commande ne vous appartient pas');
+    }
+
+    // POINT 9 : une commande À LIVRER passe par « en livraison ».
+    // `prete → livree` existe pour le RETRAIT EN BOUTIQUE, où il n'y a pas
+    // d'expédition. Ouvert à tous, il laissait marquer livrée une commande
+    // dont personne n'avait enregistré le départ.
+    if (
+      commande.statut === 'prete' &&
+      nouveauStatut === 'livree' &&
+      commande.modeLivraison !== 'retrait'
+    ) {
+      throw new BadRequestError(
+        'Cette commande est à livrer : marquez-la « en livraison » avant de la déclarer livrée.'
+      );
     }
 
     // LA DEMANDE EST DÉJÀ SATISFAITE.
@@ -554,8 +658,18 @@ class CommandeService {
       throw new BadRequestError('Le client n\'a pas encore payé cette commande.');
     }
 
+    const statutAvant = commande.statut;
     commande.statut = nouveauStatut;
     await commande.save();
+
+    CommandeService._historiser({
+      commandeId: commande.id,
+      auteurId: vendeurId,
+      auteurRole: 'vendeur',
+      operation: 'statut',
+      statutAvant,
+      statutApres: nouveauStatut,
+    });
 
     // À la livraison : incrémenter le compteur de ventes des produits (tri "meilleures ventes")
     if (nouveauStatut === 'livree') {
@@ -599,6 +713,16 @@ class CommandeService {
 
       verrouillee.statutPaiement = 'paye';
       await verrouillee.save({ transaction: t });
+      CommandeService._historiser({
+        commandeId: verrouillee.id,
+        auteurId: vendeurId,
+        auteurRole: 'vendeur',
+        operation: 'paiement',
+        statutApres: verrouillee.statut,
+        paiementAvant: 'non_paye',
+        paiementApres: 'paye',
+        details: { source: 'main_propre' },
+      });
       CommandeService._diffuserStatut(verrouillee);
       return verrouillee;
     });
@@ -618,6 +742,15 @@ class CommandeService {
       commande.statut = 'acceptee';
       await commande.save({ transaction: t });
       await t.commit();
+
+      CommandeService._historiser({
+        commandeId: commande.id,
+        auteurId: commande.vendeurId,
+        auteurRole: 'vendeur',
+        operation: 'statut',
+        statutAvant: 'en_attente',
+        statutApres: 'acceptee',
+      });
 
       CommandeService._diffuserStatut(commande);
       CommandeService._notifierAcheteurStatut(commande, CommandeService._messageAcceptation(commande)).catch(() => {});
@@ -653,7 +786,7 @@ class CommandeService {
   }
 
   // -------------------- ANNULER (acheteur) --------------------
-  static async annulerCommande(commandeId, acheteurId) {
+  static async annulerCommande(commandeId, acheteurId, motif = null) {
     const commande = await Commande.findByPk(commandeId);
     if (!commande) throw new NotFoundError('Commande introuvable');
     if (commande.acheteurId !== acheteurId) {
@@ -674,7 +807,10 @@ class CommandeService {
     if (!['en_attente', 'acceptee', 'payee', 'confirmee'].includes(commande.statut)) {
       throw new BadRequestError('Cette commande ne peut plus être annulée.');
     }
-    return await CommandeService._annuler(commande, 'acheteur');
+    return await CommandeService._annuler(commande, 'acheteur', 'annulee', {
+      auteurId: acheteurId,
+      motif,
+    });
   }
 
   // -------------------- ACHETEUR : DEMANDER une annulation --------------------
@@ -709,6 +845,14 @@ class CommandeService {
     commande.annulationRefusMotif = null;
     await commande.save();
 
+    CommandeService._historiser({
+      commandeId: commande.id,
+      auteurId: acheteurId,
+      auteurRole: 'acheteur',
+      operation: 'demande_annulation',
+      statutApres: commande.statut,
+      motif: commande.annulationMotif,
+    });
     CommandeService._diffuserStatut(commande);
     CommandeService._nomAcheteur(commande.acheteurId).then((nom) =>
       CommandeService._notifierUtilisateur(
@@ -735,7 +879,12 @@ class CommandeService {
       throw new BadRequestError('Aucune demande d\'annulation en attente sur cette commande.');
     }
 
-    if (accepte) return await CommandeService._annuler(commande, 'vendeur');
+    if (accepte) {
+      return await CommandeService._annuler(commande, 'vendeur', 'annulee', {
+        auteurId: vendeurId,
+        motif: commande.annulationMotif,
+      });
+    }
 
     // Refus : la demande se referme, la commande poursuit son cours, et le
     // motif reste lisible par l'acheteur.
@@ -743,6 +892,15 @@ class CommandeService {
     commande.annulationRefusMotif = String(motif || '').trim().slice(0, 500) || null;
     await commande.save();
 
+    CommandeService._historiser({
+      commandeId: commande.id,
+      auteurId: vendeurId,
+      auteurRole: 'vendeur',
+      operation: 'reponse_annulation',
+      statutApres: commande.statut,
+      motif: commande.annulationRefusMotif,
+      details: { accepte: false },
+    });
     CommandeService._diffuserStatut(commande);
     CommandeService._notifierAcheteurStatut(
       commande,
@@ -769,7 +927,7 @@ class CommandeService {
    * `stockDecremente = true` et restauraient toutes deux les quantités : le
    * stock gonflait d'autant.
    */
-  static async _annuler(commandeRecue, parQui, statutFinal = 'annulee') {
+  static async _annuler(commandeRecue, parQui, statutFinal = 'annulee', { auteurId = null, motif = null } = {}) {
     const t = await sequelize.transaction();
     try {
       const commande = await Commande.findByPk(commandeRecue.id, {
@@ -794,12 +952,26 @@ class CommandeService {
       // Restaurer le stock si réservé
       await CommandeService._restaurerStock(commande, t);
 
+      const statutAvant = commande.statut;
       commande.statut = statutFinal;
       // Une demande d'annulation en cours n'a plus d'objet.
       commande.annulationDemandeeLe = null;
+      // Le motif de l'annulation, quand il y en a un, reste attaché à la
+      // commande — et pas seulement au journal.
+      if (motif) commande.annulationMotif = String(motif).trim().slice(0, 500);
       await commande.save({ transaction: t });
 
       await t.commit();
+
+      CommandeService._historiser({
+        commandeId: commande.id,
+        auteurId,
+        auteurRole: parQui,
+        operation: statutFinal === 'rejetee' ? 'rejet' : 'annulation',
+        statutAvant,
+        statutApres: statutFinal,
+        motif: commande.annulationMotif,
+      });
 
       CommandeService._diffuserStatut(commande);
 

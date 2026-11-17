@@ -25,6 +25,7 @@ const DeviceToken = require('./deviceToken.model');
 const ProduitImage = require('./produitImage.model');
 const DemandeRetour = require('./demandeRetour.model');
 const AuditLog = require('./auditLog.model');
+const HistoriqueCommande = require('./historiqueCommande.model');
 const Avis = require('./avis.model');
 const PreferenceClient = require('./preferenceClient.model');
 const BoutiqueCategorie = require('./boutiqueCategorie.model');
@@ -153,6 +154,10 @@ DemandeRetour.belongsTo(Utilisateur, { foreignKey: 'acheteurId', as: 'acheteur' 
 
 // ===================== AUDIT LOG (ADMIN) =====================
 
+// Historique d'une commande : lecture seule, jamais supprimé avec elle.
+Commande.hasMany(HistoriqueCommande, { foreignKey: 'commandeId', as: 'historique' });
+HistoriqueCommande.belongsTo(Commande, { foreignKey: 'commandeId', as: 'commande' });
+
 Utilisateur.hasMany(AuditLog, { foreignKey: 'adminId', as: 'auditLogs' });
 AuditLog.belongsTo(Utilisateur, { foreignKey: 'adminId', as: 'admin' });
 
@@ -180,6 +185,6 @@ module.exports = {
   UserOtp, Favori, Message, Promotion, Notification,
   Signalement, TokenBlacklist, RefreshToken, ConfigApp, QuestionFrequente, DeviceToken, MessageSite,
   Menu, Permission,
-  ProduitImage, DemandeRetour, AuditLog, Avis, PreferenceClient,
+  ProduitImage, DemandeRetour, AuditLog, HistoriqueCommande, Avis, PreferenceClient,
   VerificationEmail, BoutiqueCategorie,
 };

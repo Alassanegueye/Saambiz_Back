@@ -13,6 +13,7 @@
  */
 
 const mockFindByPk = jest.fn();
+const mockHistorique = jest.fn().mockResolvedValue(undefined);
 const mockRestaurer = jest.fn();
 
 /** Transaction factice, utilisable dans les deux formes de l'API Sequelize. */
@@ -27,6 +28,7 @@ let mockTransactionCourante;
 
 jest.mock('../../src/models', () => ({
   Commande: { findByPk: (...a) => mockFindByPk(...a) },
+  HistoriqueCommande: { create: (...a) => mockHistorique(...a) },
   LigneCommande: { findAll: jest.fn().mockResolvedValue([]) },
   Produit: {},
   Utilisateur: { findByPk: jest.fn().mockResolvedValue(null) },
@@ -256,5 +258,90 @@ describe('Une commande ne se supprime jamais', () => {
       status: 409,
       message: expect.stringMatching(/ne se supprime pas/i),
     });
+  });
+});
+
+describe('Historique : chaque operation laisse une trace', () => {
+  test('une annulation note qui, quand, depuis quel etat, et pourquoi', async () => {
+    enBase(commande({ statut: 'acceptee' }));
+
+    await CommandeService.annulerCommande('cmd-1', ACHETEUR, 'Je me suis trompe');
+
+    expect(mockHistorique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandeId: 'cmd-1',
+        auteurId: ACHETEUR,
+        auteurRole: 'acheteur',
+        operation: 'annulation',
+        statutAvant: 'acceptee',
+        statutApres: 'annulee',
+        motif: 'Je me suis trompe',
+      })
+    );
+  });
+
+  test('une demande d’annulation aussi', async () => {
+    enBase(commande({ statut: 'en_preparation' }));
+
+    await CommandeService.demanderAnnulation('cmd-1', ACHETEUR, 'Trop long');
+
+    expect(mockHistorique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'demande_annulation',
+        auteurRole: 'acheteur',
+        motif: 'Trop long',
+      })
+    );
+  });
+
+  test('un refus note son motif et son auteur', async () => {
+    enBase(commande({ statut: 'en_preparation', annulationDemandeeLe: new Date() }));
+
+    await CommandeService.repondreDemandeAnnulation('cmd-1', VENDEUR, {
+      accepte: false,
+      motif: 'Deja emballee',
+    });
+
+    expect(mockHistorique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'reponse_annulation',
+        auteurId: VENDEUR,
+        auteurRole: 'vendeur',
+        motif: 'Deja emballee',
+      })
+    );
+  });
+
+  test('le journal ne fait jamais echouer l’operation reelle', async () => {
+    // Il suit une transaction deja validee : une commande annulee ne doit pas
+    // se desannuler parce que le journal est indisponible.
+    mockHistorique.mockRejectedValueOnce(new Error('base indisponible'));
+    enBase(commande({ statut: 'acceptee' }));
+
+    const rendu = await CommandeService.annulerCommande('cmd-1', ACHETEUR, 'peu importe');
+    expect(rendu.statut).toBe('annulee');
+  });
+});
+
+describe('Le stock ne sort jamais deux fois', () => {
+  test('_decrementerStock se refuse lui-meme sur une commande deja engagee', async () => {
+    // Les trois appelants posaient la garde chacun de leur cote ; un
+    // quatrieme, distrait, sortait le stock une deuxieme fois.
+    const c = commande({ stockDecremente: true });
+
+    await CommandeService._decrementerStock(c, mockTransactionCourante);
+
+    // Elle sort immediatement : rien n'est relu, rien n'est reecrit.
+    expect(c.save).not.toHaveBeenCalled();
+    expect(c.stockDecremente).toBe(true);
+  });
+
+  test('elle agit normalement quand le stock n’est pas encore sorti', async () => {
+    const c = commande({ stockDecremente: false });
+
+    await CommandeService._decrementerStock(c, mockTransactionCourante);
+
+    expect(c.stockDecremente).toBe(true);
+    expect(c.save).toHaveBeenCalled();
   });
 });

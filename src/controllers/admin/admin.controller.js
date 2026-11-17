@@ -432,7 +432,7 @@ exports.creerCommande = asyncHandler(async (req, res) => {
 });
 
 exports.modifierCommande = asyncHandler(async (req, res) => {
-  const result = await AdminCatalogueService.modifierCommande(req.params.id, req.body || {});
+  const result = await AdminCatalogueService.modifierCommande(req.params.id, req.body || {}, req.user.id);
   tracer(req, 'modifier_commande', 'commande', req.params.id, { statut: req.body?.statut });
   res.status(200).json({ message: 'Commande mise à jour', ...result });
 });
