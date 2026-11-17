@@ -305,12 +305,19 @@ class AccueilService {
   }
 
   static async construire(params) {
-    const { utilisateurId, position, categoriesRetenues, recherches } = await this._contexte(params);
+    // Le contexte et les boutiques suivies ne dépendent pas l'un de l'autre :
+    // ils partent ensemble, donc la lecture des favoris ne coûte aucune
+    // latence supplémentaire — et elle en économise deux plus bas.
+    const [{ utilisateurId, position, categoriesRetenues, recherches }, favoris] =
+      await Promise.all([
+        this._contexte(params),
+        this._favorisOrdonnes(params?.utilisateur?.id || null),
+      ]);
+    const idsSuivies = new Set(favoris);
 
     const [
       listeCategories, promotionsBrutes, nouveautesBrutes, produitsPourVous, dapresRecherches,
       abonnements, suivies, pourVous, proches, meilleures, nouvelles, aDecouvrir,
-      idsSuivies,
     ] = await Promise.all([
       CategorieService.getAllCategories().then((r) => r.categories),
       // Produits au format du catalogue : mêmes cartes, même fiche, avec la
@@ -320,14 +327,15 @@ class AccueilService {
       CatalogueService.lister({ tri: 'recents', limit: 40 }).then((r) => r.produits),
       this._produitsPourVous(categoriesRetenues).then((r) => r.produits),
       this._produitsDesRecherches(recherches),
-      this._sectionAbonnements(utilisateurId),
-      this._boutiquesSuivies(utilisateurId),
+      // Les deux reçoivent les favoris déjà lus : sans cela, chacune
+      // relançait la même requête sur `favori`.
+      this._sectionAbonnements(utilisateurId, undefined, favoris),
+      this._boutiquesSuivies(utilisateurId, undefined, favoris),
       this._boutiquesParCategories(categoriesRetenues, utilisateurId),
       this._boutiquesProches(position.latitude, position.longitude),
       this._meilleuresBoutiques(),
       this._nouvellesBoutiques(),
       this._aDecouvrir(categoriesRetenues),
-      this._idsBoutiquesSuivies(utilisateurId),
     ]);
 
     // Promotions et nouveautés pour tout le monde, mais dans l'ordre du
@@ -548,10 +556,25 @@ class AccueilService {
   }
 
   /** Identifiants des boutiques suivies (ensemble vide pour un invité). */
-  static async _idsBoutiquesSuivies(utilisateurId) {
-    if (!utilisateurId) return new Set();
-    const favoris = await Favori.findAll({ where: { acheteurId: utilisateurId }, attributes: ['boutiqueId'] });
-    return new Set(favoris.map((f) => f.boutiqueId));
+  /**
+   * Les boutiques suivies par ce client, de la plus récente à la plus
+   * ancienne. UNE SEULE LECTURE pour tout l'accueil.
+   *
+   * Trois sections en avaient besoin — « Vos boutiques », « Chez les
+   * boutiques que vous suivez », et le classement des promotions — et
+   * chacune interrogeait `favori` de son côté : trois allers-retours
+   * identiques, avec le même `where`, à chaque ouverture de l'application.
+   * L'ordre est celui de « Vos boutiques » ; les deux autres n'en ont pas
+   * besoin et s'en accommodent.
+   */
+  static async _favorisOrdonnes(utilisateurId) {
+    if (!utilisateurId) return [];
+    const favoris = await Favori.findAll({
+      where: { acheteurId: utilisateurId },
+      attributes: ['boutiqueId'],
+      order: [['createdAt', 'DESC']],
+    });
+    return favoris.map((f) => f.boutiqueId);
   }
 
   /**
@@ -574,15 +597,10 @@ class AccueilService {
   }
 
   /** Boutiques suivies par le client, la dernière suivie d'abord. */
-  static async _boutiquesSuivies(utilisateurId, limite = 12) {
+  static async _boutiquesSuivies(utilisateurId, limite = 12, favorisDejaLus) {
     if (!utilisateurId) return [];
-    const favoris = await Favori.findAll({
-      where: { acheteurId: utilisateurId },
-      attributes: ['boutiqueId'],
-      order: [['createdAt', 'DESC']],
-    });
-    if (!favoris.length) return [];
-    const ordre = favoris.map((f) => f.boutiqueId);
+    const ordre = favorisDejaLus ?? await this._favorisOrdonnes(utilisateurId);
+    if (!ordre.length) return [];
     const base = this._boutiqueVisible;
     const boutiques = await Boutique.findAll({
       ...base,
@@ -597,17 +615,14 @@ class AccueilService {
   }
 
   /** Derniers produits publiés par les boutiques suivies. */
-  static async _sectionAbonnements(utilisateurId, limite = 12) {
+  static async _sectionAbonnements(utilisateurId, limite = 12, favorisDejaLus) {
     if (!utilisateurId) return { produits: [] };
 
-    const favoris = await Favori.findAll({
-      where: { acheteurId: utilisateurId },
-      attributes: ['boutiqueId'],
-    });
-    if (!favoris.length) return { produits: [] };
+    const ids = favorisDejaLus ?? await this._favorisOrdonnes(utilisateurId);
+    if (!ids.length) return { produits: [] };
 
     const boutiques = await Boutique.findAll({
-      where: { id: { [Op.in]: favoris.map((f) => f.boutiqueId) }, statut: 'actif' },
+      where: { id: { [Op.in]: ids }, statut: 'actif' },
       attributes: ['id', 'nom', 'logo', 'vendeurId'],
     });
     if (!boutiques.length) return { produits: [] };

@@ -197,3 +197,53 @@ describe('Les gardes existantes tiennent', () => {
     ).rejects.toMatchObject({ message: expect.stringMatching(/pas encore pay/) });
   });
 });
+
+describe('Pagination des listes de commandes', () => {
+  // Sans `limit`, la reponse garde sa forme d'origine : un tableau, tout
+  // rendu. Poser une limite par defaut ferait disparaitre sans prevenir les
+  // commandes anciennes d'un client fidele.
+  const mockFindAll = jest.fn();
+  const mockFindAndCountAll = jest.fn();
+
+  beforeEach(() => {
+    const { Commande } = require('../../src/models');
+    Commande.findAll = mockFindAll.mockResolvedValue([commandeEn('livree')]);
+    Commande.findAndCountAll = mockFindAndCountAll.mockResolvedValue({
+      rows: [commandeEn('livree')],
+      count: 137,
+    });
+  });
+
+  test('sans `limit` : tout est rendu, forme inchangee', async () => {
+    const rendu = await CommandeService.mesCommandes('u1', {});
+
+    expect(Array.isArray(rendu)).toBe(true);
+    expect(mockFindAll).toHaveBeenCalled();
+    expect(mockFindAndCountAll).not.toHaveBeenCalled();
+  });
+
+  test('avec `limit` : une page, et de quoi savoir combien il en reste', async () => {
+    const rendu = await CommandeService.mesCommandes('u1', { page: 2, limit: 20 });
+
+    expect(rendu.commandes).toHaveLength(1);
+    expect(rendu.total).toBe(137);
+    expect(rendu.page).toBe(2);
+    const [options] = mockFindAndCountAll.mock.calls[0];
+    expect(options.limit).toBe(20);
+    expect(options.offset).toBe(20);
+    // Sans `distinct`, les lignes jointes gonflent le compte total.
+    expect(options.distinct).toBe(true);
+  });
+
+  test('cote vendeur aussi, et le bloc client reste ajoute', async () => {
+    const rendu = await CommandeService.commandesVendeur(VENDEUR, { limit: 10 });
+
+    expect(rendu.total).toBe(137);
+    expect(rendu.commandes[0]).toHaveProperty('client');
+  });
+
+  test('cote vendeur sans `limit` : un tableau, comme avant', async () => {
+    const rendu = await CommandeService.commandesVendeur(VENDEUR, {});
+    expect(Array.isArray(rendu)).toBe(true);
+  });
+});

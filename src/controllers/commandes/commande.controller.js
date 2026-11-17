@@ -85,8 +85,19 @@ exports.payerCommande = asyncHandler(async (req, res) => {
 
 // -------------------- ACHETEUR : mes commandes --------------------
 exports.mesCommandes = asyncHandler(async (req, res) => {
-  const commandes = await CommandeService.mesCommandes(req.user.id, { statut: req.query.statut });
-  return res.status(200).json({ success: true, commandes });
+  // `limit` est facultatif : sans lui, la reponse garde sa forme d'origine
+  // — `{ commandes }` — et rend tout. Avec lui, elle porte en plus `total`,
+  // `page` et `pages`. Un client existant ne voit donc aucun changement.
+  const resultat = await CommandeService.mesCommandes(req.user.id, {
+    statut: req.query.statut,
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  return res.status(200).json(
+    Array.isArray(resultat)
+      ? { success: true, commandes: resultat }
+      : { success: true, ...resultat },
+  );
 });
 
 // -------------------- ACHETEUR/VENDEUR : détail d'une commande --------------------
@@ -161,11 +172,17 @@ exports.creerCommandeVendeur = asyncHandler(async (req, res) => {
 });
 
 exports.commandesVendeur = asyncHandler(async (req, res) => {
-  const commandes = await CommandeService.commandesVendeur(req.user.id, {
+  const resultat = await CommandeService.commandesVendeur(req.user.id, {
     statut: req.query.statut,
     origine: req.query.origine,
+    page: req.query.page,
+    limit: req.query.limit,
   });
-  return res.status(200).json({ success: true, commandes });
+  return res.status(200).json(
+    Array.isArray(resultat)
+      ? { success: true, commandes: resultat }
+      : { success: true, ...resultat },
+  );
 });
 
 // -------------------- VENDEUR : faire avancer le statut --------------------

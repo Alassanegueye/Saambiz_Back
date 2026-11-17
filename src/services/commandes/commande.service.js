@@ -8,6 +8,7 @@ const logger = require('../../utils/logger');
 const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resend.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
+const { paginate, metaPagination } = require('../../utils/paginate');
 
 // Transitions de statut autorisées (qui mène où) — le vendeur fait avancer la commande
 const TRANSITIONS = {
@@ -420,26 +421,54 @@ class CommandeService {
 
   // -------------------- LISTES --------------------
 
-  static async mesCommandes(acheteurId, { statut } = {}) {
+  /**
+   * Les commandes d'un acheteur.
+   *
+   * PAGINATION FACULTATIVE. Sans `limit`, tout est rendu — c'est le
+   * comportement d'origine, et poser une limite par defaut ferait
+   * disparaitre sans prevenir les commandes anciennes d'un client fidele.
+   * Avec `limit`, la reponse porte en plus `total`, `page` et `pages` :
+   * l'application peut charger par pages sans rien perdre.
+   *
+   * Un client qui commande chaque semaine depuis deux ans telecharge
+   * aujourd'hui cent commandes, leurs lignes et leurs vendeurs a chaque
+   * ouverture de l'onglet — et l'onglet se recharge au retour, sur
+   * evenement, et toutes les 30 secondes.
+   */
+  static async mesCommandes(acheteurId, { statut, page, limit } = {}) {
     const where = { acheteurId };
     if (statut) where.statut = statut;
-    return await Commande.findAll({
+    const requete = {
       where,
       include: [
         { model: LigneCommande, as: 'lignes' },
         inclureVendeur(),
       ],
       order: [['createdAt', 'DESC']],
+    };
+
+    if (limit == null) return await Commande.findAll(requete);
+
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    const { rows, count } = await Commande.findAndCountAll({
+      ...requete,
+      limit: l,
+      offset,
+      // Sans `distinct`, les lignes jointes gonflent le compte total.
+      distinct: true,
     });
+    return { commandes: rows, ...metaPagination(count, p, l) };
   }
 
-  static async commandesVendeur(vendeurId, { statut, origine } = {}) {
+  /** Les commandes recues par un vendeur. Pagination facultative, pour la
+   * meme raison et avec la meme precaution que `mesCommandes`. */
+  static async commandesVendeur(vendeurId, { statut, origine, page, limit } = {}) {
     const where = { vendeurId };
     if (statut) where.statut = statut;
     // 'application' | 'vitrine' | 'dashboard' — le vendeur veut pouvoir
     // regarder ce que son site lui apporte, séparément du reste.
     if (origine) where.origine = origine;
-    const commandes = await Commande.findAll({
+    const requete = {
       where,
       include: [
         { model: LigneCommande, as: 'lignes' },
@@ -449,9 +478,24 @@ class CommandeService {
         { model: Utilisateur, as: 'acheteur', attributes: ['id', 'nom', 'prenom', 'telephone'], required: false },
       ],
       order: [['createdAt', 'DESC']],
-    });
+    };
 
-    return commandes.map(CommandeService.avecClient);
+    if (limit == null) {
+      const commandes = await Commande.findAll(requete);
+      return commandes.map(CommandeService.avecClient);
+    }
+
+    const { page: p, limit: l, offset } = paginate(page, limit);
+    const { rows, count } = await Commande.findAndCountAll({
+      ...requete,
+      limit: l,
+      offset,
+      distinct: true,
+    });
+    return {
+      commandes: rows.map(CommandeService.avecClient),
+      ...metaPagination(count, p, l),
+    };
   }
 
   /**
