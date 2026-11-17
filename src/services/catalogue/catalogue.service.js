@@ -332,6 +332,11 @@ class CatalogueService {
       attributes: [
         'id', 'nom', 'slug', 'description', 'slogan', 'logo', 'banniere', 'localisation', 'ville', 'telephone', 'whatsapp',
         'categorie', 'vendeurId', 'createdAt', 'couleur_theme', 'vitrineAccent', 'vitrineApropos', 'vitrineHoraires',
+        // `vitrineActive` dit si le site de la boutique est EN LIGNE. Sans
+        // lui, l'application ne pouvait pas proposer le lien a l'acheteur
+        // sans risquer de l'envoyer sur une adresse morte : le `slug`
+        // existe des la creation de la boutique, bien avant la mise en ligne.
+        'vitrineActive',
         'vitrineReseaux', 'vitrineSectionsPerso', 'vitrineBlocs', 'vitrineSections',
       ],
       include: [{
@@ -367,8 +372,22 @@ class CatalogueService {
     const blocs = brut.vitrineBlocs && typeof brut.vitrineBlocs === 'object' ? brut.vitrineBlocs : {};
     const {
       vitrineSectionsPerso, vitrineBlocs, vitrineSections, vitrineAccent, vitrineApropos, vitrineHoraires,
-      vitrineReseaux, couleur_theme: couleurTheme, ...publique
+      vitrineReseaux, vitrineActive, couleur_theme: couleurTheme, ...publique
     } = brut;
+
+    // L'ADRESSE DU SITE, quand il est en ligne.
+    //
+    // Construite ici, et pas dans l'application : la base publique vit dans
+    // la configuration du serveur (VITRINE_BASE_URL), et le vendeur reçoit
+    // déjà la sienne de la même façon. La dupliquer côté mobile ferait deux
+    // sources à tenir d'accord.
+    //
+    // `null` quand le site n'est pas publié : le `slug` existe dès la
+    // création de la boutique, bien avant la mise en ligne, et proposer ce
+    // lien enverrait l'acheteur sur une adresse morte.
+    const siteUrl = vitrineActive && brut.slug
+      ? `${(process.env.VITRINE_BASE_URL || 'https://saambiz.com').replace(/\/+$/, '')}/b/${brut.slug}`
+      : null;
 
     return {
       boutique: {
@@ -384,6 +403,7 @@ class CatalogueService {
         horaires: vitrineHoraires || null,
         reseaux: vitrineReseaux || {},
         avantages: Array.isArray(blocs.avantages) ? blocs.avantages : [],
+        siteUrl,
         sections,
       },
     };
