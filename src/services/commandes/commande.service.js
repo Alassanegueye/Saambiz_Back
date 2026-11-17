@@ -42,6 +42,16 @@ const LIBELLES_STATUT = {
 
 const libelle = (statut) => LIBELLES_STATUT[statut] || statut;
 
+// Le vendeur, avec sa boutique : le client reconnaît une commande au nom de
+// la boutique, pas à celui de la personne qui la tient. Une fonction plutôt
+// qu'un objet partagé : Sequelize annote les `include` qu'on lui passe.
+const inclureVendeur = () => ({
+  model: Utilisateur,
+  as: 'vendeur',
+  attributes: ['id', 'nom', 'prenom', 'telephone'],
+  include: [{ model: Boutique, as: 'boutiques', attributes: ['id', 'nom', 'logo'], required: false }],
+});
+
 class CommandeService {
 
   // -------------------- HELPERS --------------------
@@ -393,7 +403,7 @@ class CommandeService {
       where,
       include: [
         { model: LigneCommande, as: 'lignes' },
-        { model: Utilisateur, as: 'vendeur', attributes: ['id', 'nom', 'prenom', 'telephone'] },
+        inclureVendeur(),
       ],
       order: [['createdAt', 'DESC']],
     });
@@ -482,7 +492,7 @@ class CommandeService {
       include: [
         { model: LigneCommande, as: 'lignes' },
         { model: Utilisateur, as: 'acheteur', attributes: ['id', 'nom', 'prenom', 'telephone', 'adresse'] },
-        { model: Utilisateur, as: 'vendeur', attributes: ['id', 'nom', 'prenom', 'telephone'] },
+        inclureVendeur(),
       ],
     });
   }
