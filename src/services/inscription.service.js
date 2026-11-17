@@ -23,7 +23,12 @@ const { Op } = require('sequelize');
 const { VerificationEmail, Utilisateur } = require('../models');
 const { sendVerificationEmail } = require('./resend.service');
 const { bcryptConfig } = require('../config/security');
-const { BadRequestError, ConflictError, TooManyRequestsError } = require('../errors/AppError');
+const {
+  BadRequestError,
+  ConflictError,
+  TooManyRequestsError,
+  ServiceUnavailableError,
+} = require('../errors/AppError');
 const logger = require('../utils/logger');
 const { estEmailValide } = require('../utils/email');
 
@@ -130,12 +135,39 @@ class InscriptionService {
       });
     } catch (err) {
       logger.error('[inscription] envoi du code impossible', { message: err.message });
+      // La cause est presque toujours chez nous, pas chez l'utilisateur : clé
+      // Resend absente ou révoquée, domaine d'expédition non vérifié, quota
+      // épuisé. Répondre 400 « vérifiez l'adresse saisie » envoyait alors la
+      // personne corriger une adresse correcte, pendant que rien ne signalait
+      // la panne. On ne blâme l'adresse que si Resend l'a explicitement
+      // refusée.
+      if (InscriptionService._pannePostale(err.message)) {
+        throw new ServiceUnavailableError(
+          "L'envoi des codes est momentanément indisponible. Réessayez dans quelques minutes."
+        );
+      }
       throw new BadRequestError(
         "Le code n'a pas pu être envoyé. Vérifiez l'adresse saisie et réessayez."
       );
     }
+  }
 
-
+  /**
+   * Vrai quand l'échec vient de notre configuration e-mail, pas de l'adresse.
+   *
+   * Les libellés viennent de Resend. Le défaut penche volontairement du bon
+   * côté : un message inconnu est traité comme une panne de notre côté,
+   * puisqu'une adresse malformée est déjà écartée par `estEmailValide` bien
+   * avant d'arriver ici.
+   */
+  static _pannePostale(message) {
+    const m = String(message || '').toLowerCase();
+    // Resend nomme le destinataire quand c'est lui qui pose problème.
+    return !(
+      m.includes('invalid `to`') ||
+      m.includes('invalid recipient') ||
+      m.includes('recipient')
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════
