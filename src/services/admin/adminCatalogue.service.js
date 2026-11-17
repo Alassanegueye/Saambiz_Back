@@ -229,22 +229,29 @@ class AdminCatalogueService {
     return AdminCatalogueService.detailCommande(id);
   }
 
+  /**
+   * UNE COMMANDE NE SE SUPPRIME PLUS. Jamais.
+   *
+   * L'ancienne version appelait `destroy()` — suppression physique, le
+   * modèle n'étant pas `paranoid` — et ne refusait que les commandes payées.
+   * Une commande livrée mais non réglée, ou déjà annulée, disparaissait donc
+   * avec ses lignes et son historique : plus moyen de savoir ce qui avait
+   * été vendu, à qui, ni pourquoi le stock avait bougé.
+   *
+   * La route est conservée pour ne pas casser le back-office, mais elle
+   * répond désormais par un refus explicite qui dit quoi faire à la place.
+   * L'annulation, elle, garde tout : la commande reste lisible, son statut
+   * dit ce qui s'est passé.
+   */
   static async supprimerCommande(id) {
     const commande = await Commande.findByPk(id);
     if (!commande) throw new NotFoundError('Commande introuvable');
-    if (commande.statutPaiement === 'paye') {
-      throw new ConflictError('Commande payée : annulez-la (le paiement passe en remboursé) au lieu de la supprimer');
-    }
-    const t = await sequelize.transaction();
-    try {
-      await CommandeService._restaurerStock(commande, t);
-      await commande.destroy({ transaction: t });
-      await t.commit();
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
-    return { message: 'Commande supprimée' };
+    throw new ConflictError(
+      'Une commande ne se supprime pas : son historique doit être conservé. '
+      + (commande.statut === 'annulee'
+        ? 'Celle-ci est déjà annulée.'
+        : 'Annulez-la plutôt — le stock réservé sera rendu.')
+    );
   }
 }
 

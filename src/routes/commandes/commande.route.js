@@ -12,6 +12,8 @@ const {
   creerCommandeVendeurSchema,
   payerCommandeSchema,
   changerStatutSchema,
+  demanderAnnulationSchema,
+  repondreAnnulationSchema,
 } = require('../../validations/commande.validation');
 const { creerDemandeRetourSchema } = require('../../validations/demandeRetour.validation');
 
@@ -62,6 +64,12 @@ router.put('/:id/annuler', isAcheteur, CommandeController.annulerCommande);
 // ================================================================
 //  COMMUN (acheteur propriétaire OU vendeur concerné)
 // ================================================================
+
+// Commande déjà en préparation : l'acheteur DEMANDE son annulation, le
+// vendeur accepte ou refuse. Il ne décide plus seul une fois le travail
+// engagé.
+router.post('/:id/demande-annulation', isAcheteur, validate(demanderAnnulationSchema), CommandeController.demanderAnnulation);
+router.patch('/:id/demande-annulation', isVendeur, validate(repondreAnnulationSchema), CommandeController.repondreDemandeAnnulation);
 
 // Détail d'une commande (l'accès est vérifié dans le service)
 router.get('/:id', CommandeController.getCommande);

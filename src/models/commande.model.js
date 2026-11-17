@@ -146,6 +146,29 @@ const Commande = sequelize.define('Commande', {
     defaultValue: false,
   },
 
+  // ── Demande d'annulation (commande déjà en préparation) ──────────────────
+  // L'acheteur ne peut plus annuler seul ce que le vendeur a commencé à
+  // préparer : il le demande, le vendeur accepte ou refuse. Deux colonnes
+  // plutôt qu'un onzième statut — la commande reste « en préparation » tant
+  // que la réponse n'est pas venue, et les transitions existantes continuent
+  // de s'appliquer sans changement.
+  //
+  // `annulationDemandeeLe` NULL = aucune demande en cours. C'est elle, et
+  // elle seule, qui dit qu'une demande attend une réponse.
+  annulationDemandeeLe: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  annulationMotif: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  /// Conservé après un refus : l'acheteur doit pouvoir lire pourquoi.
+  annulationRefusMotif: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+
 }, {
   tableName: 'commande',
   freezeTableName: true,

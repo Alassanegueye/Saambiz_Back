@@ -509,7 +509,12 @@ class CommandeService {
 
   // -------------------- CHANGER LE STATUT (vendeur) --------------------
   static async changerStatut(commandeId, vendeurId, nouveauStatut) {
-    const commande = await Commande.findByPk(commandeId);
+    // Lu sous verrou : deux appels simultanés sur la même commande se
+    // suivaient sinon sans se voir, et la seconde transition partait d'un
+    // statut déjà périmé.
+    const commande = await sequelize.transaction(async (t) =>
+      Commande.findByPk(commandeId, { transaction: t, lock: t.LOCK.UPDATE })
+    );
     if (!commande) throw new NotFoundError('Commande introuvable');
     if (commande.vendeurId !== vendeurId) {
       throw new ForbiddenError('Cette commande ne vous appartient pas');
@@ -582,13 +587,21 @@ class CommandeService {
     if (commande.statut === 'en_attente') {
       throw new BadRequestError('Acceptez d\'abord la commande.');
     }
-    // Déjà confirmé : rien à refaire.
-    if (commande.statutPaiement === 'paye') return commande;
+    // Relecture sous verrou : deux confirmations simultanées ne doivent
+    // enregistrer qu'un seul encaissement.
+    return await sequelize.transaction(async (t) => {
+      const verrouillee = await Commande.findByPk(commandeId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      // Déjà confirmé : rien à refaire.
+      if (verrouillee.statutPaiement === 'paye') return verrouillee;
 
-    commande.statutPaiement = 'paye';
-    await commande.save();
-    CommandeService._diffuserStatut(commande);
-    return commande;
+      verrouillee.statutPaiement = 'paye';
+      await verrouillee.save({ transaction: t });
+      CommandeService._diffuserStatut(verrouillee);
+      return verrouillee;
+    });
   }
 
   /** Le stock est réservé ici : c'est l'engagement du vendeur à livrer. */
@@ -646,23 +659,144 @@ class CommandeService {
     if (commande.acheteurId !== acheteurId) {
       throw new ForbiddenError('Cette commande ne vous appartient pas');
     }
-    // L'acheteur ne peut annuler que tant que ce n'est pas en livraison/livrée
-    if (!['en_attente', 'acceptee', 'payee', 'confirmee', 'en_preparation'].includes(commande.statut)) {
+    if (commande.statutPaiement === 'paye') {
+      throw new BadRequestError(
+        'Cette commande est payée : elle ne peut plus être annulée. Demandez un retour une fois livrée.'
+      );
+    }
+    // En préparation, le vendeur a déjà engagé du travail : l'acheteur
+    // demande, il ne décide plus seul. Voir `demanderAnnulation`.
+    if (commande.statut === 'en_preparation') {
+      throw new BadRequestError(
+        'Cette commande est déjà en préparation : demandez son annulation au vendeur.'
+      );
+    }
+    if (!['en_attente', 'acceptee', 'payee', 'confirmee'].includes(commande.statut)) {
       throw new BadRequestError('Cette commande ne peut plus être annulée.');
     }
     return await CommandeService._annuler(commande, 'acheteur');
   }
 
-  static async _annuler(commande, parQui, statutFinal = 'annulee') {
+  // -------------------- ACHETEUR : DEMANDER une annulation --------------------
+
+  /**
+   * Commande déjà en préparation : l'acheteur demande, le vendeur tranche.
+   *
+   * Aucun statut n'est créé pour cela. La commande reste « en préparation »
+   * — le vendeur peut donc continuer, ou la faire avancer, tant qu'il n'a
+   * pas répondu. Seule `annulationDemandeeLe` dit qu'une demande attend.
+   */
+  static async demanderAnnulation(commandeId, acheteurId, motif) {
+    const raison = String(motif || '').trim();
+    if (!raison) throw new BadRequestError('Indiquez la raison de votre demande.');
+
+    const commande = await Commande.findByPk(commandeId);
+    if (!commande) throw new NotFoundError('Commande introuvable');
+    if (commande.acheteurId !== acheteurId) {
+      throw new ForbiddenError('Cette commande ne vous appartient pas');
+    }
+    if (commande.statut !== 'en_preparation') {
+      throw new BadRequestError(
+        'Une demande d\'annulation ne se fait que sur une commande en préparation.'
+      );
+    }
+    if (commande.annulationDemandeeLe) {
+      throw new BadRequestError('Une demande est déjà en attente de réponse.');
+    }
+
+    commande.annulationDemandeeLe = new Date();
+    commande.annulationMotif = raison.slice(0, 500);
+    commande.annulationRefusMotif = null;
+    await commande.save();
+
+    CommandeService._diffuserStatut(commande);
+    CommandeService._nomAcheteur(commande.acheteurId).then((nom) =>
+      CommandeService._notifierUtilisateur(
+        commande.vendeurId,
+        'Demande d\'annulation',
+        `${nom || 'Un client'} demande l'annulation de la commande ${commande.referenceCommande}.`,
+        { data: CommandeService._donneesNotification(commande, commande.acheteurId, nom, { pourVendeur: true }) },
+      )
+    ).catch(() => {});
+
+    return commande;
+  }
+
+  // -------------------- VENDEUR : RÉPONDRE à une demande d'annulation --------
+
+  /** Le vendeur accepte (la commande est annulée) ou refuse, avec un motif. */
+  static async repondreDemandeAnnulation(commandeId, vendeurId, { accepte, motif }) {
+    const commande = await Commande.findByPk(commandeId);
+    if (!commande) throw new NotFoundError('Commande introuvable');
+    if (commande.vendeurId !== vendeurId) {
+      throw new ForbiddenError('Cette commande ne vous appartient pas');
+    }
+    if (!commande.annulationDemandeeLe) {
+      throw new BadRequestError('Aucune demande d\'annulation en attente sur cette commande.');
+    }
+
+    if (accepte) return await CommandeService._annuler(commande, 'vendeur');
+
+    // Refus : la demande se referme, la commande poursuit son cours, et le
+    // motif reste lisible par l'acheteur.
+    commande.annulationDemandeeLe = null;
+    commande.annulationRefusMotif = String(motif || '').trim().slice(0, 500) || null;
+    await commande.save();
+
+    CommandeService._diffuserStatut(commande);
+    CommandeService._notifierAcheteurStatut(
+      commande,
+      commande.annulationRefusMotif
+        ? `Votre demande d'annulation a été refusée : ${commande.annulationRefusMotif}`
+        : 'Votre demande d\'annulation a été refusée. La commande suit son cours.',
+    ).catch(() => {});
+
+    return commande;
+  }
+
+  /**
+   * Annule (ou rejette) une commande. SEUL POINT DE PASSAGE : acheteur,
+   * vendeur et administration y aboutissent tous.
+   *
+   * UNE COMMANDE PAYÉE NE S'ANNULE PAS. L'ancien code la basculait en
+   * « remboursé » avec, en commentaire, « le remboursement réel via PSP
+   * reste à déclencher » — et rien ne le déclenchait : le client était
+   * débité, la comptabilité disait l'inverse. Une commande réglée se traite
+   * par la procédure de retour, qui, elle, trace un remboursement.
+   *
+   * La commande est RELUE ET VERROUILLÉE dans la transaction. Sans ce
+   * verrou, deux annulations simultanées lisaient toutes deux
+   * `stockDecremente = true` et restauraient toutes deux les quantités : le
+   * stock gonflait d'autant.
+   */
+  static async _annuler(commandeRecue, parQui, statutFinal = 'annulee') {
     const t = await sequelize.transaction();
     try {
+      const commande = await Commande.findByPk(commandeRecue.id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!commande) throw new NotFoundError('Commande introuvable');
+
+      // Déjà dans l'état visé : la deuxième requête d'une paire simultanée.
+      // Rien à refaire, et surtout pas un second retour de stock.
+      if (['annulee', 'rejetee'].includes(commande.statut)) {
+        await t.rollback();
+        return commande;
+      }
+
+      if (commande.statutPaiement === 'paye') {
+        throw new BadRequestError(
+          'Cette commande est payée : elle ne peut plus être annulée. Passez par une demande de retour.'
+        );
+      }
+
       // Restaurer le stock si réservé
       await CommandeService._restaurerStock(commande, t);
 
       commande.statut = statutFinal;
-      if (commande.statutPaiement === 'paye') {
-        commande.statutPaiement = 'rembourse'; // le remboursement réel via PSP reste à déclencher
-      }
+      // Une demande d'annulation en cours n'a plus d'objet.
+      commande.annulationDemandeeLe = null;
       await commande.save({ transaction: t });
 
       await t.commit();

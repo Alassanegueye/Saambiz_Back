@@ -23,8 +23,16 @@ jest.mock('../../src/models', () => ({
   Utilisateur: {},
   Boutique: {},
 }));
+// `changerStatut` relit la commande SOUS VERROU, via la forme a callback de
+// `sequelize.transaction`. Le mock doit donc servir les deux formes : nue
+// (elle rend la transaction) et a callback (elle l'execute).
+const mockTransaction = {
+  LOCK: { UPDATE: 'UPDATE' },
+  commit: jest.fn(),
+  rollback: jest.fn(),
+};
 jest.mock('../../src/config/db', () => ({
-  transaction: jest.fn(),
+  transaction: (cb) => (cb ? cb(mockTransaction) : Promise.resolve(mockTransaction)),
   define: jest.fn(() => ({})),
 }));
 jest.mock('../../src/services/notifications/notification.service', () => ({

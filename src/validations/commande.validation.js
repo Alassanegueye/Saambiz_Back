@@ -68,4 +68,30 @@ const changerStatutSchema = Joi.object({
     .messages({ 'any.required': 'Le nouveau statut est requis' }),
 }).unknown(true);
 
-module.exports = { creerCommandeSchema, creerCommandeVendeurSchema, payerCommandeSchema, changerStatutSchema };
+// L'acheteur demande l'annulation d'une commande déjà en préparation : le
+// vendeur a engagé du travail, il doit savoir pourquoi on veut tout arrêter.
+const demanderAnnulationSchema = Joi.object({
+  motif: Joi.string().trim().min(3).max(500).required().messages({
+    'any.required': 'Indiquez la raison de votre demande',
+    'string.empty': 'Indiquez la raison de votre demande',
+    'string.min': 'Indiquez la raison de votre demande',
+  }),
+}).unknown(true);
+
+// Réponse du vendeur. Un refus sans motif reste possible : l'obliger
+// pousserait à écrire « non » pour passer, ce qui n'aide personne.
+const repondreAnnulationSchema = Joi.object({
+  accepte: Joi.boolean().required().messages({
+    'any.required': 'Indiquez si vous acceptez l\'annulation',
+  }),
+  motif: Joi.string().trim().max(500).optional().allow('', null),
+}).unknown(true);
+
+module.exports = {
+  creerCommandeSchema,
+  creerCommandeVendeurSchema,
+  payerCommandeSchema,
+  changerStatutSchema,
+  demanderAnnulationSchema,
+  repondreAnnulationSchema,
+};

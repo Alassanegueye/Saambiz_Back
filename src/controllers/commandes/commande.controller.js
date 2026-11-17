@@ -180,6 +180,28 @@ exports.confirmerPaiement = asyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, commande });
 });
 
+// -------------------- ACHETEUR : demander l'annulation d'une préparation ----
+exports.demanderAnnulation = asyncHandler(async (req, res) => {
+  const { id } = await CommandeService.demanderAnnulation(
+    req.params.id,
+    req.user.id,
+    req.body?.motif,
+  );
+  const commande = await CommandeService.getCommandeComplete(id);
+  return res.status(200).json({ success: true, commande });
+});
+
+// -------------------- VENDEUR : répondre à une demande d'annulation --------
+exports.repondreDemandeAnnulation = asyncHandler(async (req, res) => {
+  const { id } = await CommandeService.repondreDemandeAnnulation(
+    req.params.id,
+    req.user.id,
+    { accepte: req.body?.accepte === true, motif: req.body?.motif },
+  );
+  const commande = await CommandeService.getCommandeComplete(id);
+  return res.status(200).json({ success: true, commande });
+});
+
 // -------------------- ACHETEUR : demander un retour/remboursement --------------------
 exports.demanderRetour = asyncHandler(async (req, res) => {
   const { raison } = req.body;
