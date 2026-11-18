@@ -112,6 +112,25 @@ try {
 const CANAL_ANDROID = 'saambiz_push_channel';
 
 /**
+ * Refus que Firebase peut rendre alors que le jeton, lui, est bon : service
+ * momentanément indisponible, quota atteint, erreur interne. Ceux-là valent
+ * un second essai. Tous les autres — jeton périmé, charge utile refusée, clé
+ * APNs absente — ne s'arrangeront pas en réessayant deux secondes plus tard.
+ */
+const CODES_PASSAGERS = new Set([
+  'messaging/internal-error',
+  'messaging/server-unavailable',
+  'messaging/unavailable',
+  'messaging/quota-exceeded',
+  'messaging/unknown-error',
+  'app/network-error',
+  'app/network-timeout',
+]);
+
+/** Attente avant le second essai. Court : une notification doit arriver vite. */
+const DELAI_SECOND_ESSAI_MS = Number(process.env.FCM_DELAI_SECOND_ESSAI_MS || 2000);
+
+/**
  * Empreinte d'un jeton d'appareil pour les journaux : les 8 derniers
  * caractères, rien de plus.
  *
@@ -200,8 +219,9 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
       .map(([k, v]) => [k, String(v)])
   );
 
-  try {
-    const response = await getMessaging().sendEachForMulticast({
+  // Le message, sans ses destinataires : il est réutilisé tel quel pour le
+  // second essai, qui ne vise que les appareils dont le refus était passager.
+  const message = {
       notification: { title, body, ...(imageUrl && { imageUrl }) },
       data: safeData,
 
@@ -235,19 +255,48 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
         payload: { aps: { sound: 'default', 'mutable-content': 1 } },
         ...(imageUrl && { fcmOptions: { imageUrl } }),
       },
+  };
 
-      tokens
-    });
-
-    // Supprimer les tokens invalides (app désinstallée, token expiré)
+  try {
+    let aEnvoyer = tokens;
+    let envoyees = 0;
     const invalidTokens = [];
-    const echecs = [];
-    response.responses.forEach((res, idx) => {
-      if (!res.success) {
+    // Le dernier refus connu de chaque appareil. Un appareil qui finit par
+    // recevoir sort de la liste : sans cela, le second essai effaçait du
+    // journal les refus DÉFINITIFS de la première passe, et un iPhone muet
+    // par clé APNs manquante n'apparaissait plus nulle part.
+    const dernierRefus = new Map();
+
+    // Deux passes au plus. La seconde ne vise que les appareils dont le refus
+    // était PASSAGER — Firebase indisponible, quota atteint, erreur interne.
+    // Sans elle, une minute d'indisponibilité chez Google faisait disparaître
+    // la notification pour de bon ; avec, elle arrive deux secondes plus tard.
+    // Le nombre de passes est borné : une notification qui ne part pas vaut
+    // mieux qu'une boucle qui ne s'arrête plus.
+    for (let passe = 1; passe <= 2 && aEnvoyer.length; passe += 1) {
+      if (passe === 2) {
+        logger.warn('[FCM] second essai sur les refus passagers', {
+          titre: title,
+          appareils: aEnvoyer.length,
+        });
+        await new Promise((r) => setTimeout(r, DELAI_SECOND_ESSAI_MS));
+      }
+
+      const envoi = aEnvoyer;
+      const response = await getMessaging().sendEachForMulticast({ ...message, tokens: envoi });
+      envoyees += response.successCount;
+
+      const aReessayer = [];
+      response.responses.forEach((res, idx) => {
+        const jeton = envoi[idx];
+        if (res.success) {
+          dernierRefus.delete(jeton);
+          return;
+        }
         const code = res.error?.code;
-        echecs.push({
-          appareil: empreinte(tokens[idx]),
-          plateforme: rows[idx]?.platform || 'inconnue',
+        dernierRefus.set(jeton, {
+          appareil: empreinte(jeton),
+          plateforme: rows.find((r) => r.token === jeton)?.platform || 'inconnue',
           code: code || 'inconnu',
           message: res.error?.message,
         });
@@ -255,10 +304,14 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
           code === 'messaging/invalid-registration-token' ||
           code === 'messaging/registration-token-not-registered'
         ) {
-          invalidTokens.push(tokens[idx]);
+          invalidTokens.push(jeton);
+        } else if (passe === 1 && CODES_PASSAGERS.has(code)) {
+          aReessayer.push(jeton);
         }
-      }
-    });
+      });
+
+      aEnvoyer = aReessayer;
+    }
 
     if (invalidTokens.length) {
       await DeviceToken.destroy({ where: { token: invalidTokens } });
@@ -278,6 +331,7 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
     //   messaging/invalid-argument        → charge utile refusée (canal,
     //                                        image trop lourde, data non
     //                                        textuelle).
+    const echecs = [...dernierRefus.values()];
     if (echecs.length) {
       logger.error('[FCM] envois refusés par Firebase', {
         titre: title,
@@ -287,7 +341,7 @@ async function sendPushToUsers(utilisateurIds, { title, body, data = {}, image }
       });
     }
 
-    logger.info(`[FCM] ${response.successCount}/${tokens.length} notif(s) envoyée(s) — "${title}"`);
+    logger.info(`[FCM] ${envoyees}/${tokens.length} notif(s) envoyée(s) — "${title}"`);
   } catch (err) {
     // L'exception ne survient que si l'appel lui-même échoue (réseau,
     // identifiants refusés). Les refus par jeton, eux, passent par `echecs`.

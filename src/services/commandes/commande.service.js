@@ -10,6 +10,20 @@ const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 const { paginate, metaPagination } = require('../../utils/paginate');
 
+/**
+ * Un montant tel qu'on le lit sur un écran verrouillé : « 5 500 FCFA ».
+ *
+ * Sequelize rend un DECIMAL en chaîne : « 5500.00 ». La notification
+ * affichait « Commande CMD-2026-LREV6T — 5500.00 FCFA. », avec des centimes
+ * que le franc CFA n'a pas et sans séparateur de milliers. L'espace est une
+ * espace insécable : un montant ne doit pas se couper en fin de ligne.
+ */
+function montantLisible(montant) {
+  const n = Number(montant);
+  if (!Number.isFinite(n)) return `${montant} FCFA`;
+  return `${Math.round(n).toLocaleString('fr-FR').replace(/ /g, ' ')} FCFA`;
+}
+
 // Transitions de statut autorisées (qui mène où) — le vendeur fait avancer la commande
 const TRANSITIONS = {
   en_attente:     ['acceptee', 'rejetee', 'annulee'],
@@ -397,20 +411,33 @@ class CommandeService {
         await CommandeService._decrementerStock(commande, t);
       }
 
-      if (gererTransaction) await t.commit();
-
-      CommandeService._historiser({
-        commandeId: commande.id,
-        auteurRole: 'systeme',
-        operation: 'paiement',
-        statutApres: commande.statut,
-        paiementAvant: 'non_paye',
-        paiementApres: 'paye',
-        details: { source: 'passerelle' },
+      // APRÈS LE COMMIT, ET SEULEMENT S'IL A LIEU.
+      //
+      // Le webhook de paiement appelle cette méthode avec SA transaction, qu'il
+      // valide lui-même après coup. Les lignes qui suivent s'exécutaient donc
+      // à l'intérieur d'une transaction encore ouverte : si son commit échouait
+      // ensuite, le client et le vendeur avaient déjà été prévenus d'un
+      // encaissement que la base n'a jamais enregistré. Et l'e-mail, qui
+      // relisait la commande hors transaction, y lisait encore l'ancien statut.
+      //
+      // `afterCommit` ne se déclenche jamais sur un rollback, et vaut pour les
+      // deux cas — transaction à nous, ou transaction de l'appelant.
+      t.afterCommit(() => {
+        CommandeService._historiser({
+          commandeId: commande.id,
+          auteurRole: 'systeme',
+          operation: 'paiement',
+          statutApres: commande.statut,
+          paiementAvant: 'non_paye',
+          paiementApres: 'paye',
+          details: { source: 'passerelle' },
+        });
+        CommandeService._diffuserStatut(commande);
+        CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(() => {});
+        CommandeService._notifierAcheteurStatut(commande).catch(() => {});
       });
-      CommandeService._diffuserStatut(commande);
-      CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(() => {});
-      CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+
+      if (gererTransaction) await t.commit();
       return commande;
 
     } catch (err) {
@@ -1047,6 +1074,13 @@ class CommandeService {
   static _donneesNotification(commande, interlocuteurId, interlocuteurNom, { pourVendeur }) {
     return {
       commandeId: commande.id,
+      // La référence et le statut voyagent avec la notification : le
+      // téléphone n'a plus à interroger le serveur pour savoir de quelle
+      // commande on lui parle. Quand la lecture de la commande échoue à
+      // l'ouverture — réseau coupé au réveil —, c'est ce qui permet encore
+      // de dire « commande CMD-2026-… » plutôt que rien.
+      reference: commande.referenceCommande || '',
+      statut: commande.statut || '',
       // De quel cote est celui qui lit. La fiche d'une commande n'affiche pas
       // les memes boutons a l'acheteur et au vendeur : sans cette indication,
       // une notification touchee DEPUIS LE TELEPHONE, hors de l'application,
@@ -1095,19 +1129,39 @@ class CommandeService {
     });
   }
 
+  /**
+   * Le vendeur est prévenu qu'une commande arrive, puis qu'elle est payée.
+   *
+   * L'e-mail ne part QU'À L'ARRIVÉE de la commande. Il partait aussi à
+   * l'encaissement, avec le même gabarit « Nouvelle commande » : le vendeur
+   * recevait deux fois le même e-mail pour une seule vente payée en ligne.
+   * L'encaissement, lui, reste annoncé par une notification — c'est un
+   * changement de statut, et ceux-là ne passent plus par l'e-mail.
+   */
   static async _notifierVendeurNouvelleCommande(commande, paiementConfirme = false) {
     const titre = paiementConfirme ? '💰 Commande payée' : '🛒 Nouvelle commande';
-    const message = `Commande ${commande.referenceCommande} — ${commande.montantTotal} FCFA.`;
+    const message = `Commande ${commande.referenceCommande} — ${montantLisible(commande.montantTotal)}.`;
     const nomAcheteur = await CommandeService._nomAcheteur(commande.acheteurId);
     await CommandeService._notifierUtilisateur(commande.vendeurId, titre, message, {
       data: CommandeService._donneesNotification(commande, commande.acheteurId, nomAcheteur, { pourVendeur: true }),
     });
+    if (paiementConfirme) return;
     Utilisateur.findByPk(commande.vendeurId).then(vendeur => vendeur && sendNouvelleCommandeEmail({ to: vendeur.email, nom: `${vendeur.prenom || ''} ${vendeur.nom || ''}`.trim(), referenceCommande: commande.referenceCommande, montantTotal: commande.montantTotal })).catch(() => {});
   }
 
   /**
-   * Le client est prévenu de chaque étape au nom de la boutique : push au
-   * logo de la boutique (s'il a un compte) et email (s'il a une adresse).
+   * Le client est prévenu de chaque étape au nom de la boutique.
+   *
+   * UN CHANGEMENT DE STATUT N'ENVOIE PLUS D'E-MAIL — il envoie une
+   * notification, dans l'application et sur le téléphone. Une commande passée
+   * le matin et livrée l'après-midi produisait six e-mails ; le même parcours
+   * tient maintenant en six notifications, que le client retrouve dans son
+   * centre de notifications.
+   *
+   * SEULE EXCEPTION, ET ELLE EST NÉCESSAIRE : la commande passée SANS COMPTE,
+   * depuis le site de la boutique. Ce client n'a pas l'application, donc aucun
+   * appareil enregistré : aucune notification ne peut l'atteindre, et lui
+   * retirer l'e-mail le laisserait sans nouvelle de sa commande.
    */
   static async _notifierAcheteurStatut(commande, messagePerso = null) {
     const libelles = {
@@ -1123,10 +1177,13 @@ class CommandeService {
     };
     const message = messagePerso || libelles[commande.statut] || `Statut : ${commande.statut}`;
 
-    CommandeService._emailClient(commande, commande.statut, messagePerso).catch(() => {});
-
-    // Commande passée sans compte : personne à notifier dans l'application.
-    if (!commande.acheteurId) return;
+    // Commande passée sans compte : pas d'appareil à joindre, donc l'e-mail
+    // reste son seul canal. Avec un compte, c'est la notification qui porte
+    // la nouvelle — jamais les deux, pour ne pas prévenir deux fois.
+    if (!commande.acheteurId) {
+      CommandeService._emailClient(commande, commande.statut, messagePerso).catch(() => {});
+      return;
+    }
 
     const boutique = await CommandeService._boutiqueDuVendeur(commande.vendeurId);
     await CommandeService._notifierUtilisateur(
