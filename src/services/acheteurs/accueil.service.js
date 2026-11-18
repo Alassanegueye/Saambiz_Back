@@ -390,7 +390,7 @@ class AccueilService {
     if (abonnements.produits.length) {
       sections.push({
         cle: 'abonnements',
-        titre: 'Chez les boutiques que vous suivez',
+        titre: 'Chez vos boutiques',
         type: 'produits',
         elements: abonnements.produits,
       });
@@ -408,7 +408,7 @@ class AccueilService {
     if (suivies.length) {
       sections.push({
         cle: 'suivies',
-        titre: 'Vos boutiques',
+        titre: 'Vos boutiques suivies',
         type: 'boutiques',
         elements: suivies,
       });
