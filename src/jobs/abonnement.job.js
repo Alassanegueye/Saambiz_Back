@@ -1,7 +1,7 @@
 const { Abonnement, Utilisateur } = require('../models');
 const { Op } = require('sequelize');
 const { sendAbonnementExpiration } = require('../services/resend.service');
-const { sendPushToUsers } = require('../services/push.service');
+const NotificationService = require('../services/notifications/notification.service');
 const logger = require('../utils/logger');
 
 async function expireAbonnements() {
@@ -58,16 +58,33 @@ async function expireAbonnements() {
     for (const abo of abonnementsProches) {
       const u = abo.utilisateur;
       if (!u || u.role !== 'Vendeur') continue;
+
+      // LES DEUX CANAUX, VOLONTAIREMENT. Un abonnement qui expire coûte sa
+      // boutique au vendeur : c'est le seul rappel qu'on ne veut pas voir
+      // manqué parce qu'un téléphone était éteint ce jour-là, ou parce que
+      // les notifications avaient été refusées à l'installation.
       sendAbonnementExpiration({
         to: u.email,
         nom: `${u.prenom} ${u.nom}`,
         dateFin: abo.dateFin,
         joursRestants: jours
       }).catch(() => {});
-      sendPushToUsers(u.id, {
-        title: `⏰ Abonnement expire dans ${jours} jour${jours > 1 ? 's' : ''}`,
-        body: 'Renouvelez votre abonnement pour continuer à vendre.',
-        data: { type: 'rappel_abonnement', joursRestants: String(jours) }
+
+      // `creerNotification` plutôt qu'un push direct : elle pose aussi la
+      // ligne dans le centre de notifications, donc le compteur de non-lus
+      // bouge et le vendeur retrouve le rappel en ouvrant l'application. Le
+      // push seul affichait une bannière qui ne laissait aucune trace.
+      //
+      // `type: 'abonnement'` et `abonnementId` ne sont pas décoratifs : c'est
+      // ce que le téléphone lit pour ouvrir « Mon abonnement » quand on touche
+      // la notification. Avec l'ancien `type: 'rappel_abonnement'`, inconnu de
+      // l'application, le toucher retombait sur la messagerie.
+      NotificationService.creerNotification({
+        utilisateurId: u.id,
+        titre: `⏰ Abonnement expire dans ${jours} jour${jours > 1 ? 's' : ''}`,
+        message: 'Renouvelez votre abonnement pour continuer à vendre.',
+        type: 'abonnement',
+        data: { abonnementId: abo.id, joursRestants: String(jours) },
       }).catch(() => {});
     }
   }

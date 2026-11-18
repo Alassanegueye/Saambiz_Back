@@ -5,7 +5,7 @@ const sequelize = require('../../config/db');
 const OrangeMoneyService = require('./orangeMoney.service');
 const ConfigService = require('../config/config.service');
 const { sendAbonnementConfirme } = require('../resend.service');
-const { sendPushToUsers } = require('../push.service');
+const NotificationService = require('../notifications/notification.service');
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError } = require('../../errors/AppError');
 
@@ -160,21 +160,40 @@ class PaiementService {
           attributes: ['id', 'nom', 'prenom', 'email']
         });
         if (vendeur) {
-          // Email de confirmation
-          sendAbonnementConfirme({
-            to: vendeur.email,
-            nom: `${vendeur.prenom} ${vendeur.nom}`,
-            montant: paiement.montant,
-            dateDebut,
-            dateFin
-          }).catch(() => {});
+          // APRÈS LE COMMIT, ET SEULEMENT S'IL A LIEU.
+          //
+          // L'e-mail et le push partaient d'ici, donc À L'INTÉRIEUR de la
+          // transaction encore ouverte : si le commit échouait ensuite, le
+          // vendeur avait déjà lu « Abonnement activé » pour un abonnement
+          // que la base n'a jamais enregistré, et il aurait fallu le
+          // rembourser d'un service qu'il croyait avoir.
+          t.afterCommit(() => {
+            // L'ABONNEMENT GARDE SON E-MAIL : c'est une facture, avec un
+            // montant et des dates, et un vendeur doit pouvoir la retrouver
+            // ailleurs que dans l'application. La notification s'y ajoute,
+            // elle ne le remplace pas — contrairement aux étapes d'une
+            // commande, où elle a pris toute la place.
+            sendAbonnementConfirme({
+              to: vendeur.email,
+              nom: `${vendeur.prenom} ${vendeur.nom}`,
+              montant: paiement.montant,
+              dateDebut,
+              dateFin
+            }).catch(() => {});
 
-          // Push notification
-          sendPushToUsers(vendeur.id, {
-            title: '✅ Abonnement activé !',
-            body: `Votre abonnement Jëndal est actif jusqu'au ${dateFin.toLocaleDateString('fr-FR')}.`,
-            data: { type: 'abonnement', abonnementId: abonnement.id }
-          }).catch(() => {});
+            // `creerNotification` fait les trois d'un coup : la ligne dans le
+            // centre de notifications (donc le compteur de non-lus), l'envoi
+            // temps réel, et le push sur le téléphone. Un `sendPushToUsers`
+            // direct ne faisait que le dernier : le vendeur recevait la
+            // bannière, puis ne retrouvait rien dans l'application.
+            NotificationService.creerNotification({
+              utilisateurId: vendeur.id,
+              titre: '✅ Abonnement activé',
+              message: `Votre abonnement est actif jusqu'au ${dateFin.toLocaleDateString('fr-FR')}.`,
+              type: 'abonnement',
+              data: { abonnementId: abonnement.id },
+            }).catch(() => {});
+          });
         }
       }
 
