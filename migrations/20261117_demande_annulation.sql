@@ -8,10 +8,10 @@
 --
 -- `annulation_demandee_le` NULL = aucune demande en cours. C'est cette
 -- colonne, et elle seule, qui dit qu'une demande attend une réponse.
-ALTER TABLE commandes ADD COLUMN IF NOT EXISTS annulation_demandee_le TIMESTAMPTZ;
-ALTER TABLE commandes ADD COLUMN IF NOT EXISTS annulation_motif TEXT;
+ALTER TABLE commande ADD COLUMN IF NOT EXISTS annulation_demandee_le TIMESTAMPTZ;
+ALTER TABLE commande ADD COLUMN IF NOT EXISTS annulation_motif TEXT;
 
 -- Le refus du vendeur est conservé : l'acheteur doit pouvoir lire pourquoi
 -- sa demande n'a pas été suivie, et le motif ne doit pas disparaître avec la
 -- demande elle-même.
-ALTER TABLE commandes ADD COLUMN IF NOT EXISTS annulation_refus_motif TEXT;
+ALTER TABLE commande ADD COLUMN IF NOT EXISTS annulation_refus_motif TEXT;

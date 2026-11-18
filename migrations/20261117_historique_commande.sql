@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS historique_commande (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Pas de clé étrangère vers `commandes` : l'historique doit survivre, et une
+-- Pas de clé étrangère vers `commande` : l'historique doit survivre, et une
 -- commande ne se supprime plus de toute façon. Un index suffit à la lecture.
 CREATE INDEX IF NOT EXISTS historique_commande_commande_id_idx ON historique_commande (commande_id);
 CREATE INDEX IF NOT EXISTS historique_commande_auteur_id_idx   ON historique_commande (auteur_id);
