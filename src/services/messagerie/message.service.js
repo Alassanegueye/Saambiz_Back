@@ -16,7 +16,64 @@ class MessageService {
     try {
       getIO().to('user:' + destinataireId).emit('message:new', message);
     } catch (_) { /* Socket.IO pas encore initialisé — on ignore silencieusement */ }
+
+    // Le temps réel ci-dessus n'atteint que les applications OUVERTES. Un
+    // vendeur dont le téléphone est dans la poche n'apprenait donc jamais
+    // qu'on lui écrivait : il le découvrait en rouvrant l'application, des
+    // heures plus tard. Pour une marketplace, c'est une vente perdue à
+    // chaque message.
+    MessageService._prevenirDestinataire(message, expediteurId, destinataireId).catch(() => {});
+
     return { success: true, message: 'Message envoyé', data: message };
+  }
+
+  /**
+   * Prévient le destinataire sur son téléphone.
+   *
+   * PAS DE LIGNE DANS LE CENTRE DE NOTIFICATIONS, et c'est délibéré. Une
+   * conversation, c'est dix messages en deux minutes : dix lignes y
+   * noieraient tout le reste. Surtout, l'application a déjà sa liste de
+   * conversations avec sa pastille de non-lus — poser une seconde liste à
+   * côté donnerait deux états « lu » à tenir d'accord, et marquer la
+   * notification comme lue ne marquerait pas le message comme lu.
+   *
+   * C'est le seul endroit de l'application qui appelle `sendPushToUsers`
+   * sans passer par `creerNotification`, et c'est pour cette raison-là.
+   */
+  static async _prevenirDestinataire(message, expediteurId, destinataireId) {
+    if (!expediteurId || expediteurId === destinataireId) return;
+
+    const expediteur = await Utilisateur.findByPk(expediteurId, {
+      attributes: ['id', 'nom', 'prenom', 'photoProfil'],
+      include: [{ model: Boutique, as: 'boutiques', attributes: ['nom', 'logo'], required: false }],
+    });
+    if (!expediteur) return;
+
+    // Au nom de sa boutique quand il en a une : le client reconnaît
+    // « Chez Awa », pas le nom personnel du vendeur.
+    const boutique = expediteur.boutiques?.[0];
+    const nom = boutique?.nom
+      || `${expediteur.prenom || ''} ${expediteur.nom || ''}`.trim()
+      || 'Un client';
+
+    const contenu = String(message.contenu || '');
+    const extrait = contenu.length > 120 ? `${contenu.slice(0, 117)}…` : contenu;
+
+    const { sendPushToUsers } = require('../push.service');
+    await sendPushToUsers(destinataireId, {
+      title: nom,
+      body: extrait,
+      image: boutique?.logo || expediteur.photoProfil || undefined,
+      // `interlocuteurId` est ce que le téléphone lit pour ouvrir LA bonne
+      // conversation — pas la liste. `interlocuteurNom` lui évite d'afficher
+      // un en-tête vide le temps de charger.
+      data: {
+        type: 'message',
+        interlocuteurId: expediteurId,
+        interlocuteurNom: nom,
+        messageId: message.id,
+      },
+    });
   }
 
   static async getConversation(userId1, userId2) {
