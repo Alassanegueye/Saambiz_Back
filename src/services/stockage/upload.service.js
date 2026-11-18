@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const streamifier = require('streamifier');
 const logger = require('../../utils/logger');
-const { ServiceUnavailableError } = require('../../errors/AppError');
+const { ServiceUnavailableError, BadRequestError } = require('../../errors/AppError');
 const r2 = require('./r2.service');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,7 +94,23 @@ async function preparer(buffer) {
     }
   }
   if (estPdf(buffer)) return { buffer, extension: 'pdf', type: 'application/pdf' };
-  return { buffer, extension: 'bin', type: 'application/octet-stream' };
+
+  // NI IMAGE NI PDF : ON REFUSE, ON NE RANGE PAS.
+  //
+  // Ce cas rendait auparavant `{ extension: 'bin', type:
+  // 'application/octet-stream' }`. Le fichier partait sur R2 sous un nom en
+  // « .bin », et aucun navigateur n'affiche un octet-stream : il le
+  // télécharge. Le vendeur voyait donc son envoi « réussir », puis une image
+  // cassée a sa place, sans un mot pour expliquer.
+  //
+  // Les routes d'envoi verifient toutes les octets d'en-tete en amont
+  // (upload.verifyMagicBytes), donc ce chemin ne devrait jamais s'ouvrir.
+  // C'est precisement pourquoi il doit crier : le jour ou une nouvelle route
+  // oubliera cette verification, mieux vaut un refus lisible qu'un « .bin »
+  // silencieux dans le bucket.
+  throw new BadRequestError(
+    'Format de fichier non accepté : envoyez une image JPEG ou PNG, ou un PDF.'
+  );
 }
 
 /**
