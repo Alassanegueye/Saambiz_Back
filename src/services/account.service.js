@@ -89,7 +89,7 @@ class AccountService {
 
       let photoUrl = utilisateur.photoProfil;
       if (photoFile?.buffer) {
-        photoUrl = await uploadImage(photoFile.buffer);
+        photoUrl = await uploadImage(photoFile.buffer, 'profils');
       }
 
       await utilisateur.update({ nom, prenom, email, telephone, adresse, ville, photoProfil: photoUrl }, { transaction: t });

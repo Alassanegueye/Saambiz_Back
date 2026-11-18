@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const { generatePassword } = require('../../utils/generatePassword');
 const { bcryptConfig } = require('../../config/security');
 const { sendAccesUtilisateurEmail, sendCertificationEmail } = require('../resend.service');
+const { urlLecture } = require('../stockage/upload.service');
 
 class AdminService {
 
@@ -398,7 +399,18 @@ class AdminService {
       }],
       order: [['dateSoumission', 'ASC']],
     });
-    return { message: 'Profils vendeurs en attente de validation', vendeurs };
+    // Pièces d'identité rangées dans le bucket PRIVÉ (« prive:<clé> ») : le
+    // back-office reçoit un lien signé de dix minutes à leur place. Une
+    // ancienne URL publique (Cloudinary) passe telle quelle.
+    const lignes = await Promise.all(vendeurs.map(async (v) => {
+      const ligne = typeof v.toJSON === 'function' ? v.toJSON() : { ...v };
+      [ligne.pieceIdentite, ligne.pieceIdentiteVerso] = await Promise.all([
+        urlLecture(ligne.pieceIdentite),
+        urlLecture(ligne.pieceIdentiteVerso),
+      ]);
+      return ligne;
+    }));
+    return { message: 'Profils vendeurs en attente de validation', vendeurs: lignes };
   }
 
   /** E-mail de réponse à une demande de certification. Un échec d'envoi
@@ -430,13 +442,21 @@ class AdminService {
       motifRejet: null,
     });
 
-    // Le vendeur est prévenu dans l'application (chargé ici : évite une
-    // dépendance circulaire au démarrage). Un échec d'envoi n'annule rien.
+    // Le vendeur est prévenu dans l'application ET sur son téléphone :
+    // `creerNotification` écrit la ligne, l'émet en temps réel et envoie le
+    // push, les trois d'un coup. (Chargée ici : évite une dépendance
+    // circulaire au démarrage.) Un échec d'envoi n'annule pas la décision.
+    //
+    // `certification` dans les données n'est pas décoratif : sans lui, la
+    // notification ne portait aucun identifiant, et le téléphone la faisait
+    // retomber sur la messagerie — le vendeur prévenu que sa boutique est
+    // certifiée atterrissait dans ses conversations.
     require('../notifications/notification.service').creerNotification({
       utilisateurId: vendeurId,
       titre: 'Votre boutique est certifiée',
       message: 'Félicitations ! Le badge de certification s\'affiche maintenant sur votre boutique.',
       type: 'systeme',
+      data: { certification: 'approuve' },
     }).catch(() => {});
     AdminService._emailCertification(vendeur, true);
 
@@ -457,11 +477,15 @@ class AdminService {
       validePar: adminId,
     });
 
+    // Même chose pour un refus — et c'est ici que l'écran visé compte le
+    // plus : la notification dit « vous pouvez renvoyer vos photos », il faut
+    // donc qu'un toucher mène à l'écran qui le permet.
     require('../notifications/notification.service').creerNotification({
       utilisateurId: vendeurId,
       titre: 'Certification refusée',
       message: `Motif : ${motif.trim()} Vous pouvez renvoyer vos photos depuis votre compte.`,
       type: 'systeme',
+      data: { certification: 'rejete' },
     }).catch(() => {});
     AdminService._emailCertification(vendeur, false, motif.trim());
 

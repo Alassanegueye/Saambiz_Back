@@ -242,7 +242,7 @@ class AssistantService {
       // partie serait le pire moment pour échouer. On crée donc le site sans
       // le logo, et on le lui dit : il l'ajoutera depuis « Ma boutique ».
       try {
-        maj.logo = await uploadImage(fichierLogo.buffer);
+        maj.logo = await uploadImage(fichierLogo.buffer, 'boutiques');
         maj.vitrineLogoForme = analyse.forme;
         maj.vitrinePalette = analyse.palette;
       } catch (err) {

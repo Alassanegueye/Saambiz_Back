@@ -1,6 +1,6 @@
 const { Produit, Categorie, Boutique, Abonnement, Message, Paiement, Favori, Utilisateur, ProduitImage, Commande, LigneCommande } = require('../../models');
 const { niveauFidelite } = require('../../utils/fideliteClient');
-const { uploadImage, deleteImage } = require('../stockage/upload.service');
+const { uploadImage, uploadDocumentPrive, deleteImage } = require('../stockage/upload.service');
 const sequelize = require('../../config/db');
 const NotificationService = require('../notifications/notification.service');
 const { appliquerDefautsBoutique, genererSlugUnique } = require('../../utils/boutiqueDefaults');
@@ -87,7 +87,7 @@ class VendeurService {
     const t = await sequelize.transaction();
     try {
       let imageUrl = null;
-      if (image?.buffer) imageUrl = await uploadImage(image.buffer);
+      if (image?.buffer) imageUrl = await uploadImage(image.buffer, 'produits');
 
       // Caractéristiques vérifiées selon les spécifications de la catégorie
       // (tailles, pointures, contenance…). Un ancien client qui n'envoie pas
@@ -165,7 +165,7 @@ class VendeurService {
 
       // Upload image si fournie (vient du middleware multer, pas du body)
       if (updates.image?.buffer) {
-        safeUpdates.image = await uploadImage(updates.image.buffer);
+        safeUpdates.image = await uploadImage(updates.image.buffer, 'produits');
       }
 
       await produit.update(safeUpdates, { transaction: t });
@@ -255,8 +255,8 @@ class VendeurService {
     VendeurService._verifierNumerosBoutique(safeData);
 
     // Uploads logo & bannière
-    if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer);
-    if (files.banniere?.buffer) safeData.banniere = await uploadImage(files.banniere.buffer);
+    if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer, 'boutiques');
+    if (files.banniere?.buffer) safeData.banniere = await uploadImage(files.banniere.buffer, 'boutiques');
 
     // Modèle de boutique par défaut (cohérence quel que soit le type de vendeur)
     safeData = appliquerDefautsBoutique(safeData);
@@ -302,8 +302,8 @@ class VendeurService {
     }
     VendeurService._verifierNumerosBoutique(safeData);
 
-    if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer);
-    if (files.banniere?.buffer) safeData.banniere = await uploadImage(files.banniere.buffer);
+    if (files.logo?.buffer) safeData.logo = await uploadImage(files.logo.buffer, 'boutiques');
+    if (files.banniere?.buffer) safeData.banniere = await uploadImage(files.banniere.buffer, 'boutiques');
 
     await sequelize.transaction(async (transaction) => {
       await boutique.update(safeData, { transaction });
@@ -696,7 +696,7 @@ class VendeurService {
       );
     }
 
-    const envois = await Promise.allSettled(fichiers.slice(0, place).map((f) => uploadImage(f.buffer)));
+    const envois = await Promise.allSettled(fichiers.slice(0, place).map((f) => uploadImage(f.buffer, 'vitrine')));
     const urls = envois.filter((e) => e.status === 'fulfilled').map((e) => e.value);
     if (!urls.length) {
       throw new ServiceUnavailableError("Les photos n'ont pas pu être envoyées. Réessayez dans un instant.");
@@ -835,10 +835,12 @@ class VendeurService {
       return { success: false, message: "Envoyez la photo du recto et celle du verso de votre pièce d'identité." };
     }
 
-    // Même stockage que les logos et photos produits (buffer multer).
+    // Pièces d'identité : bucket PRIVÉ (R2_PRIVATE_BUCKET_NAME). La base garde
+    // « prive:<clé> » ; le back-office les ouvre par un lien signé de dix
+    // minutes. Sous Cloudinary, elles avaient une adresse publique.
     const [pieceUrl, versoUrl] = await Promise.all([
-      uploadImage(fichier.buffer),
-      uploadImage(verso.buffer),
+      uploadDocumentPrive(fichier.buffer, 'certifications'),
+      uploadDocumentPrive(verso.buffer, 'certifications'),
     ]);
 
     await vendeur.update({
@@ -1269,7 +1271,7 @@ class VendeurService {
     // le parallélisme reste donc borné.
     const aTeleverser = files.filter((f) => f.buffer);
     const urls = await Promise.all(
-      aTeleverser.map((f) => uploadImage(f.buffer)),
+      aTeleverser.map((f) => uploadImage(f.buffer, 'produits')),
     );
 
     if (urls.length === 0) return [];

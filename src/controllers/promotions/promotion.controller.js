@@ -23,7 +23,7 @@ exports.modifierPromotion = asyncHandler(async (req, res) => {
 exports.creerCampagne = asyncHandler(async (req, res) => {
   const data = { ...req.body };
   // Image jointe au message : elle passe par Cloudinary, comme tous les fichiers.
-  if (req.file) data.image = await uploadImage(req.file.buffer);
+  if (req.file) data.image = await uploadImage(req.file.buffer, 'promotions');
   else delete data.image;
   const result = await PromotionService.creerCampagne(req.user.id, data);
   return res.status(201).json(result);

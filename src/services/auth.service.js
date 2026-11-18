@@ -99,7 +99,7 @@ class AuthService {
 
       let photoUrl = null;
       if (photoProfil?.buffer) {
-        photoUrl = await uploadImage(photoProfil.buffer);
+        photoUrl = await uploadImage(photoProfil.buffer, 'profils');
       }
 
       const utilisateur = await Utilisateur.create({
@@ -168,7 +168,7 @@ class AuthService {
 
           let logoUrl = null;
           if (boutique?.logo?.buffer) {
-            logoUrl = await uploadImage(boutique.logo.buffer);
+            logoUrl = await uploadImage(boutique.logo.buffer, 'boutiques');
           }
 
           // Applique le modèle de boutique par défaut + slug unique

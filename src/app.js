@@ -51,6 +51,15 @@ const proxiesSupplementaires = String(process.env.TRUST_PROXY_SUPPLEMENTAIRE || 
   .filter(Boolean);
 app.set('trust proxy', [...proxiesDeConfiance, ...proxiesSupplementaires]);
 
+/** Origine de l'adresse publique R2 (R2_PUBLIC_URL), pour la CSP. */
+function origineMedias() {
+  try {
+    return process.env.R2_PUBLIC_URL ? [new URL(process.env.R2_PUBLIC_URL).origin] : [];
+  } catch {
+    return [];
+  }
+}
+
 // F-02 : Helmet avec CSP personnalisée + HSTS explicite
 app.use(helmet({
   contentSecurityPolicy: {
@@ -58,7 +67,9 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],   // requis pour Swagger UI en dev
       styleSrc:  ["'self'", "'unsafe-inline'"],
-      imgSrc:    ["'self'", 'data:', 'https://res.cloudinary.com'],
+      // Les photos sont servies par l'adresse publique du bucket R2 ; celles
+      // déposées avant le passage à R2 restent sur Cloudinary.
+      imgSrc:    ["'self'", 'data:', 'https://res.cloudinary.com', ...origineMedias()],
       connectSrc:["'self'"],
       fontSrc:   ["'self'"],
       objectSrc: ["'none'"],
@@ -261,6 +272,10 @@ app.get('/health', async (req, res) => {
       // Envoi des e-mails : clé Resend présente ? domaine expéditeur ?
       // Diagnostic immédiat quand un utilisateur ne reçoit pas son code.
       email: require('./services/resend.service').etatEmail(),
+      // Stockage des fichiers : Cloudflare R2, ou encore Cloudinary tant que
+      // les variables R2_* manquent ; et le bucket privé des pièces
+      // d'identité. Configuration seulement : aucun appel réseau ici.
+      stockage: require('./services/stockage/upload.service').etatStockage(),
     });
   } catch {
     // Le commit est renvoyé même en panne de base : c'est précisément quand le

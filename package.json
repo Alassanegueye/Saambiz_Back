@@ -30,6 +30,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1171.0",
+    "@aws-sdk/s3-request-presigner": "^3.1171.0",
     "axios": "^1.9.0",
     "axios-retry": "^4.5.0",
     "bcryptjs": "^2.4.3",
@@ -51,6 +53,7 @@
     "pg-hstore": "^2.3.4",
     "resend": "^6.12.4",
     "sequelize": "^6.37.8",
+    "sharp": "^0.35.5",
     "socket.io": "^4.8.3",
     "streamifier": "^0.1.1",
     "swagger-jsdoc": "^6.2.8",
