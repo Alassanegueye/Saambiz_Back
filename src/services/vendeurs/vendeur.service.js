@@ -11,7 +11,11 @@ const crypto = require('crypto');
 const { BadRequestError, ConflictError, NotFoundError, ServiceUnavailableError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 
-const DEFAULT_PAGE_SIZE = 20;
+// Dix par page, depuis l'unique source. La copie locale de `paginate` qui
+// se trouvait plus bas prenait le `limit` de la requete sans borne haute.
+const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
+
+const DEFAULT_PAGE_SIZE = LIMITE_DEFAUT;
 
 // Photos du haut du site : assez pour un défilé, pas au point d'alourdir la
 // page d'un client sur forfait mobile.
@@ -32,13 +36,6 @@ const SLUGS_RESERVES = [
   'commande', 'commandes', 'suivi', 'connexion', 'inscription', 'abonnement',
   'contact', 'aide', 'cgu', 'cgv', 'confidentialite', 'app', 'assets', 'static',
 ];
-
-function paginate(page = 1, limit = DEFAULT_PAGE_SIZE) {
-  return {
-    limit: parseInt(limit),
-    offset: (parseInt(page) - 1) * parseInt(limit),
-  };
-}
 
 // Champs modifiables sur un Produit — HIGH-01 whitelist
 const PRODUIT_FIELDS = ['nom', 'description', 'prix', 'prix_promo', 'quantite', 'categorieId', 'marque', 'attributs', 'disponible'];

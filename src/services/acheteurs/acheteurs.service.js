@@ -5,12 +5,14 @@ const sequelize = require('../../config/db');
 const includeVendeurActif = require('../../utils/includeVendeurActif');
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
 
-const LIMIT = 15;
+// La taille de page vient de l'unique source, `utils/paginate` : dix, comme
+// partout ailleurs dans l'application. Elle valait quinze ici, vingt dans
+// vendeur.service et demandeRetour.service — trois valeurs pour la meme
+// regle, et aucune ne suivait l'autre quand on la changeait.
+const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
 
-const paginate = (page = 1) => ({
-  limit: LIMIT,
-  offset: (page - 1) * LIMIT
-});
+// Les `pages: Math.ceil(count / LIMIT)` de ce fichier s'appuient dessus.
+const LIMIT = LIMITE_DEFAUT;
 
 class AcheteurService {
 

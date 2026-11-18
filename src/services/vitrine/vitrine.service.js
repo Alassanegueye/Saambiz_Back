@@ -51,8 +51,14 @@ const ICONES_VITRINE = [
 
 // Plafond de pagination : sans lui, `?limit=100000` fait sortir tout le
 // catalogue en une requête, sur une route ouverte à tout le monde.
-const LIMITE_MAX = 48;
-const LIMITE_DEFAUT = 12;
+//
+// Ces deux valeurs sont propres à la VITRINE WEB, et volontairement
+// différentes des dix par page de l'application : la grille du site a trois
+// ou quatre colonnes, et douze les remplit sans laisser de rangée bancale.
+// Elles portent un nom distinct pour ne plus masquer les constantes du même
+// nom dans `utils/paginate`, qui règlent les listes de l'application.
+const LIMITE_MAX_VITRINE = 48;
+const PRODUITS_PAR_PAGE_VITRINE = 12;
 
 // Ce qu'on publie d'un produit. Rien de plus : ni le vendeurId, ni les
 // compteurs internes.
@@ -339,7 +345,7 @@ class VitrineService {
         include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
         attributes: [...ATTRIBUTS_PRODUIT, 'nombre_ventes'],
         order: [['nombre_ventes', 'DESC'], ['vues', 'DESC'], ['createdAt', 'DESC']],
-        limit: LIMITE_DEFAUT,
+        limit: PRODUITS_PAR_PAGE_VITRINE,
       }),
       Produit.count({ where }),
       // Seules les catégories qui contiennent réellement quelque chose : un
@@ -365,7 +371,7 @@ class VitrineService {
         order: [['createdAt', 'DESC']],
         // Large exprès : les produits déjà mis en avant sont retirés juste
         // après, et il doit en rester quelque chose.
-        limit: LIMITE_DEFAUT + 8,
+        limit: PRODUITS_PAR_PAGE_VITRINE + 8,
       }),
       // Les promos du moment, pour la ligne « Nos promos » de l'accueil et
       // le point à côté du lien « Nos promos » du menu.
@@ -374,7 +380,7 @@ class VitrineService {
         include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
         attributes: ATTRIBUTS_PRODUIT,
         order: VitrineService._ordrePromo(),
-        limit: LIMITE_DEFAUT,
+        limit: PRODUITS_PAR_PAGE_VITRINE,
       }),
     ]);
 
@@ -454,10 +460,10 @@ class VitrineService {
   //  CATALOGUE
   // ══════════════════════════════════════════════════════════════════
 
-  static async listerProduits(slug, { q, categorie, tri = 'pertinence', page = 1, limit = LIMITE_DEFAUT, promo } = {}) {
+  static async listerProduits(slug, { q, categorie, tri = 'pertinence', page = 1, limit = PRODUITS_PAR_PAGE_VITRINE, promo } = {}) {
     const boutique = await VitrineService._chargerBoutique(slug);
 
-    const l = Math.min(Math.max(parseInt(limit, 10) || LIMITE_DEFAUT, 1), LIMITE_MAX);
+    const l = Math.min(Math.max(parseInt(limit, 10) || PRODUITS_PAR_PAGE_VITRINE, 1), LIMITE_MAX_VITRINE);
     const p = Math.max(parseInt(page, 10) || 1, 1);
 
     const where = VitrineService._filtreCatalogue(boutique.vendeurId);

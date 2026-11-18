@@ -4,14 +4,12 @@ const { DemandeRetour, Commande, Utilisateur, Boutique } = require('../../models
 const NotificationService = require('../notifications/notification.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 
-const DEFAULT_PAGE_SIZE = 20;
+// Dix par page, et une borne haute : la copie locale de ce calcul prenait
+// le `limit` de la requete tel quel, donc `?limit=100000` chargeait toute la
+// table. Le helper partage plafonne a cent.
+const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
 
-function paginate(page = 1, limit = DEFAULT_PAGE_SIZE) {
-  return {
-    limit: parseInt(limit),
-    offset: (parseInt(page) - 1) * parseInt(limit),
-  };
-}
+const DEFAULT_PAGE_SIZE = LIMITE_DEFAUT;
 
 class DemandeRetourService {
 
