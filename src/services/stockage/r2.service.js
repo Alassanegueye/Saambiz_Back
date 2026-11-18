@@ -35,42 +35,82 @@ const logger = require('../../utils/logger');
 let client = null;
 let signatureClient = null;
 
+/**
+ * Une variable d'environnement, SANS ESPACES NI RETOUR À LA LIGNE.
+ *
+ * Un `.env` se remplit par copier-coller, et une valeur collée emporte très
+ * souvent une espace ou un saut de ligne. Pour une clé, cela donne une
+ * signature refusée ; pour l'identifiant de compte, c'est pire : il entre
+ * dans le NOM D'HÔTE, et un hôte avec une espace n'est reconnu par personne.
+ * Cloudflare coupe alors la connexion pendant la poignée de main TLS, et
+ * Node ne rend que « write EPROTO … alert handshake failure, SSL alert 40 »
+ * — un message qui ne désigne rien et qu'on peut chercher longtemps.
+ */
+const variable = (nom) => String(process.env[nom] || '').trim();
+
+/**
+ * L'identifiant de compte Cloudflare, vérifié.
+ *
+ * Il devient `https://<id>.r2.cloudflarestorage.com` : tout ce qui n'a rien
+ * à faire dans un nom d'hôte est refusé ici, avec un message qui dit quoi
+ * corriger, plutôt que plus loin sous la forme d'une erreur TLS muette. On
+ * accepte large (Cloudflare rend 32 caractères hexadécimaux, mais cela peut
+ * changer) : ce sont les caractères impossibles qu'on écarte.
+ */
+function identifiantCompte() {
+  const id = variable('R2_ACCOUNT_ID');
+  if (!id) return '';
+  if (!/^[A-Za-z0-9-]+$/.test(id)) {
+    throw new Error(
+      `R2_ACCOUNT_ID invalide (« ${id} ») : attendu l'identifiant seul, `
+      + 'tel que Cloudflare l\'affiche — ni adresse complète, ni barre oblique, '
+      + 'ni espace. Il sert de nom d\'hôte : https://<id>.r2.cloudflarestorage.com'
+    );
+  }
+  return id;
+}
+
 const identifiantsPresents = () => Boolean(
-  process.env.R2_ACCOUNT_ID
-  && process.env.R2_ACCESS_KEY_ID
-  && process.env.R2_SECRET_ACCESS_KEY
+  variable('R2_ACCOUNT_ID')
+  && variable('R2_ACCESS_KEY_ID')
+  && variable('R2_SECRET_ACCESS_KEY')
 );
 
 /** Adresse publique du bucket public, sans barre finale. */
 function urlPublique() {
-  return String(process.env.R2_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  return variable('R2_PUBLIC_URL').replace(/\/+$/, '');
 }
 
 /** Vrai si le bucket public est utilisable : identifiants, nom et adresse. */
 function publicConfigure() {
-  return identifiantsPresents() && Boolean(process.env.R2_BUCKET_NAME) && Boolean(urlPublique());
+  return identifiantsPresents() && Boolean(variable('R2_BUCKET_NAME')) && Boolean(urlPublique());
 }
 
 /** Vrai si le bucket privé est utilisable. */
 function priveConfigure() {
-  return identifiantsPresents() && Boolean(process.env.R2_PRIVATE_BUCKET_NAME);
+  return identifiantsPresents() && Boolean(variable('R2_PRIVATE_BUCKET_NAME'));
+}
+
+/** L'adresse du compte R2 : `https://<id>.r2.cloudflarestorage.com`. */
+function hoteR2() {
+  return `https://${identifiantCompte()}.r2.cloudflarestorage.com`;
 }
 
 function getClient() {
   const signature = [
-    process.env.R2_ACCOUNT_ID,
-    process.env.R2_ACCESS_KEY_ID,
-    process.env.R2_SECRET_ACCESS_KEY,
+    variable('R2_ACCOUNT_ID'),
+    variable('R2_ACCESS_KEY_ID'),
+    variable('R2_SECRET_ACCESS_KEY'),
   ].join('|');
   if (client && signature === signatureClient) return client;
   if (!identifiantsPresents()) return null;
 
   client = new S3Client({
     region: 'auto',
-    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: hoteR2(),
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+      accessKeyId: variable('R2_ACCESS_KEY_ID'),
+      secretAccessKey: variable('R2_SECRET_ACCESS_KEY'),
     },
     // Délais, comme sur Widjila : sans eux, une connexion R2 qui ne s'établit
     // pas retenait indéfiniment la requête du vendeur. Sans
@@ -93,7 +133,7 @@ function requireClient() {
   return c;
 }
 
-const bucket = (prive) => (prive ? process.env.R2_PRIVATE_BUCKET_NAME : process.env.R2_BUCKET_NAME);
+const bucket = (prive) => variable(prive ? 'R2_PRIVATE_BUCKET_NAME' : 'R2_BUCKET_NAME');
 
 // ── Types MIME ────────────────────────────────────────────────────────────────
 
@@ -146,16 +186,55 @@ function versCle(valeur) {
  * @param {{ prive?: boolean, type?: string }} [options]
  */
 async function envoyer(buffer, cle, { prive = false, type } = {}) {
-  await requireClient().send(new PutObjectCommand({
-    Bucket: bucket(prive),
-    Key: cle,
-    Body: buffer,
-    ContentType: type || contentType(cle),
-    // Les noms sont aléatoires et jamais réécrits : un fichier publié ne
-    // change pas, le CDN et les téléphones peuvent le garder un an.
-    ...(prive ? {} : { CacheControl: 'public, max-age=31536000, immutable' }),
-  }));
-  return cle;
+  try {
+    await requireClient().send(new PutObjectCommand({
+      Bucket: bucket(prive),
+      Key: cle,
+      Body: buffer,
+      ContentType: type || contentType(cle),
+      // Les noms sont aléatoires et jamais réécrits : un fichier publié ne
+      // change pas, le CDN et les téléphones peuvent le garder un an.
+      ...(prive ? {} : { CacheControl: 'public, max-age=31536000, immutable' }),
+    }));
+    return cle;
+  } catch (err) {
+    // CE QUI MANQUAIT DANS LE JOURNAL. Un échec disait « write EPROTO … SSL
+    // alert number 40 » et la clé du fichier — rien sur l'hôte contacté ni
+    // sur le bucket visé, c'est-à-dire rien sur ce qu'il fallait corriger.
+    // Les identifiants, eux, ne sont jamais écrits.
+    err.hoteR2 = hoteR2();
+    err.bucketR2 = bucket(prive) || '(non défini)';
+    err.indice = indiceErreur(err);
+    throw err;
+  }
+}
+
+/**
+ * Ce qu'une erreur de transport veut probablement dire, en une phrase.
+ *
+ * Écrit pour la prochaine panne, à trois heures du matin : les codes de
+ * Node et d'OpenSSL ne désignent jamais la variable à corriger, et c'est
+ * toujours une variable.
+ */
+function indiceErreur(err) {
+  const texte = `${err.code || ''} ${err.message || ''}`;
+  if (/EPROTO|handshake failure|alert number 40|ERR_TLS/i.test(texte)) {
+    return 'Poignée de main TLS refusée : l\'hôte contacté n\'existe pas chez '
+      + 'Cloudflare. Vérifier R2_ACCOUNT_ID — c\'est lui qui forme le nom d\'hôte.';
+  }
+  if (/ENOTFOUND|EAI_AGAIN/i.test(texte)) {
+    return 'Nom d\'hôte introuvable : vérifier R2_ACCOUNT_ID et la résolution DNS du serveur.';
+  }
+  if (/ETIMEDOUT|ECONNREFUSED|ECONNRESET/i.test(texte)) {
+    return 'Connexion impossible : le serveur ne joint pas Cloudflare (pare-feu, réseau sortant).';
+  }
+  if (/SignatureDoesNotMatch|InvalidAccessKeyId|Unauthorized|403/i.test(texte)) {
+    return 'Identifiants refusés : vérifier R2_ACCESS_KEY_ID et R2_SECRET_ACCESS_KEY.';
+  }
+  if (/NoSuchBucket|404/i.test(texte)) {
+    return 'Bucket introuvable : vérifier R2_BUCKET_NAME et R2_PRIVATE_BUCKET_NAME.';
+  }
+  return undefined;
 }
 
 /** Adresse publique d'une clé du bucket public. */

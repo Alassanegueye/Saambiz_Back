@@ -152,7 +152,17 @@ const uploadImage = async (fileBuffer, dossier = 'images') => {
     await r2.envoyer(buffer, cle, { type });
   } catch (err) {
     // Panne ou configuration R2 : message clair (503), la cause au journal.
-    logger.error('[R2] envoi impossible', { message: err.message, cle });
+    // L'hôte et le bucket sont joints par r2.service : sans eux, le journal
+    // ne disait que « write EPROTO … SSL alert number 40 » et la clé du
+    // fichier — rien sur ce qu'il fallait corriger.
+    logger.error('[R2] envoi impossible', {
+      message: err.message,
+      code: err.code,
+      cle,
+      hote: err.hoteR2,
+      bucket: err.bucketR2,
+      ...(err.indice ? { indice: err.indice } : {}),
+    });
     throw new ServiceUnavailableError('Envoi de la photo impossible pour le moment. Réessayez dans un instant.');
   }
   return r2.adressePublique(cle);
@@ -176,7 +186,14 @@ const uploadDocumentPrive = async (fileBuffer, dossier = 'documents') => {
   try {
     await r2.envoyer(buffer, cle, { prive: true, type });
   } catch (err) {
-    logger.error('[R2] envoi privé impossible', { message: err.message, cle });
+    logger.error('[R2] envoi privé impossible', {
+      message: err.message,
+      code: err.code,
+      cle,
+      hote: err.hoteR2,
+      bucket: err.bucketR2,
+      ...(err.indice ? { indice: err.indice } : {}),
+    });
     throw new ServiceUnavailableError("Envoi du document impossible pour le moment. Réessayez dans un instant.");
   }
   return `prive:${cle}`;
