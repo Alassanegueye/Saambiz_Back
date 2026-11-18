@@ -57,6 +57,21 @@ const variable = (nom) => String(process.env[nom] || '').trim();
  * accepte large (Cloudflare rend 32 caractères hexadécimaux, mais cela peut
  * changer) : ce sont les caractères impossibles qu'on écarte.
  */
+/**
+ * Cloudflare rend un identifiant de 32 caractères hexadécimaux. Un
+ * copier-coller qui en perd un donne un hôte qui n'existe pas, et la seule
+ * trace est une alerte TLS 40 — c'est arrivé : 31 caractères au lieu de 32,
+ * et toutes les photos tombaient en 503 sans que rien ne désigne la cause.
+ *
+ * Ce n'est qu'un AVERTISSEMENT, jamais un refus : le format appartient à
+ * Cloudflare et peut changer. Mais une longueur inattendue est signalée, au
+ * démarrage du client et dans l'erreur, avec le compte exact.
+ */
+const LONGUEUR_ATTENDUE = 32;
+
+const longueurInattendue = (id) =>
+  Boolean(id) && !new RegExp(`^[0-9a-f]{${LONGUEUR_ATTENDUE}}$`).test(id);
+
 function identifiantCompte() {
   const id = variable('R2_ACCOUNT_ID');
   if (!id) return '';
@@ -104,6 +119,16 @@ function getClient() {
   ].join('|');
   if (client && signature === signatureClient) return client;
   if (!identifiantsPresents()) return null;
+
+  // Dit une fois, à la création du client, plutôt qu'à chaque envoi.
+  if (longueurInattendue(variable('R2_ACCOUNT_ID'))) {
+    logger.warn('[R2] R2_ACCOUNT_ID de longueur inattendue', {
+      longueur: variable('R2_ACCOUNT_ID').length,
+      attendu: LONGUEUR_ATTENDUE,
+      remarque: 'Cloudflare rend 32 caractères hexadécimaux. '
+        + 'Un caractère perdu au copier-coller donne un hôte inexistant.',
+    });
+  }
 
   client = new S3Client({
     region: 'auto',
@@ -219,8 +244,14 @@ async function envoyer(buffer, cle, { prive = false, type } = {}) {
 function indiceErreur(err) {
   const texte = `${err.code || ''} ${err.message || ''}`;
   if (/EPROTO|handshake failure|alert number 40|ERR_TLS/i.test(texte)) {
+    const id = variable('R2_ACCOUNT_ID');
+    const longueur = longueurInattendue(id)
+      ? ` Il compte ${id.length} caractères, or Cloudflare en rend ${LONGUEUR_ATTENDUE} : `
+        + 'un caractère a probablement été perdu au copier-coller.'
+      : '';
     return 'Poignée de main TLS refusée : l\'hôte contacté n\'existe pas chez '
-      + 'Cloudflare. Vérifier R2_ACCOUNT_ID — c\'est lui qui forme le nom d\'hôte.';
+      + 'Cloudflare. Vérifier R2_ACCOUNT_ID — c\'est lui qui forme le nom d\'hôte.'
+      + longueur;
   }
   if (/ENOTFOUND|EAI_AGAIN/i.test(texte)) {
     return 'Nom d\'hôte introuvable : vérifier R2_ACCOUNT_ID et la résolution DNS du serveur.';

@@ -109,6 +109,61 @@ describe('Ce qui ne peut pas être un nom d’hôte est refusé tout de suite', 
   });
 });
 
+describe('Un identifiant de la mauvaise longueur', () => {
+  // LA PANNE RÉELLE : 31 caractères au lieu de 32, un perdu au
+  // copier-coller. Rien ne le signalait — l'identifiant est bien
+  // hexadécimal, il entre bien dans un nom d'hôte, il est simplement faux.
+  // Seule l'alerte TLS 40 apparaissait, qui ne désigne rien.
+  const TRONQUE = '9b58f0ab6cb4c23e4979112841270b2';
+
+  test('il compte bien 31 caractères, pas 32', () => {
+    expect(TRONQUE).toHaveLength(31);
+  });
+
+  test('l’envoi n’est pas bloqué : le format appartient à Cloudflare', async () => {
+    // Un refus pur et dur se retournerait contre nous le jour où Cloudflare
+    // changerait la longueur de ses identifiants.
+    const r2 = avec({ ...BASE, R2_ACCOUNT_ID: TRONQUE });
+    expect(r2.publicConfigure()).toBe(true);
+  });
+
+  test('mais la longueur est signalée au journal, avec le compte', async () => {
+    const r2 = avec({ ...BASE, R2_ACCOUNT_ID: TRONQUE });
+    const logger = require('../../src/utils/logger');
+    logger.warn.mockClear();
+    await r2.envoyer(Buffer.from('x'), 'profils/a.jpg').catch(() => {});
+
+    const avertissements = JSON.stringify(logger.warn.mock.calls);
+    expect(avertissements).toContain('R2_ACCOUNT_ID');
+    expect(avertissements).toContain('31');
+  });
+
+  test('et l’indice d’un échec TLS dit combien il en manque', async () => {
+    const r2 = avec({ ...BASE, R2_ACCOUNT_ID: TRONQUE });
+    const { S3Client } = require('@aws-sdk/client-s3');
+    S3Client.mockImplementation(function () {
+      this.send = jest.fn(async () => {
+        const e = new Error('write EPROTO … alert number 40');
+        e.code = 'EPROTO';
+        throw e;
+      });
+    });
+
+    const err = await r2.envoyer(Buffer.from('x'), 'profils/a.jpg').catch((e) => e);
+    expect(err.indice).toContain('31 caractères');
+    expect(err.indice).toContain('32');
+  });
+
+  test('un identifiant de la bonne longueur ne déclenche rien', async () => {
+    const r2 = avec(BASE);
+    const logger = require('../../src/utils/logger');
+    logger.warn.mockClear();
+    await r2.envoyer(Buffer.from('x'), 'profils/a.jpg').catch(() => {});
+
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('longueur inattendue');
+  });
+});
+
 describe('Un envoi qui échoue dit ce qu’il a tenté de joindre', () => {
   test('l’hôte, le bucket et un indice voyagent avec l’erreur', async () => {
     const r2 = avec(BASE);
