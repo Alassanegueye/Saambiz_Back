@@ -36,7 +36,39 @@ class DemandeRetourService {
     }
 
     const demande = await DemandeRetour.create({ commandeId, acheteurId, raison });
+
+    // LE VENDEUR EST PRÉVENU. Personne ne l'était : la demande attendait dans
+    // l'administration, et le vendeur apprenait le retour de sa marchandise
+    // en la voyant revenir. C'est lui qui connaît le produit et le client ;
+    // il doit pouvoir répondre avant que l'administration ne tranche.
+    DemandeRetourService._prevenirVendeur(commande, acheteurId, raison).catch(() => {});
+
     return demande;
+  }
+
+  /** Notification au vendeur : une demande de retour vient d'arriver. */
+  static async _prevenirVendeur(commande, acheteurId, raison) {
+    if (!commande.vendeurId) return;
+    const acheteur = acheteurId
+      ? await Utilisateur.findByPk(acheteurId, { attributes: ['prenom', 'nom'] })
+      : null;
+    const nom = acheteur
+      ? `${acheteur.prenom || ''} ${acheteur.nom || ''}`.trim()
+      : 'Un client';
+    const motif = String(raison || '').trim();
+
+    await NotificationService.creerNotification({
+      utilisateurId: commande.vendeurId,
+      titre: 'Demande de retour',
+      message: `${nom || 'Un client'} demande le retour de la commande ${commande.referenceCommande}.`
+        + `${motif ? ` Motif : ${motif}` : ''}`,
+      type: 'commande',
+      data: {
+        commandeId: commande.id,
+        reference: commande.referenceCommande || '',
+        pourVendeur: true,
+      },
+    });
   }
 
   // -------------------- ADMIN : liste paginée --------------------

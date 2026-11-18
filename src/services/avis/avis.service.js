@@ -12,7 +12,9 @@ class AvisService {
       return { success: false, message: 'La note doit être un entier entre 1 et 5.' };
     }
 
-    const boutique = await Boutique.findByPk(boutiqueId, { attributes: ['id'] });
+    const boutique = await Boutique.findByPk(boutiqueId, {
+      attributes: ['id', 'nom', 'vendeurId'],
+    });
     if (!boutique) return { success: false, message: 'Boutique introuvable.' };
 
     const [avis, created] = await Avis.findOrCreate({
@@ -24,12 +26,43 @@ class AvisService {
     }
 
     const stats = await this.statsBoutique(boutiqueId);
+
+    // Le vendeur ne savait pas qu'on l'avait noté — ni en bien, ni en mal.
+    // Un avis est la seule chose que ses clients lui disent publiquement, et
+    // une mauvaise note qu'on découvre à temps peut encore se rattraper.
+    AvisService._prevenirVendeur(boutique, acheteurId, n, commentaire).catch(() => {});
+
     return {
       success: true,
       message: created ? 'Avis publié' : 'Avis mis à jour',
       avis,
       ...stats,
     };
+  }
+
+  /** « Moussa a noté votre boutique 4/5 » — avec le début du commentaire. */
+  static async _prevenirVendeur(boutique, acheteurId, note, commentaire) {
+    // Un vendeur qui note sa propre boutique ne se notifie pas lui-même.
+    if (!boutique.vendeurId || boutique.vendeurId === acheteurId) return;
+
+    const acheteur = await Utilisateur.findByPk(acheteurId, {
+      attributes: ['prenom', 'nom'],
+    });
+    const nom = acheteur
+      ? `${acheteur.prenom || ''} ${acheteur.nom || ''}`.trim()
+      : '';
+    const texte = String(commentaire || '').trim();
+    const extrait = texte.length > 100 ? `${texte.slice(0, 97)}…` : texte;
+
+    const NotificationService = require('../notifications/notification.service');
+    await NotificationService.creerNotification({
+      utilisateurId: boutique.vendeurId,
+      titre: `Nouvel avis : ${note}/5`,
+      message: `${nom || 'Un client'} a noté ${boutique.nom} ${note}/5.`
+        + `${extrait ? ` « ${extrait} »` : ''}`,
+      type: 'systeme',
+      data: { ecran: 'ma_boutique', pourVendeur: true },
+    });
   }
 
   /** Note moyenne + nombre d'avis d'une boutique. */

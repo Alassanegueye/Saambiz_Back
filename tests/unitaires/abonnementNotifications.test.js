@@ -63,10 +63,13 @@ const VENDEUR = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockEmailExpiration.mockResolvedValue({});
-  // Un abonnement proche de la fin, pour chacune des deux échéances.
-  mockAbonnementFindAll.mockResolvedValue([
-    { id: 'abo-1', dateFin: new Date('2026-12-01'), utilisateur: VENDEUR },
-  ]);
+  // Le job lit d'abord les abonnements ÉCHUS (aucun ici), puis ceux qui
+  // approchent de l'échéance — une fois pour sept jours, une fois pour trois.
+  mockAbonnementFindAll
+    .mockResolvedValueOnce([])
+    .mockResolvedValue([
+      { id: 'abo-1', dateFin: new Date('2026-12-01'), utilisateur: VENDEUR },
+    ]);
 });
 
 describe('Les rappels d’expiration', () => {
@@ -101,9 +104,12 @@ describe('Les rappels d’expiration', () => {
   test('un acheteur n’est jamais rappelé', async () => {
     // Un acheteur n'a pas d'abonnement ; une requête mal filtrée en a déjà
     // désactivé tous les comptes une nuit, le filtre de rôle reste surveillé.
-    mockAbonnementFindAll.mockResolvedValue([
-      { id: 'abo-2', dateFin: new Date(), utilisateur: { ...VENDEUR, role: 'Acheteur' } },
-    ]);
+    mockAbonnementFindAll
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([
+        { id: 'abo-2', dateFin: new Date(), utilisateur: { ...VENDEUR, role: 'Acheteur' } },
+      ]);
 
     await expireAbonnements();
     await vider();

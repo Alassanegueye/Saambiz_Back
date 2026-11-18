@@ -8,6 +8,16 @@ async function expireAbonnements() {
   const maintenant = new Date();
 
   // 1. Expirer abonnements
+  //
+  // Lus AVANT la mise à jour, pour savoir qui prévenir : un `update` en masse
+  // ne rend que le nombre de lignes touchées. Le vendeur recevait un rappel à
+  // sept jours, un autre à trois, puis plus rien — il découvrait que sa
+  // boutique était bloquée en essayant de vendre, sans comprendre pourquoi.
+  const expires = await Abonnement.findAll({
+    where: { dateFin: { [Op.lt]: maintenant }, statut: 'actif' },
+    include: [{ model: Utilisateur, as: 'utilisateur', attributes: ['id', 'role'] }],
+  });
+
   await Abonnement.update(
     { statut: 'expire' },
     {
@@ -17,6 +27,18 @@ async function expireAbonnements() {
       }
     }
   );
+
+  for (const abo of expires) {
+    const u = abo.utilisateur;
+    if (!u || u.role !== 'Vendeur') continue;
+    NotificationService.creerNotification({
+      utilisateurId: u.id,
+      titre: 'Abonnement expiré',
+      message: 'Votre abonnement a pris fin. Renouvelez-le pour remettre votre boutique en vente.',
+      type: 'abonnement',
+      data: { abonnementId: abo.id },
+    }).catch(() => {});
+  }
 
   // Ce job ne touche plus au statut des comptes.
   //

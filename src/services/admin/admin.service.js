@@ -155,11 +155,35 @@ class AdminService {
     return CategorieAdminService.creer(data);
   }
 
+  /**
+   * Prévient quelqu'un d'une décision de l'administration.
+   *
+   * Toutes ces décisions se prenaient en silence : un produit retiré, un
+   * compte suspendu, un site coupé. La personne le découvrait en butant
+   * dessus, sans savoir ce qui s'était passé ni quoi faire. Un échec d'envoi
+   * ne remet jamais la décision en cause — elle est déjà enregistrée.
+   */
+  static _prevenir(utilisateurId, titre, message, data = {}) {
+    if (!utilisateurId) return;
+    require('../notifications/notification.service').creerNotification({
+      utilisateurId, titre, message, type: 'systeme', data,
+    }).catch((err) => logger.warn('[admin] notification non envoyée', {
+      utilisateur: utilisateurId, titre, message: err.message,
+    }));
+  }
+
   // 8. Suspendre un vendeur
   static async suspendreVendeur(vendeurId) {
     const vendeur = await Utilisateur.findOne({ where: { id: vendeurId, role: 'Vendeur' } });
     if (!vendeur) throw new NotFoundError('Vendeur introuvable');
     await vendeur.update({ statut: 'inactif' });
+    // Il ne pourra plus se connecter : s'il l'apprend en butant sur un refus
+    // de connexion, il n'a aucun moyen de savoir pourquoi.
+    AdminService._prevenir(
+      vendeurId,
+      'Compte suspendu',
+      'Votre compte a été suspendu par l\'équipe SaamBiz. Contactez le support pour en connaître la raison.',
+    );
     return { message: 'Vendeur suspendu avec succès' };
   }
 
@@ -168,6 +192,11 @@ class AdminService {
     const vendeur = await Utilisateur.findOne({ where: { id: vendeurId, role: 'Vendeur' } });
     if (!vendeur) throw new NotFoundError('Vendeur introuvable');
     await vendeur.update({ statut: 'actif' });
+    AdminService._prevenir(
+      vendeurId,
+      'Compte réactivé',
+      'Votre compte est de nouveau actif. Vous pouvez vendre comme avant.',
+    );
     return { message: 'Vendeur activé avec succès' };
   }
 
@@ -176,6 +205,11 @@ class AdminService {
     const acheteur = await Utilisateur.findOne({ where: { id: acheteurId, role: 'Acheteur' } });
     if (!acheteur) throw new NotFoundError('Acheteur introuvable');
     await acheteur.update({ statut: 'inactif' });
+    AdminService._prevenir(
+      acheteurId,
+      'Compte suspendu',
+      'Votre compte a été suspendu par l\'équipe SaamBiz. Contactez le support pour en connaître la raison.',
+    );
     return { message: 'Acheteur suspendu avec succès' };
   }
 
@@ -193,6 +227,12 @@ class AdminService {
     const produit = await Produit.findByPk(produitId);
     if (!produit) throw new NotFoundError('Produit introuvable');
     await produit.update({ statut: 'approuve' });
+    AdminService._prevenir(
+      produit.vendeurId,
+      'Produit approuvé',
+      `« ${produit.nom} » est validé : il est maintenant visible par les clients.`,
+      { ecran: 'mes_produits', produitId: produit.id, pourVendeur: true },
+    );
     return { message: 'Produit approuvé avec succès' };
   }
 
@@ -201,6 +241,16 @@ class AdminService {
     const produit = await Produit.findByPk(produitId);
     if (!produit) throw new NotFoundError('Produit introuvable');
     await produit.update({ statut: 'rejete' });
+    // Sans ce mot, le produit disparaissait de la boutique sans explication :
+    // le vendeur le croyait en ligne et attendait des ventes qui ne
+    // viendraient jamais.
+    AdminService._prevenir(
+      produit.vendeurId,
+      'Produit refusé',
+      `« ${produit.nom} » n'a pas été validé et n'est plus proposé aux clients. `
+        + 'Corrigez sa fiche puis soumettez-la à nouveau.',
+      { ecran: 'mes_produits', produitId: produit.id, pourVendeur: true },
+    );
     return { message: 'Produit rejeté avec succès' };
   }
 
@@ -231,6 +281,17 @@ class AdminService {
     }
     await boutique.update(maj);
     const base = (process.env.VITRINE_BASE_URL || 'https://saambiz.com').replace(/\/+$/, '');
+    // Le vendeur partage l'adresse de son site sur WhatsApp et l'imprime sur
+    // ses cartes : qu'elle cesse de répondre sans qu'on le lui dise est le
+    // genre de silence qui se paie en clients perdus.
+    AdminService._prevenir(
+      boutique.vendeurId,
+      maj.vitrineActive ? 'Votre site est en ligne' : 'Votre site est hors ligne',
+      maj.vitrineActive
+        ? `Le site de ${boutique.nom} est publié : ${base}/b/${boutique.slug}`
+        : `Le site de ${boutique.nom} a été désactivé par l'équipe SaamBiz. Contactez le support pour en connaître la raison.`,
+      { ecran: 'ma_boutique', pourVendeur: true },
+    );
     return {
       message: maj.vitrineActive ? 'Site activé' : 'Site désactivé',
       boutique: {
@@ -507,6 +568,15 @@ class AdminService {
     const signalement = await Signalement.findByPk(signalementId);
     if (!signalement) throw new NotFoundError('Signalement introuvable');
     await signalement.update({ statut: 'traite' });
+    // « Mes signalements » affichait « en attente » indéfiniment, même des
+    // mois après la décision : celui qui signale finissait par croire que
+    // personne ne lisait.
+    AdminService._prevenir(
+      signalement.signaleurId,
+      'Signalement traité',
+      'Votre signalement a été examiné par l\'équipe SaamBiz et les mesures nécessaires ont été prises. Merci de nous avoir alertés.',
+      { ecran: 'mes_signalements' },
+    );
     return { message: 'Signalement marqué comme traité' };
   }
 
@@ -515,6 +585,12 @@ class AdminService {
     const signalement = await Signalement.findByPk(signalementId);
     if (!signalement) throw new NotFoundError('Signalement introuvable');
     await signalement.update({ statut: 'rejete' });
+    AdminService._prevenir(
+      signalement.signaleurId,
+      'Signalement examiné',
+      'Votre signalement a été examiné : l\'équipe SaamBiz n\'a pas constaté de manquement aux règles. Merci tout de même de votre vigilance.',
+      { ecran: 'mes_signalements' },
+    );
     return { message: 'Signalement rejeté' };
   }
 

@@ -11,7 +11,38 @@ class FavoriService {
       defaults: { acheteurId, boutiqueId, clocheActive: false },
     });
     if (!created) return { success: false, message: 'Boutique déjà en favoris' };
+
+    // Le vendeur voit sa boutique gagner des abonnés sans jamais l'apprendre.
+    // C'est le signal le moins coûteux à envoyer et le plus encourageant à
+    // recevoir : quelqu'un a choisi de suivre ce qu'il fait.
+    FavoriService._prevenirVendeur(acheteurId, boutiqueId).catch(() => {});
+
     return { success: true, message: 'Boutique ajoutée aux favoris', favori };
+  }
+
+  /** « Moussa suit votre boutique » — au vendeur, jamais à l'acheteur. */
+  static async _prevenirVendeur(acheteurId, boutiqueId) {
+    const boutique = await Boutique.findByPk(boutiqueId, {
+      attributes: ['id', 'nom', 'vendeurId'],
+    });
+    // Un vendeur qui suit sa propre boutique ne se notifie pas lui-même.
+    if (!boutique?.vendeurId || boutique.vendeurId === acheteurId) return;
+
+    const acheteur = await Utilisateur.findByPk(acheteurId, {
+      attributes: ['prenom', 'nom'],
+    });
+    const nom = acheteur
+      ? `${acheteur.prenom || ''} ${acheteur.nom || ''}`.trim()
+      : '';
+
+    const NotificationService = require('../notifications/notification.service');
+    await NotificationService.creerNotification({
+      utilisateurId: boutique.vendeurId,
+      titre: 'Nouvel abonné',
+      message: `${nom || 'Un client'} suit maintenant ${boutique.nom}.`,
+      type: 'systeme',
+      data: { ecran: 'abonnes', pourVendeur: true },
+    });
   }
 
   static async supprimerFavori(acheteurId, boutiqueId) {

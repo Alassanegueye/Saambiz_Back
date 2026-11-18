@@ -16,11 +16,13 @@
 const mockEmailConfirme = jest.fn(async () => ({}));
 const mockCreerNotification = jest.fn(async () => ({}));
 const mockPaiementFindOne = jest.fn();
+const mockCommandeFindByPk = jest.fn();
 const mockAbonnementCreate = jest.fn();
 const mockUtilisateurFindByPk = jest.fn();
 
 jest.mock('../../src/models', () => ({
   Paiement: { findOne: (...a) => mockPaiementFindOne(...a) },
+  Commande: { findByPk: (...a) => mockCommandeFindByPk(...a) },
   Abonnement: { create: (...a) => mockAbonnementCreate(...a) },
   Utilisateur: { findByPk: (...a) => mockUtilisateurFindByPk(...a) },
 }));
@@ -124,15 +126,26 @@ describe('Un abonnement payé', () => {
 });
 
 describe('Un paiement qui échoue', () => {
-  test('ne prévient personne', async () => {
+  test('n’envoie aucun e-mail de confirmation', async () => {
     await PaiementService.confirmerPaiement({ transactionId: 'tx-1', status: 'FAILED' });
     await vider();
 
     expect(mockEmailConfirme).not.toHaveBeenCalled();
-    expect(mockCreerNotification).not.toHaveBeenCalled();
   });
 
-  test('un montant insuffisant non plus', async () => {
+  test('mais le dit au vendeur : son abonnement n’est pas actif', async () => {
+    // Le silence était pire que le refus : le vendeur croyait avoir payé.
+    await PaiementService.confirmerPaiement({ transactionId: 'tx-1', status: 'FAILED' });
+    await vider();
+
+    expect(mockCreerNotification).toHaveBeenCalledTimes(1);
+    const envoi = mockCreerNotification.mock.calls[0][0];
+    expect(envoi.utilisateurId).toBe('vendeur-1');
+    expect(envoi.titre).toContain('refusé');
+    expect(envoi.type).toBe('abonnement');
+  });
+
+  test('un montant insuffisant est un refus, et se dit aussi', async () => {
     await PaiementService.confirmerPaiement({
       transactionId: 'tx-1',
       status: 'SUCCESS',
@@ -140,6 +153,67 @@ describe('Un paiement qui échoue', () => {
     });
     await vider();
 
+    expect(mockEmailConfirme).not.toHaveBeenCalled();
+    expect(mockCreerNotification).toHaveBeenCalledTimes(1);
+    expect(mockCreerNotification.mock.calls[0][0].titre).toContain('refusé');
+  });
+
+  test('le refus d’une commande va à l’acheteur, et ouvre sa commande', async () => {
+    // C'est de sa commande qu'il peut repayer : l'y mener directement est
+    // tout l'intérêt de la notification.
+    mockPaiementFindOne.mockResolvedValue({
+      id: 'pay-2',
+      type: 'commande',
+      commandeId: 'cmd-1',
+      montant: '5000',
+      utilisateurId: 'acheteur-1',
+      statut: 'en_attente',
+      save: jest.fn(async () => {}),
+    });
+    mockCommandeFindByPk.mockResolvedValue({
+      id: 'cmd-1',
+      acheteurId: 'acheteur-1',
+      referenceCommande: 'CMD-2026-LREV6T',
+    });
+
+    await PaiementService.confirmerPaiement({ transactionId: 'tx-2', status: 'FAILED' });
+    await vider();
+
+    const envoi = mockCreerNotification.mock.calls[0][0];
+    expect(envoi.utilisateurId).toBe('acheteur-1');
+    expect(envoi.message).toContain('CMD-2026-LREV6T');
+    expect(envoi.data.commandeId).toBe('cmd-1');
+  });
+
+  test('une commande passée sans compte ne notifie personne', async () => {
+    // Pas d'application, donc pas d'appareil : le site de la boutique
+    // affiche le refus.
+    mockPaiementFindOne.mockResolvedValue({
+      id: 'pay-3',
+      type: 'commande',
+      commandeId: 'cmd-2',
+      montant: '5000',
+      utilisateurId: null,
+      statut: 'en_attente',
+      save: jest.fn(async () => {}),
+    });
+    mockCommandeFindByPk.mockResolvedValue({
+      id: 'cmd-2', acheteurId: null, referenceCommande: 'CMD-2026-XXXX',
+    });
+
+    await PaiementService.confirmerPaiement({ transactionId: 'tx-3', status: 'FAILED' });
+    await vider();
+
+    expect(mockCreerNotification).not.toHaveBeenCalled();
+  });
+
+  test('rien ne part avant le commit, là non plus', async () => {
+    t.commit.mockImplementation(async () => {});
+
+    await PaiementService.confirmerPaiement({ transactionId: 'tx-1', status: 'FAILED' });
+    await vider();
+
+    expect(t.hooks).toHaveLength(1);
     expect(mockCreerNotification).not.toHaveBeenCalled();
   });
 });

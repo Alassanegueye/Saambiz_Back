@@ -151,6 +151,10 @@ class CommandeService {
       transaction,
     );
 
+    // Produits qui tombent à zéro pendant cette vente : le vendeur doit
+    // l'apprendre, et il faut attendre le commit pour le lui dire.
+    const epuises = [];
+
     for (const ligne of lignes) {
       if (!ligne.produitId) continue;
       const produit = produits.get(ligne.produitId);
@@ -163,12 +167,42 @@ class CommandeService {
       produit.quantite = Math.max(0, produit.quantite - ligne.quantite);
       // Une commande du vendeur ne met pas son produit hors ligne : c'est lui
       // qui décide de l'interrupteur « En ligne ».
-      if (produit.quantite === 0 && !forcer) produit.disponible = false;
+      if (produit.quantite === 0 && !forcer) {
+        produit.disponible = false;
+        epuises.push(produit.nom);
+      }
       await produit.save({ transaction });
     }
 
     commande.stockDecremente = true;
     await commande.save({ transaction });
+
+    // LE PRODUIT PASSE HORS LIGNE EN SILENCE, et c'est ce silence qui coûte :
+    // le vendeur continuait de croire qu'il vendait, alors que sa fiche
+    // n'était plus proposée à personne. Après le commit — un stock décrémenté
+    // puis annulé ne doit pas laisser une fausse alerte derrière lui.
+    if (epuises.length && transaction) {
+      transaction.afterCommit(() =>
+        CommandeService._prevenirStockEpuise(commande.vendeurId, epuises).catch(() => {})
+      );
+    }
+  }
+
+  /** « Robe wax est en rupture » : le vendeur remet du stock, ou pas. */
+  static async _prevenirStockEpuise(vendeurId, noms) {
+    if (!vendeurId || !noms.length) return;
+    const liste = noms.slice(0, 3).join(', ');
+    const reste = noms.length - 3;
+
+    await NotificationService.creerNotification({
+      utilisateurId: vendeurId,
+      titre: noms.length > 1 ? 'Produits en rupture' : 'Produit en rupture',
+      message: `${liste}${reste > 0 ? ` et ${reste} autre${reste > 1 ? 's' : ''}` : ''} : `
+        + `plus de stock. ${noms.length > 1 ? 'Ils ne sont plus proposés' : 'Il n\'est plus proposé'}`
+        + ' aux clients tant que vous n\'en remettez pas.',
+      type: 'systeme',
+      data: { ecran: 'mes_produits', pourVendeur: true },
+    });
   }
 
   // Restaure le stock (annulation / remboursement)

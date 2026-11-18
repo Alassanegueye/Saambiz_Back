@@ -113,6 +113,14 @@ class PaiementService {
       paiement.datePaiement = new Date();
       await paiement.save({ transaction: t });   // maintenant dans la transaction
 
+      // UN PAIEMENT QUI ÉCHOUE SE DIT. Sans cela, la commande restait « en
+      // attente » sans un mot : le client ne savait pas si son argent était
+      // parti, s'il devait recommencer, ni combien de temps attendre. Il
+      // appelait la boutique, ou il abandonnait.
+      if (!isSuccess) {
+        PaiementService._prevenirEchec(paiement, t);
+      }
+
       // Si paiement réussi ET qu'il règle une COMMANDE → marquer payée + décrémenter le stock
       if (isSuccess && paiement.type === 'commande') {
         if (paiement.commandeId) {
@@ -204,6 +212,57 @@ class PaiementService {
       await t.rollback();
       throw err;
     }
+  }
+
+  /**
+   * Prévient du refus d'un paiement, après le commit seulement.
+   *
+   * Pour une commande, c'est l'acheteur qu'on prévient, et la notification
+   * ouvre sa commande — c'est de là qu'il peut repayer. Pour un abonnement,
+   * c'est le vendeur, et elle ouvre « Mon abonnement ».
+   */
+  static _prevenirEchec(paiement, t) {
+    t.afterCommit(async () => {
+      try {
+        const NotificationService = require('../notifications/notification.service');
+        const motif = paiement.metadata?.raisonEchec;
+
+        if (paiement.type === 'commande' && paiement.commandeId) {
+          const { Commande } = require('../../models');
+          const commande = await Commande.findByPk(paiement.commandeId, {
+            attributes: ['id', 'acheteurId', 'referenceCommande'],
+          });
+          // Commande passée sans compte : personne à joindre dans
+          // l'application. Le site de la boutique affiche le refus.
+          if (!commande?.acheteurId) return;
+
+          await NotificationService.creerNotification({
+            utilisateurId: commande.acheteurId,
+            titre: 'Paiement refusé',
+            message: `Le paiement de la commande ${commande.referenceCommande} n'a pas abouti.`
+              + `${motif ? ` ${motif}.` : ''} Vous pouvez réessayer depuis votre commande.`,
+            type: 'commande',
+            data: {
+              commandeId: commande.id,
+              reference: commande.referenceCommande || '',
+              pourVendeur: false,
+            },
+          });
+          return;
+        }
+
+        await NotificationService.creerNotification({
+          utilisateurId: paiement.utilisateurId,
+          titre: 'Paiement refusé',
+          message: `Le paiement de votre abonnement n'a pas abouti.${motif ? ` ${motif}.` : ''}`
+            + ' Vous pouvez réessayer depuis votre abonnement.',
+          type: 'abonnement',
+          data: { paiementId: paiement.id },
+        });
+      } catch (_) {
+        // Un refus de paiement reste enregistré même si la notification part mal.
+      }
+    });
   }
 
   // -------------------- RECUPERER UN PAIEMENT --------------------
