@@ -512,13 +512,36 @@ class AuthService {
         },
       }));
 
+    // Le nom de la boutique accompagne la session d'un vendeur.
+    //
+    // L'écran « Se connecter » liste les comptes déjà utilisés sur ce
+    // téléphone. Deux vendeurs y portaient parfois le MÊME nom — deux
+    // « Alassane GUEYE » l'un sous l'autre, distinguables seulement par leur
+    // adresse e-mail. Le nom de la boutique est ce que le vendeur reconnaît
+    // en premier ; il voyage donc avec la session, et l'application le garde
+    // à côté du compte mémorisé.
+    //
+    // Une seule requête, pour les vendeurs seulement, au moment de la
+    // connexion : rien n'est ajouté au chemin des acheteurs.
+    let boutique = null;
+    if (utilisateur.role === 'Vendeur') {
+      const { Boutique } = require('../models');
+      const b = await Boutique.findOne({
+        where: { vendeurId: utilisateur.id },
+        attributes: ['id', 'nom', 'logo'],
+        order: [['createdAt', 'ASC']],
+      }).catch(() => null);
+      if (b) boutique = { id: b.id, nom: b.nom, logo: b.logo };
+    }
+
     return {
       success: true,
       message: "Connexion réussie",
       token,
       refreshToken,
-      utilisateur: { ...utilisateur.toJSON(), isFirstLogin: utilisateur.isFirstLogin },
+      utilisateur: { ...utilisateur.toJSON(), isFirstLogin: utilisateur.isFirstLogin, boutique },
       abonnement: utilisateur.abonnements?.[0] || null,
+      boutique,
       menus,
     };
   }
