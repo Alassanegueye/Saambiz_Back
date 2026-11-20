@@ -3,11 +3,11 @@ const axiosRetry = require('axios-retry').default || require('axios-retry');
 const crypto = require('crypto');
 const logger = require('../../utils/logger');
 
-// M-02 : URL configurable via env
+// URL configurable via env
 const ORANGE_API_BASE = process.env.ORANGE_API_BASE || 'https://api.orange.com/orange-money-webpay/dev/v1';
 const HTTP_TIMEOUT = 15000;
 
-// MED-07 : retry avec backoff exponentiel sur erreurs réseau transitoires
+// Retry avec backoff exponentiel sur erreurs réseau transitoires
 axiosRetry(axios, {
   retries: 3,
   retryDelay: axiosRetry.exponentialDelay, // 500ms, 1s, 2s
@@ -98,7 +98,7 @@ class OrangeMoneyService {
     return response.data;
   }
 
-  // -------------------- VALIDER SIGNATURE WEBHOOK — C-01 --------------------
+  // -------------------- VALIDER SIGNATURE WEBHOOK --------------------
   static validerSignature(req) {
     const webhookSecret = process.env.ORANGE_WEBHOOK_SECRET;
 

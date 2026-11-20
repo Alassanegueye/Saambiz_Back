@@ -146,7 +146,7 @@ async function sendAbonnementExpiration({ to, nom, dateFin, joursRestants }) {
   });
 }
 
-// MED-03 : email de vérification à l'inscription
+// Email de vérification à l'inscription
 async function sendVerificationEmail({ to, nom, code, minutes }) {
   const template = require('../templates/mail/verificationEmail.template');
   return sendEmail({

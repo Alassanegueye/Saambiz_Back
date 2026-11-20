@@ -8,6 +8,7 @@ const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors
 // le `limit` de la requete tel quel, donc `?limit=100000` chargeait toute la
 // table. Le helper partage plafonne a cent.
 const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
+const echecIgnore = require('../../utils/echecIgnore');
 
 const DEFAULT_PAGE_SIZE = LIMITE_DEFAUT;
 
@@ -41,7 +42,7 @@ class DemandeRetourService {
     // l'administration, et le vendeur apprenait le retour de sa marchandise
     // en la voyant revenir. C'est lui qui connaît le produit et le client ;
     // il doit pouvoir répondre avant que l'administration ne tranche.
-    DemandeRetourService._prevenirVendeur(commande, acheteurId, raison).catch(() => {});
+    DemandeRetourService._prevenirVendeur(commande, acheteurId, raison).catch(echecIgnore('alerte demande de retour au vendeur'));
 
     return demande;
   }

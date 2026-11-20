@@ -8,6 +8,7 @@ const { sendAbonnementConfirme } = require('../resend.service');
 const NotificationService = require('../notifications/notification.service');
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 class PaiementService {
 
@@ -187,7 +188,7 @@ class PaiementService {
               montant: paiement.montant,
               dateDebut,
               dateFin
-            }).catch(() => {});
+            }).catch(echecIgnore('e-mail abonnement confirmé'));
 
             // `creerNotification` fait les trois d'un coup : la ligne dans le
             // centre de notifications (donc le compteur de non-lus), l'envoi
@@ -200,7 +201,7 @@ class PaiementService {
               message: `Votre abonnement est actif jusqu'au ${dateFin.toLocaleDateString('fr-FR')}.`,
               type: 'abonnement',
               data: { abonnementId: abonnement.id },
-            }).catch(() => {});
+            }).catch(echecIgnore('notification abonnement activé'));
           });
         }
       }

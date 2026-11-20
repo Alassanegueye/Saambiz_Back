@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { sendAbonnementExpiration } = require('../services/resend.service');
 const NotificationService = require('../services/notifications/notification.service');
 const logger = require('../utils/logger');
+const echecIgnore = require('../utils/echecIgnore');
 
 async function expireAbonnements() {
   const maintenant = new Date();
@@ -37,7 +38,7 @@ async function expireAbonnements() {
       message: 'Votre abonnement a pris fin. Renouvelez-le pour remettre votre boutique en vente.',
       type: 'abonnement',
       data: { abonnementId: abo.id },
-    }).catch(() => {});
+    }).catch(echecIgnore('notification abonnement expiré'));
   }
 
   // Ce job ne touche plus au statut des comptes.
@@ -90,7 +91,7 @@ async function expireAbonnements() {
         nom: `${u.prenom} ${u.nom}`,
         dateFin: abo.dateFin,
         joursRestants: jours
-      }).catch(() => {});
+      }).catch(echecIgnore('e-mail abonnement bientôt expiré'));
 
       // `creerNotification` plutôt qu'un push direct : elle pose aussi la
       // ligne dans le centre de notifications, donc le compteur de non-lus
@@ -107,7 +108,7 @@ async function expireAbonnements() {
         message: 'Renouvelez votre abonnement pour continuer à vendre.',
         type: 'abonnement',
         data: { abonnementId: abo.id, joursRestants: String(jours) },
-      }).catch(() => {});
+      }).catch(echecIgnore('notification abonnement bientôt expiré'));
     }
   }
 

@@ -6,6 +6,7 @@ const sequelize = require('../../config/db');
 const VendeurService = require('../vendeurs/vendeur.service');
 const CommandeService = require('../commandes/commande.service');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /**
  * Produits et commandes gérés depuis le dashboard admin.
@@ -268,8 +269,8 @@ class AdminCatalogueService {
         motif: donnees.motif || null,
       });
     }
-    if (devientLivree) CommandeService._incrementerVentes(commande.id).catch(() => {});
-    if (statutChange) CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+    if (devientLivree) CommandeService._incrementerVentes(commande.id).catch(echecIgnore('compteur de ventes'));
+    if (statutChange) CommandeService._notifierAcheteurStatut(commande).catch(echecIgnore('notification de statut à l\'acheteur'));
     return AdminCatalogueService.detailCommande(id);
   }
 

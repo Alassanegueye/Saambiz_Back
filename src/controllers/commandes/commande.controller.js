@@ -5,6 +5,7 @@ const DemandeRetourService = require('../../services/commandes/demandeRetour.ser
 const AccueilService = require('../../services/acheteurs/accueil.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { BadRequestError, ForbiddenError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 // Un achat est le signal le plus fort dont on dispose pour les propositions de
 // l'accueil. Le calcul (catégorie de chaque produit) vit dans AccueilService :
@@ -34,7 +35,7 @@ exports.creerCommande = asyncHandler(async (req, res) => {
     note,
   });
 
-  nourrirAffinites(acheteurId, items).catch(() => {});
+  nourrirAffinites(acheteurId, items).catch(echecIgnore('affinités de la commande'));
 
   return res.status(201).json({ success: true, commande });
 });

@@ -24,6 +24,7 @@ const PHOTOS_VITRINE_MAX = 10;
 // Mises en page proposées pour la vitrine — la liste du service fait foi.
 const { MODELES_VITRINE, ICONES_VITRINE } = require('../vitrine/vitrine.service');
 const VisiteService = require('../visites/visite.service');
+const echecIgnore = require('../../utils/echecIgnore');
 
 // Domaine qui sert les vitrines. Le vendeur voit l'adresse de son site dans
 // son tableau de bord, la partage sur WhatsApp et l'imprime sur ses cartes :
@@ -37,10 +38,10 @@ const SLUGS_RESERVES = [
   'contact', 'aide', 'cgu', 'cgv', 'confidentialite', 'app', 'assets', 'static',
 ];
 
-// Champs modifiables sur un Produit — HIGH-01 whitelist
+// Champs modifiables sur un Produit (liste blanche)
 const PRODUIT_FIELDS = ['nom', 'description', 'prix', 'prix_promo', 'quantite', 'categorieId', 'marque', 'attributs', 'disponible'];
 
-// Champs modifiables sur une Boutique — HIGH-01 whitelist
+// Champs modifiables sur une Boutique (liste blanche)
 const BOUTIQUE_FIELDS = ['nom', 'slug', 'description', 'slogan', 'localisation', 'telephone', 'whatsapp', 'ville', 'latitude', 'longitude', 'banniere', 'couleur_theme', 'categorie'];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,7 +64,7 @@ function formaterAbonne(favori) {
 class VendeurService {
 
   // -------------------- LISTER PRODUITS --------------------
-  // HIGH-02 : pagination ajoutée
+  // Liste paginée
   static async listerProduits(vendeurId, { page = 1, limit = DEFAULT_PAGE_SIZE } = {}) {
     const { limit: l, offset } = paginate(page, limit);
     const { rows, count } = await Produit.findAndCountAll({
@@ -109,7 +110,7 @@ class VendeurService {
         `Nouveau produit : ${nom}`,
         `${nomVendeur || 'Votre boutique'} vient de publier "${nom}"`,
         'nouveau_produit'
-      ).catch(() => {});
+      ).catch(echecIgnore('notification nouveau produit aux abonnés'));
 
       return produit;
     } catch (err) {
@@ -138,7 +139,7 @@ class VendeurService {
   }
 
   // -------------------- MODIFIER PRODUIT --------------------
-  // HIGH-01 : whitelist stricte des champs modifiables
+  // Whitelist stricte des champs modifiables
   static async modifierProduit(vendeurId, produitId, updates) {
     const t = await sequelize.transaction();
     try {
@@ -247,7 +248,7 @@ class VendeurService {
     const existante = await Boutique.findOne({ where: { vendeurId } });
     if (existante) throw new ConflictError('Vous avez déjà une boutique');
 
-    // HIGH-01 : whitelist champs boutique
+    // Whitelist champs boutique
     let safeData = {};
     for (const field of BOUTIQUE_FIELDS) {
       if (data[field] !== undefined) safeData[field] = data[field];
@@ -274,7 +275,7 @@ class VendeurService {
   }
 
   // -------------------- MODIFIER BOUTIQUE --------------------
-  // HIGH-01 : whitelist stricte des champs modifiables
+  // Whitelist stricte des champs modifiables
   /**
    * Téléphone et WhatsApp de la boutique : vérifiés selon leur pays et
    * enregistrés au format international (« +221771234567 »). Vide = effacé.
@@ -800,7 +801,7 @@ class VendeurService {
   }
 
   // -------------------- STATISTIQUES VUES --------------------
-  // HIGH-02 : pagination
+  // Liste paginée
   static async statistiquesVues(vendeurId, { page = 1, limit = DEFAULT_PAGE_SIZE } = {}) {
     const { limit: l, offset } = paginate(page, limit);
     const { rows, count } = await Produit.findAndCountAll({
@@ -1171,7 +1172,7 @@ class VendeurService {
   }
 
   // -------------------- RECHERCHE PRODUITS --------------------
-  // HIGH-02 : pagination ajoutée
+  // Liste paginée
   static async rechercherMesProduits(vendeurId, { q, categorieId, disponible, page = 1, limit = DEFAULT_PAGE_SIZE }) {
     const where = { vendeurId };
     if (q) where.nom = { [Op.iLike]: `%${q}%` };
@@ -1193,7 +1194,7 @@ class VendeurService {
   }
 
   // -------------------- HISTORIQUE PAIEMENTS --------------------
-  // HIGH-02 : pagination ajoutée
+  // Liste paginée
   static async historiquePaiements(vendeurId, { page = 1, limit = DEFAULT_PAGE_SIZE } = {}) {
     const { limit: l, offset } = paginate(page, limit);
     const { rows, count } = await Paiement.findAndCountAll({
@@ -1210,7 +1211,7 @@ class VendeurService {
   }
 
   // -------------------- MES CONVERSATIONS --------------------
-  // HIGH-02 : pagination ajoutée
+  // Liste paginée
   static async mesConversations(vendeurId, { page = 1, limit = DEFAULT_PAGE_SIZE } = {}) {
     const { limit: l, offset } = paginate(page, limit);
     const messages = await Message.findAll({

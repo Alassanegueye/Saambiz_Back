@@ -1,5 +1,6 @@
 const { fn, col } = require('sequelize');
 const { Avis, Boutique, Utilisateur } = require('../../models');
+const echecIgnore = require('../../utils/echecIgnore');
 
 class AvisService {
   /**
@@ -30,7 +31,7 @@ class AvisService {
     // Le vendeur ne savait pas qu'on l'avait noté — ni en bien, ni en mal.
     // Un avis est la seule chose que ses clients lui disent publiquement, et
     // une mauvaise note qu'on découvre à temps peut encore se rattraper.
-    AvisService._prevenirVendeur(boutique, acheteurId, n, commentaire).catch(() => {});
+    AvisService._prevenirVendeur(boutique, acheteurId, n, commentaire).catch(echecIgnore('alerte avis au vendeur'));
 
     return {
       success: true,

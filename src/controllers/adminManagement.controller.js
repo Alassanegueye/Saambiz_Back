@@ -3,10 +3,11 @@ const MenuService = require('../services/menu.service');
 const asyncHandler = require('../middlewares/asyncHandler');
 const { BadRequestError } = require('../errors/AppError');
 const AuditService = require('../services/audit.service');
+const echecIgnore = require('../utils/echecIgnore');
 
 /** Trace une action dans l'activité des admins, sans jamais faire échouer la requête. */
 const tracer = (req, action, cible, cibleId, details = {}) =>
-  AuditService.enregistrer({ adminId: req.user.id, action, cible, cibleId, details }).catch(() => {});
+  AuditService.enregistrer({ adminId: req.user.id, action, cible, cibleId, details }).catch(echecIgnore('journal d\'audit (gestion des admins)'));
 
 /**
  * Gestion des comptes administrateurs et des menus RBAC.

@@ -16,7 +16,7 @@ require('./models/index');
 // qu'elle ne servait à rien).
 
 const PORT = process.env.PORT || 3000;
-// MED-06 : adresse bind configurable via env (127.0.0.1 derrière un proxy, 0.0.0.0 en direct)
+// Adresse bind configurable via env (127.0.0.1 derrière un proxy, 0.0.0.0 en direct)
 const HOST = process.env.HOST || '0.0.0.0';
 
 (async () => {

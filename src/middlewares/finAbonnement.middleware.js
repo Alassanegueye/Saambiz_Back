@@ -4,12 +4,12 @@ const logger = require('../utils/logger');
 
 async function checkAbonnement(req, res, next) {
   try {
-    // 🔐 Vérifier authentification
+    // Vérifier authentification
     if (!req.user) {
       return res.status(401).json({ message: "Non authentifié" });
     }
 
-    // 👤 Vérifier rôle vendeur
+    // Vérifier rôle vendeur
     if (req.user.role !== 'Vendeur') {
       return res.status(403).json({ message: "Accès réservé aux vendeurs" });
     }
@@ -17,7 +17,7 @@ async function checkAbonnement(req, res, next) {
     const maintenant = new Date();
     const utilisateurId = req.user.id;
 
-    // 🔍 Chercher abonnement actif
+    // Chercher abonnement actif
     const abonnement = await Abonnement.findOne({
       where: {
         utilisateurId: utilisateurId,
@@ -29,14 +29,14 @@ async function checkAbonnement(req, res, next) {
       order: [['dateFin', 'DESC']]
     });
 
-    // ❌ Aucun abonnement valide
+    // Aucun abonnement valide
     if (!abonnement) {
       return res.status(403).json({
         message: "Votre abonnement est expiré. Veuillez payer pour continuer."
       });
     }
 
-    // ✅ OK → passer à la suite
+    // OK → passer à la suite
     req.abonnement = abonnement; // (optionnel, utile)
     next();
 

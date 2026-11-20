@@ -1,5 +1,5 @@
 const Joi = require('joi');
-// MED-02 / Architecture : passwordSchema centralisé dans auth.validator.js
+// passwordSchema centralisé dans auth.validator.js
 const { passwordSchema } = require('../validators/auth.validator');
 
 const modifierProfilSchema = Joi.object({

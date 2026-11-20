@@ -2,6 +2,7 @@ const FavoriService = require('../../services/favoris/favori.service');
 const AccueilService = require('../../services/acheteurs/accueil.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { ConflictError, NotFoundError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 exports.ajouterFavori = asyncHandler(async (req, res) => {
   const result = await FavoriService.ajouterFavori(req.user.id, req.body.boutiqueId);
@@ -9,7 +10,7 @@ exports.ajouterFavori = asyncHandler(async (req, res) => {
   // lourd dans les propositions suivantes.
   AccueilService
     .enregistrerAffiniteBoutique(req.user.id, req.body.boutiqueId, 'abonnement')
-    .catch(() => {});
+    .catch(echecIgnore('affinité avec la boutique suivie'));
   if (!result.success) throw new ConflictError(result.message);
   return res.status(201).json(result);
 });
@@ -28,7 +29,7 @@ exports.mesFavoris = asyncHandler(async (req, res) => {
   return res.status(200).json(resultat);
 });
 
-// 🔔 Active/désactive la cloche de notifications d'une boutique
+// Active/désactive la cloche de notifications d'une boutique
 exports.toggleCloche = asyncHandler(async (req, res) => {
   // active fourni ({ active: true/false }) ; sinon on bascule selon l'état courant
   let active = req.body?.active;

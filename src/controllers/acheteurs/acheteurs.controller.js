@@ -2,6 +2,7 @@ const AcheteurService = require('../../services/acheteurs/acheteurs.service');
 const AccueilService = require('../../services/acheteurs/accueil.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { BadRequestError, NotFoundError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /**
  * Catalogue vu par l'acheteur.
@@ -170,7 +171,7 @@ class AcheteurController {
     }
     const result = await AcheteurService.rechercheGlobale(req.user.id, q, page);
     // Ce que le client cherche aujourd'hui oriente son accueil de demain.
-    AccueilService.enregistrerRecherche(req.user.id, q).catch(() => {});
+    AccueilService.enregistrerRecherche(req.user.id, q).catch(echecIgnore('mémorisation de la recherche'));
     return res.status(200).json({ success: true, ...result });
   });
 

@@ -3,6 +3,7 @@ const { ConflictError, NotFoundError } = require('../../errors/AppError');
 
 const PRIX_ABONNEMENT_KEY = 'prix_abonnement';
 const { paiementEnLigneActif } = require('../../config/security');
+const echecIgnore = require('../../utils/echecIgnore');
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Cache mémoire des réglages.
@@ -59,9 +60,9 @@ class ConfigService {
    */
   static async getConfigApplicationMobile() {
     const [minAndroid, minIos, maintenance] = await Promise.all([
-      ConfigService.getConfig('min_version_android').catch(() => null),
-      ConfigService.getConfig('min_version_ios').catch(() => null),
-      ConfigService.getConfig('maintenance').catch(() => null),
+      ConfigService.getConfig('min_version_android').catch(echecIgnore('config min_version_android', null)),
+      ConfigService.getConfig('min_version_ios').catch(echecIgnore('config min_version_ios', null)),
+      ConfigService.getConfig('maintenance').catch(echecIgnore('config maintenance', null)),
     ]);
     return {
       minVersionAndroid: minAndroid?.valeur || '1.0.0',

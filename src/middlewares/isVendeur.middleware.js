@@ -1,5 +1,5 @@
 function isVendeur(req, res, next) {
-  // 🔹 req.user doit être défini par le middleware JWT
+  // req.user doit être défini par le middleware JWT
   if (!req.user) {
     return res.status(401).json({ message: "Non authentifié" });
   }

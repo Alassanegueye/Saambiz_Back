@@ -1,5 +1,6 @@
 const { Favori, Boutique, Utilisateur } = require('../../models');
 const { paginate, metaPagination } = require('../../utils/paginate');
+const echecIgnore = require('../../utils/echecIgnore');
 
 class FavoriService {
 
@@ -15,7 +16,7 @@ class FavoriService {
     // Le vendeur voit sa boutique gagner des abonnés sans jamais l'apprendre.
     // C'est le signal le moins coûteux à envoyer et le plus encourageant à
     // recevoir : quelqu'un a choisi de suivre ce qu'il fait.
-    FavoriService._prevenirVendeur(acheteurId, boutiqueId).catch(() => {});
+    FavoriService._prevenirVendeur(acheteurId, boutiqueId).catch(echecIgnore('alerte nouvel abonné au vendeur'));
 
     return { success: true, message: 'Boutique ajoutée aux favoris', favori };
   }
@@ -72,7 +73,7 @@ class FavoriService {
   }
 
   /**
-   * 🔔 Active ou désactive la cloche de notifications pour une boutique.
+   * Active ou désactive la cloche de notifications pour une boutique.
    * Si l'acheteur ne suit pas encore la boutique, le suivi est créé avec la cloche à l'état demandé.
    */
   static async toggleCloche(acheteurId, boutiqueId, active) {

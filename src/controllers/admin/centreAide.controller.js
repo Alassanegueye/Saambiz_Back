@@ -1,6 +1,7 @@
 const CentreAideService = require('../../services/config/centreAide.service');
 const AuditService = require('../../services/audit.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /** Centre d'aide de l'application (dashboard admin → Configuration). */
 
@@ -14,7 +15,7 @@ exports.lire = asyncHandler(async (req, res) => {
 
 exports.modifierContacts = asyncHandler(async (req, res) => {
   const contacts = await CentreAideService.modifierContacts(req.body, req.user.id);
-  AuditService.enregistrer({ adminId: req.user.id, action: 'modifier_contacts_aide', cible: 'config', cibleId: 'centre_aide', details: contacts }).catch(() => {});
+  AuditService.enregistrer({ adminId: req.user.id, action: 'modifier_contacts_aide', cible: 'config', cibleId: 'centre_aide', details: contacts }).catch(echecIgnore('journal d\'audit (centre d\'aide)'));
   return res.status(200).json({ message: 'Coordonnées enregistrées', contacts });
 });
 

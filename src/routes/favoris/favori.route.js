@@ -12,7 +12,7 @@ router.use(isAcheteur);
 router.post('/', favoriController.ajouterFavori);            // suivre une boutique
 router.get('/', favoriController.mesFavoris);               // mes boutiques suivies
 router.get('/:boutiqueId/statut', favoriController.statutSuivi);   // suis-je abonné ? cloche ?
-router.patch('/:boutiqueId/cloche', favoriController.toggleCloche); // 🔔 activer/désactiver la cloche
+router.patch('/:boutiqueId/cloche', favoriController.toggleCloche); // activer/désactiver la cloche
 router.delete('/:boutiqueId', favoriController.supprimerFavori);   // ne plus suivre
 
 module.exports = router;

@@ -6,8 +6,6 @@ const purgerRefreshTokens = require('./purgeRefreshTokens.job');
 const logger = require('../utils/logger');
 
 function startJobs() {
-  // MED-01 : logger structuré, plus de console.log
-
   // Vérification abonnements — tous les jours à 00:00
   cron.schedule('0 0 * * *', async () => {
     try {
@@ -27,7 +25,7 @@ function startJobs() {
     }
   });
 
-  // HIGH-06 : nettoyage blacklist toutes les 15 minutes (au lieu d'1h)
+  // Nettoyage de la blacklist toutes les 15 minutes
   // Réduit la taille de la table entre deux passes et améliore les perfs du check auth
   cron.schedule('*/15 * * * *', async () => {
     try {

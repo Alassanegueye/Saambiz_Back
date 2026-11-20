@@ -258,7 +258,7 @@ router.post('/logout', authMiddleware, authController.logout);
  */
 router.post('/refresh', authController.refresh);
 
-// MED-03 : vérification email — GET depuis le lien reçu par email,
+// Vérification email — GET depuis le lien reçu par email,
 // POST { email, code } depuis l'application mobile.
 router.get('/verify-email', authController.verifierEmail);
 

@@ -5,6 +5,7 @@ const ConfigService = require('../config/config.service');
 const NotificationService = require('../notifications/notification.service');
 const { getIO } = require('../socket.service');
 const logger = require('../../utils/logger');
+const echecIgnore = require('../../utils/echecIgnore');
 const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resend.service');
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
@@ -184,7 +185,7 @@ class CommandeService {
     // puis annulé ne doit pas laisser une fausse alerte derrière lui.
     if (epuises.length && transaction) {
       transaction.afterCommit(() =>
-        CommandeService._prevenirStockEpuise(commande.vendeurId, epuises).catch(() => {})
+        CommandeService._prevenirStockEpuise(commande.vendeurId, epuises).catch(echecIgnore('alerte stock épuisé'))
       );
     }
   }
@@ -394,7 +395,7 @@ class CommandeService {
       // 6) Notifier le vendeur (hors transaction)
       // (inutile quand c'est lui qui vient de la saisir).
       if (origine !== 'dashboard') {
-        CommandeService._notifierVendeurNouvelleCommande(commande).catch(() => {});
+        CommandeService._notifierVendeurNouvelleCommande(commande).catch(echecIgnore('notification nouvelle commande au vendeur'));
       }
       CommandeService._historiser({
         commandeId: commande.id,
@@ -406,7 +407,7 @@ class CommandeService {
         details: { origine, montantTotal: commande.montantTotal },
       });
       // Le client reçoit un accusé de réception au nom de la boutique.
-      CommandeService._emailClient(commande, 'recue').catch(() => {});
+      CommandeService._emailClient(commande, 'recue').catch(echecIgnore('e-mail accusé de réception au client'));
 
       return await CommandeService.getCommandeComplete(commande.id);
 
@@ -468,8 +469,8 @@ class CommandeService {
           details: { source: 'passerelle' },
         });
         CommandeService._diffuserStatut(commande);
-        CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(() => {});
-        CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+        CommandeService._notifierVendeurNouvelleCommande(commande, true).catch(echecIgnore('notification commande payée au vendeur'));
+        CommandeService._notifierAcheteurStatut(commande).catch(echecIgnore('notification de statut à l\'acheteur'));
       });
 
       if (gererTransaction) await t.commit();
@@ -770,12 +771,12 @@ class CommandeService {
 
     // À la livraison : incrémenter le compteur de ventes des produits (tri "meilleures ventes")
     if (nouveauStatut === 'livree') {
-      CommandeService._incrementerVentes(commande.id).catch(() => {});
+      CommandeService._incrementerVentes(commande.id).catch(echecIgnore('compteur de ventes'));
     }
 
     CommandeService._diffuserStatut(commande);
     // Notifier l'acheteur de l'avancement
-    CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+    CommandeService._notifierAcheteurStatut(commande).catch(echecIgnore('notification de statut à l\'acheteur'));
     return commande;
   }
 
@@ -859,7 +860,7 @@ class CommandeService {
       });
 
       CommandeService._diffuserStatut(commande);
-      CommandeService._notifierAcheteurStatut(commande, CommandeService._messageAcceptation(commande)).catch(() => {});
+      CommandeService._notifierAcheteurStatut(commande, CommandeService._messageAcceptation(commande)).catch(echecIgnore('notification d\'acceptation à l\'acheteur'));
       return commande;
     } catch (err) {
       await t.rollback();
@@ -971,7 +972,7 @@ class CommandeService {
         `${nom || 'Un client'} demande l'annulation de la commande ${commande.referenceCommande}.`,
         { data: CommandeService._donneesNotification(commande, commande.acheteurId, nom, { pourVendeur: true }) },
       )
-    ).catch(() => {});
+    ).catch(echecIgnore('notification demande d\'annulation au vendeur'));
 
     return commande;
   }
@@ -1017,7 +1018,7 @@ class CommandeService {
       commande.annulationRefusMotif
         ? `Votre demande d'annulation a été refusée : ${commande.annulationRefusMotif}`
         : 'Votre demande d\'annulation a été refusée. La commande suit son cours.',
-    ).catch(() => {});
+    ).catch(echecIgnore('notification refus d\'annulation à l\'acheteur'));
 
     return commande;
   }
@@ -1087,16 +1088,16 @@ class CommandeService {
 
       // Notifier l'autre partie
       if (statutFinal === 'rejetee') {
-        CommandeService._notifierAcheteurStatut(commande).catch(() => {});
+        CommandeService._notifierAcheteurStatut(commande).catch(echecIgnore('notification de statut à l\'acheteur'));
       } else if (parQui === 'vendeur') {
-        CommandeService._notifierAcheteurStatut(commande, 'Votre commande a été annulée par le vendeur.').catch(() => {});
+        CommandeService._notifierAcheteurStatut(commande, 'Votre commande a été annulée par le vendeur.').catch(echecIgnore('notification annulation par le vendeur'));
       } else {
         CommandeService._nomAcheteur(commande.acheteurId).then(nom => CommandeService._notifierUtilisateur(
           commande.vendeurId,
           'Commande annulée',
           `La commande ${commande.referenceCommande} a été annulée par l'acheteur.`,
           { data: CommandeService._donneesNotification(commande, commande.acheteurId, nom, { pourVendeur: true }) },
-        )).catch(() => {});
+        )).catch(echecIgnore('notification annulation par l\'acheteur'));
       }
       return commande;
     } catch (err) {
@@ -1194,7 +1195,7 @@ class CommandeService {
       data: CommandeService._donneesNotification(commande, commande.acheteurId, nomAcheteur, { pourVendeur: true }),
     });
     if (paiementConfirme) return;
-    Utilisateur.findByPk(commande.vendeurId).then(vendeur => vendeur && sendNouvelleCommandeEmail({ to: vendeur.email, nom: `${vendeur.prenom || ''} ${vendeur.nom || ''}`.trim(), referenceCommande: commande.referenceCommande, montantTotal: commande.montantTotal })).catch(() => {});
+    Utilisateur.findByPk(commande.vendeurId).then(vendeur => vendeur && sendNouvelleCommandeEmail({ to: vendeur.email, nom: `${vendeur.prenom || ''} ${vendeur.nom || ''}`.trim(), referenceCommande: commande.referenceCommande, montantTotal: commande.montantTotal })).catch(echecIgnore('e-mail nouvelle commande au vendeur'));
   }
 
   /**
@@ -1229,7 +1230,7 @@ class CommandeService {
     // reste son seul canal. Avec un compte, c'est la notification qui porte
     // la nouvelle — jamais les deux, pour ne pas prévenir deux fois.
     if (!commande.acheteurId) {
-      CommandeService._emailClient(commande, commande.statut, messagePerso).catch(() => {});
+      CommandeService._emailClient(commande, commande.statut, messagePerso).catch(echecIgnore('e-mail de suivi au client'));
       return;
     }
 

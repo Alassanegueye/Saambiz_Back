@@ -3,7 +3,7 @@ const { uploadConfig } = require('../config/security');
 const { BadRequestError } = require('../errors/AppError');
 
 // ──────────────────────────────────────────────────────────────────────────────
-// H-02 : vérification des magic bytes réels (pas du Content-Type client)
+// Vérification des magic bytes réels (pas du Content-Type client)
 // ──────────────────────────────────────────────────────────────────────────────
 function detectMimeFromBuffer(buffer) {
   if (!buffer || buffer.length < 4) return null;

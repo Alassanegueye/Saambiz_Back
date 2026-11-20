@@ -5,7 +5,7 @@ const { Menu, Permission } = require('../models');
 const logger = require('../utils/logger');
 
 async function seedAdmin() {
-  // CRIT-01 : bloquer si variables manquantes — aucun fallback hardcodé
+  // Bloquer si variables manquantes — aucun fallback hardcodé
   const email = process.env.ADMIN_EMAIL;
   const mdp   = process.env.ADMIN_PASSWORD;
 

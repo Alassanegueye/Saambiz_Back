@@ -13,7 +13,7 @@ const { BadRequestError } = require('../../errors/AppError');
  * 400 règle métier) : le contrôleur n'a plus à deviner un statut en lisant le
  * texte du message, et une panne inattendue ne sort plus en 404.
  *
- * H-05 : aucun `err.message` technique ne fuit dans un 500 — le gestionnaire
+ * Aucun `err.message` technique ne fuit dans un 500 — le gestionnaire
  * global masque les messages des erreurs non opérationnelles en production.
  */
 class VendeurController {

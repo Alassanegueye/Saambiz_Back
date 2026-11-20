@@ -1,6 +1,6 @@
 // Script de seed à lancer UNE SEULE FOIS au premier déploiement
 // Commande : npm run seed
-// HIGH-03 : seed externalisé, ne tourne plus au démarrage du serveur
+// Il ne tourne jamais au démarrage du serveur.
 const sequelize = require('../config/db');
 const logger = require('../utils/logger');
 

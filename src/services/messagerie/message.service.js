@@ -3,6 +3,7 @@ const { paginate, metaPagination } = require('../../utils/paginate');
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../../config/db');
 const { getIO } = require('../socket.service');
+const echecIgnore = require('../../utils/echecIgnore');
 
 const FORMAT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,7 +23,7 @@ class MessageService {
     // qu'on lui écrivait : il le découvrait en rouvrant l'application, des
     // heures plus tard. Pour une marketplace, c'est une vente perdue à
     // chaque message.
-    MessageService._prevenirDestinataire(message, expediteurId, destinataireId).catch(() => {});
+    MessageService._prevenirDestinataire(message, expediteurId, destinataireId).catch(echecIgnore('alerte nouveau message au destinataire'));
 
     return { success: true, message: 'Message envoyé', data: message };
   }

@@ -2,6 +2,7 @@ const { Notification, Utilisateur, Favori, Boutique } = require('../../models');
 const { getIO } = require('../socket.service');
 const { paginate, metaPagination } = require('../../utils/paginate');
 const { sendPushToUsers } = require('../push.service');
+const echecIgnore = require('../../utils/echecIgnore');
 
 class NotificationService {
 
@@ -16,7 +17,7 @@ class NotificationService {
       getIO().to('user:' + utilisateurId).emit('notification:new', notification);
     } catch (_) { /* Socket.IO pas encore initialisé — on ignore silencieusement */ }
     // Push FCM best-effort (ne bloque pas si Firebase non configuré)
-    sendPushToUsers(utilisateurId, { title: titre, body: message, data: { type, ...data }, image }).catch(() => {});
+    sendPushToUsers(utilisateurId, { title: titre, body: message, data: { type, ...data }, image }).catch(echecIgnore('push FCM'));
     return notification;
   }
 
@@ -38,13 +39,13 @@ class NotificationService {
     } catch (_) { /* Socket.IO indisponible */ }
 
     // Push FCM groupé
-    sendPushToUsers(ids, { title: titre, body: message, data: { type, ...data }, image }).catch(() => {});
+    sendPushToUsers(ids, { title: titre, body: message, data: { type, ...data }, image }).catch(echecIgnore('push FCM groupé'));
 
     return { destinataires: ids.length };
   }
 
   /**
-   * 🔔 Notifie les abonnés d'une boutique ayant activé la cloche.
+   * Notifie les abonnés d'une boutique ayant activé la cloche.
    */
   static async notifierAbonnesBoutique(boutiqueId, titre, message, type, data = {}) {
     const abonnes = await Favori.findAll({
@@ -57,7 +58,7 @@ class NotificationService {
   }
 
   /**
-   * 🔔 Notifie les abonnés (cloche active) de toutes les boutiques d'un vendeur.
+   * Notifie les abonnés (cloche active) de toutes les boutiques d'un vendeur.
    * Utilisé lors de la publication d'un nouveau produit ou d'une promotion.
    */
   static async notifierAbonnesDuVendeur(vendeurId, titre, message, type, data = {}, { image } = {}) {

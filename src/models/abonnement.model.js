@@ -49,7 +49,7 @@ const Abonnement = sequelize.define('Abonnement', {
   freezeTableName: true,
   timestamps: true,
   underscored: true,
-  // MED-08 : index sur les colonnes de filtrage fréquentes
+  // Index sur les colonnes de filtrage fréquentes
   indexes: [
     { fields: ['utilisateur_id'] },
     { fields: ['statut'] },

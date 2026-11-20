@@ -1,5 +1,6 @@
 const { Utilisateur, Produit, Categorie, Abonnement, Paiement, Boutique, Signalement, Notification, Commande, LigneCommande } = require('../../models');
 const logger = require('../../utils/logger');
+const echecIgnore = require('../../utils/echecIgnore');
 const CategorieAdminService = require('../categories/categorieAdmin.service');
 const { paginate, metaPagination } = require('../../utils/paginate');
 const { Op, fn, col, literal } = require('sequelize');
@@ -33,7 +34,7 @@ class AdminService {
       };
 
     } catch (error) {
-      console.error("Erreur listerVendeur :", error);
+      logger.error('Erreur listerVendeur', { message: error.message });
       throw error;
     }
   }
@@ -88,7 +89,7 @@ class AdminService {
       };
 
     } catch (error) {
-      console.error("Erreur listerProduitsActifs :", error);
+      logger.error('Erreur listerProduitsActifs', { message: error.message });
       throw error;
     }
   }
@@ -133,7 +134,7 @@ class AdminService {
       };
 
     } catch (error) {
-      console.error("Erreur listerClients :", error);
+      logger.error('Erreur listerClients', { message: error.message });
       throw error;
     }
   }
@@ -518,7 +519,7 @@ class AdminService {
       message: 'Félicitations ! Le badge de certification s\'affiche maintenant sur votre boutique.',
       type: 'systeme',
       data: { certification: 'approuve' },
-    }).catch(() => {});
+    }).catch(echecIgnore('notification certification approuvée'));
     AdminService._emailCertification(vendeur, true);
 
     return { message: 'Profil vendeur approuvé', vendeurId };
@@ -547,7 +548,7 @@ class AdminService {
       message: `Motif : ${motif.trim()} Vous pouvez renvoyer vos photos depuis votre compte.`,
       type: 'systeme',
       data: { certification: 'rejete' },
-    }).catch(() => {});
+    }).catch(echecIgnore('notification certification rejetée'));
     AdminService._emailCertification(vendeur, false, motif.trim());
 
     return { message: 'Profil vendeur rejeté', vendeurId };
@@ -730,7 +731,7 @@ class AdminService {
 
   // ======================== ABONNEMENT MANUEL ========================
 
-  // M-04 : adminId ajouté pour audit trail
+  // adminId : l'auteur de l'opération, pour le journal d'audit
   static async abonnementManuel(vendeurId, adminId) {
     const vendeur = await Utilisateur.findOne({ where: { id: vendeurId, role: 'Vendeur' } });
     if (!vendeur) throw new NotFoundError('Vendeur introuvable');
@@ -748,7 +749,7 @@ class AdminService {
       statut: 'actif'
     });
 
-    // Audit trail — M-04
+    // Audit trail
     logger.info('AUDIT:abonnementManuel', {
       action: 'abonnement_manuel',
       adminId,

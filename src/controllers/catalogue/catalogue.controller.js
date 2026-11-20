@@ -2,6 +2,7 @@ const CatalogueService = require('../../services/catalogue/catalogue.service');
 const AccueilService = require('../../services/acheteurs/accueil.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const VisiteService = require('../../services/visites/visite.service');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /**
  * Ce que le client connecté regarde et cherche dans le catalogue nourrit ses
@@ -10,7 +11,7 @@ const VisiteService = require('../../services/visites/visite.service');
  */
 const apprendre = (req, geste) => {
   if (!req.user?.id) return;
-  Promise.resolve().then(geste).catch(() => {});
+  Promise.resolve().then(geste).catch(echecIgnore('apprentissage des goûts du client'));
 };
 
 /** Catalogue public : ouvert aux invités, enrichi si le client est connecté. */

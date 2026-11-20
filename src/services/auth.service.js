@@ -2,6 +2,7 @@ const { Utilisateur, Boutique, Abonnement, TokenBlacklist, UserOtp } = require('
 const InscriptionService = require('./inscription.service');
 const { sendWelcomeEmail, sendVerificationEmail } = require('./resend.service');
 const logger = require('../utils/logger');
+const echecIgnore = require('../utils/echecIgnore');
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -205,7 +206,7 @@ class AuthService {
         nom: utilisateur.nom,
         prenom: utilisateur.prenom,
         role: utilisateur.role
-      }).catch(() => {});
+      }).catch(echecIgnore('e-mail de bienvenue'));
 
       // Pas de second code de vérification : l'adresse vient d'être
       // confirmée (jetonEmail). L'ancien envoi ici adressait au client un
@@ -238,7 +239,7 @@ class AuthService {
   }
 
   // ==============================
-  // VÉRIFICATION EMAIL — MED-03
+  // VÉRIFICATION EMAIL
   // ==============================
   static async verifierEmail(email, code) {
     const utilisateur = await Utilisateur.findOne({ where: { email: email.trim().toLowerCase() } });
@@ -297,7 +298,7 @@ class AuthService {
       to: emailClean,
       nom: utilisateur.nom,
       code: verificationCode,
-    }).catch(() => {});
+    }).catch(echecIgnore('e-mail du code de vérification'));
 
     return { success: true, message: 'Un nouveau code vient de vous être envoyé.' };
   }
@@ -352,7 +353,7 @@ class AuthService {
       return await AuthService.ouvrirSession(utilisateur, contexte);
 
     } catch (error) {
-      // CRIT-03 : logger structuré, pas de console.error + stack trace brute
+      // Le message seul : pas de pile d'appels dans les journaux
       logger.error('auth.login', { message: error.message });
       throw error;
     }
@@ -432,7 +433,7 @@ class AuthService {
         nom: utilisateur.nom,
         prenom: utilisateur.prenom,
         role: utilisateur.role,
-      }).catch(() => {});
+      }).catch(echecIgnore('e-mail de bienvenue'));
     }
 
     const session = await AuthService.ouvrirSession(utilisateur, contexte);
@@ -482,7 +483,7 @@ class AuthService {
         cible: 'session',
         cibleId: utilisateur.id,
         details: { appareil: (contexte.userAgent || '').slice(0, 160) || undefined },
-      }).catch(() => {});
+      }).catch(echecIgnore('journal des connexions'));
     }
 
     // Le refresh est enregistré hashé : il devient révocable, plafonné
@@ -530,7 +531,7 @@ class AuthService {
         where: { vendeurId: utilisateur.id },
         attributes: ['id', 'nom', 'logo'],
         order: [['createdAt', 'ASC']],
-      }).catch(() => null);
+      }).catch(echecIgnore('boutique du vendeur à la connexion', null));
       if (b) boutique = { id: b.id, nom: b.nom, logo: b.logo };
     }
 

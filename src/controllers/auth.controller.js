@@ -139,7 +139,7 @@ exports.refresh = asyncHandler(async (req, res) => {
   return res.status(200).json({ token: result.token, refreshToken: result.refreshToken });
 });
 
-// MED-03 : vérification email
+// Vérification email
 exports.verifierEmail = asyncHandler(async (req, res) => {
   // Le lien cliqué depuis l'email passe par la query, l'application mobile
   // envoie un corps JSON : on accepte les deux.

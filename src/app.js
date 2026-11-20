@@ -60,7 +60,7 @@ function origineMedias() {
   }
 }
 
-// F-02 : Helmet avec CSP personnalisée + HSTS explicite
+// Helmet avec CSP personnalisée + HSTS explicite
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -95,7 +95,7 @@ app.use(
   })
 );
 
-// LOW-03 : X-Request-ID pour le tracing distribué
+// X-Request-ID pour le tracing distribué
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || randomUUID();
   res.setHeader('X-Request-ID', req.requestId);
@@ -113,7 +113,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-// MED-05 : rawBody uniquement sur la route webhook Orange (évite double bufferisation)
+// rawBody uniquement sur la route webhook Orange (évite double bufferisation)
 app.use('/saambiz/paiement/webhook/orange', (req, res, next) => {
   let data = '';
   req.on('data', chunk => { data += chunk; });
@@ -248,7 +248,7 @@ app.use('/saambiz', (req, res, next) => {
   next();
 }, apiRouter);
 
-// LOW-08 : health check
+// Health check
 //
 // `commit` porte la révision réellement en cours d'exécution. Render pose
 // RENDER_GIT_COMMIT sur chaque service ; ailleurs, GIT_COMMIT fait l'affaire.

@@ -1,6 +1,6 @@
 const Joi = require('joi');
 
-// MED-02 : politique de mot de passe renforcée (8 chars + majuscule + chiffre + caractère spécial)
+// Politique de mot de passe renforcée (8 chars + majuscule + chiffre + caractère spécial)
 // Architecture : passwordSchema partagé importé ici et dans account.validation.js
 const passwordSchema = Joi.string()
   .min(8)

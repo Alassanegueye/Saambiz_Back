@@ -2,6 +2,7 @@ const ConfigService = require('../../services/config/config.service');
 const AuditService = require('../../services/audit.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { BadRequestError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /** Le prix de l'abonnement est stocké en texte : il doit rester un entier positif. */
 function validerPrix(cle, valeur) {
@@ -38,7 +39,7 @@ exports.modifierConfig = asyncHandler(async (req, res) => {
   const result = await ConfigService
     .modifierConfig({ cle, valeur: String(valeur), description, adminId: req.user.id });
 
-  AuditService.enregistrer({ adminId: req.user.id, action: 'modifier_config', cible: 'config', cibleId: cle, details: { valeur } }).catch(() => {});
+  AuditService.enregistrer({ adminId: req.user.id, action: 'modifier_config', cible: 'config', cibleId: cle, details: { valeur } }).catch(echecIgnore('journal d\'audit (config)'));
   return res.status(200).json(result);
 });
 

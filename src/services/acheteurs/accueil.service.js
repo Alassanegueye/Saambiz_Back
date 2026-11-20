@@ -6,6 +6,7 @@ const CategorieBoutiqueService = require('../categories/categorieBoutique.servic
 const CatalogueService = require('../catalogue/catalogue.service');
 const { Op, Sequelize, fn, col } = require('sequelize');
 const logger = require('../../utils/logger');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /**
  * Accueil personnalisé, orienté BOUTIQUES.
@@ -541,7 +542,7 @@ class AccueilService {
     const parTerme = await Promise.all(termes.map((q) =>
       CatalogueService.lister({ q, tri: 'populaires', limit: limite })
         .then((r) => r.produits)
-        .catch(() => [])));
+        .catch(echecIgnore('produits des dernières recherches', []))));
     // Un produit par terme à tour de rôle, pour ne pas laisser une seule
     // recherche occuper toute la rangée.
     const vus = new Set();

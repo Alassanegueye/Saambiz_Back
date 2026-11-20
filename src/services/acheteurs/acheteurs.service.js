@@ -34,7 +34,7 @@ class AcheteurService {
   // ==============================
   static async listerTousProduits(acheteurId, page = 1) {
     try {
-      logger.info("📦 [listerTousProduits] page:", page);
+      logger.info("[listerTousProduits] page:", page);
 
       const { limit, offset } = paginate(page);
       const vendeurIds = await this._vendeurIdsSuivis(acheteurId);
@@ -56,7 +56,7 @@ class AcheteurService {
         order: [['createdAt', 'DESC']]
       });
 
-      logger.info("✅ Produits trouvés:", rows.length);
+      logger.info("Produits trouvés:", rows.length);
 
       return {
         produits: rows,
@@ -66,7 +66,7 @@ class AcheteurService {
       };
 
     } catch (error) {
-      logger.error("❌ ERREUR listerTousProduits:", error);
+      logger.error("ERREUR listerTousProduits:", error);
       throw error;
     }
   }
@@ -76,12 +76,12 @@ class AcheteurService {
   // ==============================
   static async rechercherProduits(acheteurId, query, page = 1) {
     try {
-      logger.info("🔎 Recherche:", query);
+      logger.info("Recherche:", query);
 
       const { limit, offset } = paginate(page);
 
       if (!query || !query.trim()) {
-        logger.info("⚠️ Query vide");
+        logger.info("Query vide");
         return { produits: [], total: 0, page, pages: 0 };
       }
 
@@ -112,7 +112,7 @@ class AcheteurService {
         order: [['nom', 'ASC']]
       });
 
-      logger.info("🔎 Résultats recherche:", rows.length);
+      logger.info("Résultats recherche:", rows.length);
 
       return {
         produits: rows,
@@ -122,7 +122,7 @@ class AcheteurService {
       };
 
     } catch (error) {
-      logger.error("❌ ERREUR rechercherProduits:", error);
+      logger.error("ERREUR rechercherProduits:", error);
       throw error;
     }
   }
@@ -132,10 +132,10 @@ class AcheteurService {
   // ==============================
   static async filtrerParVille(acheteurId, ville, page = 1) {
     try {
-      logger.info("🌍 Ville filtre:", ville);
+      logger.info("Ville filtre:", ville);
 
       if (!ville || !ville.trim()) {
-        logger.info("⚠️ Ville vide");
+        logger.info("Ville vide");
         return { produits: [], total: 0, page, pages: 0 };
       }
 
@@ -170,7 +170,7 @@ class AcheteurService {
         order: [['createdAt', 'DESC']]
       });
 
-      logger.info("🌍 Produits ville:", rows.length);
+      logger.info("Produits ville:", rows.length);
 
       return {
         produits: rows,
@@ -181,7 +181,7 @@ class AcheteurService {
       };
 
     } catch (error) {
-      logger.error("❌ ERREUR filtrerParVille:", error);
+      logger.error("ERREUR filtrerParVille:", error);
       throw error;
     }
   }
@@ -191,7 +191,7 @@ class AcheteurService {
   // ==============================
   static async contacterVendeurWhatsapp(produitId) {
     try {
-      logger.info("📲 WhatsApp produitId:", produitId);
+      logger.info("WhatsApp produitId:", produitId);
 
       const now = new Date();
 
@@ -227,11 +227,11 @@ class AcheteurService {
       });
 
       if (!produit) {
-        logger.info("❌ Produit introuvable");
+        logger.info("Produit introuvable");
         throw new NotFoundError('Produit non trouvé ou vendeur inactif');
       }
 
-      logger.info("✅ Produit trouvé");
+      logger.info("Produit trouvé");
 
       let tel =
         produit.vendeur.boutiques?.[0]?.telephone ||
@@ -264,12 +264,12 @@ Merci.
 
       const url = `https://wa.me/${tel}?text=${encodeURIComponent(message)}`;
 
-      logger.info("🔗 WhatsApp URL généré");
+      logger.info("WhatsApp URL généré");
 
       return url;
 
     } catch (error) {
-      logger.error("❌ ERREUR WhatsApp:", error);
+      logger.error("ERREUR WhatsApp:", error);
       throw error;
     }
   }
@@ -279,7 +279,7 @@ Merci.
   // ==============================
   static async listerBoutiques(page = 1) {
     try {
-      logger.info("🏪 Liste boutiques page:", page);
+      logger.info("Liste boutiques page:", page);
 
       const { limit, offset } = paginate(page);
 
@@ -294,7 +294,7 @@ Merci.
         order: [['createdAt', 'DESC']]
       });
 
-      logger.info("🏪 Boutiques trouvées:", rows.length);
+      logger.info("Boutiques trouvées:", rows.length);
 
       // Injecter la note moyenne + le nombre d'avis de chaque boutique
       const AvisService = require('../avis/avis.service');
@@ -313,7 +313,7 @@ Merci.
       };
 
     } catch (error) {
-      logger.error("❌ ERREUR boutiques:", error);
+      logger.error("ERREUR boutiques:", error);
       throw error;
     }
   }
@@ -323,12 +323,12 @@ Merci.
   // ==============================
   static async getProduitsByBoutique(boutiqueId, page = 1) {
     try {
-      logger.info("🏬 Boutique ID:", boutiqueId);
+      logger.info("Boutique ID:", boutiqueId);
 
       const boutique = await Boutique.findByPk(boutiqueId);
 
       if (!boutique) {
-        logger.info("❌ Boutique introuvable");
+        logger.info("Boutique introuvable");
         throw new NotFoundError('Boutique introuvable');
       }
 
@@ -360,7 +360,7 @@ Merci.
         order: [['createdAt', 'DESC']]
       });
 
-      logger.info("🏬 Produits boutique:", rows.length);
+      logger.info("Produits boutique:", rows.length);
 
       return {
         boutique,
@@ -371,7 +371,7 @@ Merci.
       };
 
     } catch (error) {
-      logger.error("❌ ERREUR getProduitsByBoutique:", error);
+      logger.error("ERREUR getProduitsByBoutique:", error);
       throw error;
     }
   }
@@ -756,7 +756,7 @@ Merci.
   // 10. BOUTIQUES PROCHES
   // ==============================
   static async boutiquesProches(lat, lng, rayon = 5) {
-    // C-02 : validation stricte pour éviter l'injection SQL via Sequelize.literal()
+    // Validation stricte pour éviter l'injection SQL via Sequelize.literal()
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lng);
     const rayonKm = parseFloat(rayon);

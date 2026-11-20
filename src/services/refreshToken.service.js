@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { RefreshToken } = require('../models');
 const { jwtConfig, refreshTokenConfig } = require('../config/security');
 const logger = require('../utils/logger');
+const echecIgnore = require('../utils/echecIgnore');
 
 /**
  * Cycle de vie des jetons de rafraîchissement.
@@ -99,7 +100,7 @@ class RefreshTokenService {
     if (inactif > refreshTokenConfig.inactiviteMaxMs) {
       // Révoquée plutôt que laissée en place : le jeton ne doit pas pouvoir
       // resservir, et la révocation se lit dans les sessions de l'appareil.
-      await enregistrement.update({ revokedAt: new Date() }).catch(() => {});
+      await enregistrement.update({ revokedAt: new Date() }).catch(echecIgnore('révocation du jeton de rafraîchissement'));
       logger.info('refresh_inactivite', {
         utilisateurId: charge.id,
         inactifMinutes: Math.round(inactif / 60000),

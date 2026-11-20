@@ -89,7 +89,7 @@ const Produit = sequelize.define('Produit', {
   timestamps: true,
   paranoid: true,
   underscored: true,
-  // MED-08 : index sur les colonnes de recherche fréquentes
+  // Index sur les colonnes de recherche fréquentes
   indexes: [
     { fields: ['vendeur_id'] },
     { fields: ['categorie_id'] },

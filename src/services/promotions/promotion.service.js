@@ -3,6 +3,7 @@ const { paginate, metaPagination } = require('../../utils/paginate');
 const { BadRequestError, NotFoundError } = require('../../errors/AppError');
 const { Op } = require('sequelize');
 const NotificationService = require('../notifications/notification.service');
+const echecIgnore = require('../../utils/echecIgnore');
 
 class PromotionService {
 
@@ -30,7 +31,7 @@ class PromotionService {
     // Reflète le prix barré sur le produit pour l'affichage marketplace
     await produit.update({ prix_promo: prixPromo });
 
-    // 🔔 Les clients ne sont prévenus que si le vendeur l'a demandé, avec son
+    // Les clients ne sont prévenus que si le vendeur l'a demandé, avec son
     // propre message, et seulement ceux qui ont activé la cloche.
     if (data.notifier === true && String(description || '').trim()) {
       NotificationService.notifierAbonnesDuVendeur(
@@ -40,7 +41,7 @@ class PromotionService {
         'promotion',
         { produitId },
         { image: data.image },
-      ).catch(() => {});
+      ).catch(echecIgnore('notification promotion aux abonnés'));
     }
 
     return { success: true, message: 'Promotion créée', promotion };

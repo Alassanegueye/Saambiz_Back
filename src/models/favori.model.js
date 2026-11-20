@@ -27,7 +27,7 @@ const Favori = sequelize.define('Favori', {
     onUpdate: 'CASCADE',
     onDelete: 'CASCADE'
   },
-  // 🔔 Cloche : quand active, l'acheteur reçoit les notifications
+  // Cloche : quand active, l'acheteur reçoit les notifications
   // (nouveaux produits, promotions) de la boutique suivie.
   clocheActive: {
     type: DataTypes.BOOLEAN,

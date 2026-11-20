@@ -6,6 +6,7 @@ const DemandeRetourService = require('../../services/commandes/demandeRetour.ser
 const AuditService = require('../../services/audit.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { BadRequestError } = require('../../errors/AppError');
+const echecIgnore = require('../../utils/echecIgnore');
 
 /**
  * Administration de la plateforme.
@@ -15,14 +16,15 @@ const { BadRequestError } = require('../../errors/AppError');
  * de caractères pour deviner un code HTTP.
  *
  * Chaque action sensible est tracée dans le journal d'audit. L'écriture est
- * volontairement détachée (`.catch(() => {})`) : une panne du journal ne doit
- * pas annuler une action déjà effectuée.
+ * volontairement détachée (`echecIgnore`) : une panne du journal ne doit pas
+ * annuler une action déjà effectuée, elle laisse seulement un avertissement
+ * dans les journaux du serveur.
  */
 
 /** Trace une action d'administration sans jamais faire échouer la requête. */
 const tracer = (req, action, cible, cibleId, details = {}) =>
   AuditService.enregistrer({ adminId: req.user.id, action, cible, cibleId, details })
-    .catch(() => {});
+    .catch(echecIgnore('journal d\'audit (admin)'));
 
 // -------------------- LISTE DES VENDEURS --------------------
 exports.listeVendeur = asyncHandler(async (req, res) => {

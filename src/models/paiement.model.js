@@ -105,7 +105,7 @@ const Paiement = sequelize.define('Paiement', {
   freezeTableName: true,
   timestamps: true,
   underscored: true,
-  // MED-08 : index sur colonnes de lookup fréquentes
+  // Index sur colonnes de lookup fréquentes
   indexes: [
     { fields: ['utilisateur_id'] },
     // Jointures fréquentes : sans index, PostgreSQL parcourt la table entière.
