@@ -125,7 +125,15 @@ function errorHandler(err, req, res, next) {
     utilisateurId: req.user?.id,
   };
   if (status >= 500) {
-    logger.error('erreur_non_geree', { ...journal, stack: EN_PRODUCTION ? undefined : err.stack });
+    // LA PILE EST JOURNALISÉE EN PRODUCTION AUSSI. Elle y était retirée, par
+    // crainte d'exposer des chemins internes — mais elle ne part jamais au
+    // client : la réponse ne contient que `{ success, message }`, et le
+    // message lui-même est remplacé plus bas. La retirer du journal du
+    // serveur ne protégeait donc rien, et coûtait tout : une erreur 500
+    // laissait une URL et un identifiant de requête, sans la ligne de code
+    // qui avait cassé. C'est précisément ce qu'on vient chercher dans un
+    // journal.
+    logger.error('erreur_non_geree', { ...journal, stack: err.stack });
   } else {
     logger.warn('erreur_operationnelle', journal);
   }

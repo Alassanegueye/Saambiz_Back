@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { sequelize, Menu } = require('../models');
+const logger = require('../utils/logger');
 
 const DEFAULT_MENUS = [
   { name: "Vue d'ensemble",  code: 'DASHBOARD',    path: '/',              icon: 'dashboard', ordre: 1 },
@@ -33,10 +34,10 @@ if (require.main === module) {
     try {
       await sequelize.authenticate();
       const n = await seedMenus();
-      console.log(`[SEED] ${n} menus initialisés.`);
+      logger.info('[seed] menus', { initialises: n });
       process.exit(0);
     } catch (e) {
-      console.error(e);
+      logger.error('[seed] menus en échec', { message: e.message, stack: e.stack });
       process.exit(1);
     }
   })();

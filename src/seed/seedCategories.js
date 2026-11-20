@@ -10,6 +10,7 @@ const { Op } = require('sequelize');
 const { sequelize, Categorie } = require('../models');
 const { REFERENTIEL_CATEGORIES } = require('../constants/categories');
 const { SPECIFICATIONS_CATEGORIES } = require('../constants/specificationsCategories');
+const logger = require('../utils/logger');
 
 async function seedCategories() {
   let creees = 0;
@@ -36,10 +37,11 @@ if (require.main === module) {
     try {
       await sequelize.authenticate();
       const n = await seedCategories();
-      console.log(`[SEED] ${n} catégorie(s) créée(s), ${REFERENTIEL_CATEGORIES.length} au référentiel.`);
+      logger.info('[seed] catégories', { creees: n, referentiel: REFERENTIEL_CATEGORIES.length });
       process.exit(0);
     } catch (e) {
-      console.error(e);
+      // La pile, et non l'objet brut : c'est elle qui dit où cela a cassé.
+      logger.error('[seed] catégories en échec', { message: e.message, stack: e.stack });
       process.exit(1);
     }
   })();
