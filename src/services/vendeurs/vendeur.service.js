@@ -878,7 +878,7 @@ class VendeurService {
       // `notification` ne declare pas `underscored` : sa colonne est restee en
       // camelCase. En SQL brut il faut la CITER, sinon PostgreSQL la met en
       // minuscules, ne la trouve pas, et tout le tableau de bord tombe en 400.
-      // Voir « Quatre tables ont des colonnes en camelCase » dans CLAUDE.md.
+      // Voir « Quatre tables en camelCase » dans le README.
       sequelize.query(
         `SELECT COUNT(*) FROM notification WHERE "utilisateurId" = :uid AND lue = false`,
         { replacements: { uid: vendeurId }, type: sequelize.QueryTypes.SELECT }

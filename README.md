@@ -6,11 +6,9 @@ application mobile.
 
 Adresse de référence : `http://localhost:5000/saambiz/v1`
 
-**Nouveau sur le projet ?** Commencez par [`DEMARRAGE.md`](DEMARRAGE.md) : les
-cinq dépôts, comment les cloner côte à côte, et les pièges qui coûtent le plus
-de temps. [`CLAUDE.md`](CLAUDE.md) en tient la version longue. Les deux vivent
-ici parce que ce dépôt sert de point d'entrée — les quatre autres ne portent
-que leur propre application.
+**Nouveau sur le projet ?** Commencez par [Démarrer](#démarrer) plus bas. Ce
+dépôt sert de point d'entrée : les quatre autres ne portent que leur propre
+application.
 
 **Vous déployez ?** L'API tourne sur un VPS, en Docker derrière Nginx et
 Let's Encrypt. Voir [Déploiement](#déploiement) plus bas : un `git push` sur
