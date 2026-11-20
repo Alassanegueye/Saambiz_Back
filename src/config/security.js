@@ -89,18 +89,18 @@ const refreshTokenConfig = {
 
   // INACTIVITÉ. La durée ci-dessus borne la vie d'un jeton ; celle-ci borne
   // le SILENCE entre deux usages. Une session ouverte il y a dix mois reste
-  // valable tant qu'on s'en sert ; trois heures sans rien demander, et elle
+  // valable tant qu'on s'en sert ; une semaine sans rien demander, et elle
   // se ferme.
   //
   // C'est une fenêtre GLISSANTE, pas un plafond : chaque renouvellement la
-  // repousse. Quelqu'un qui travaille six heures d'affilée n'est jamais
-  // coupé, puisqu'il renouvelle en chemin.
+  // repousse. Quelqu'un qui ouvre l'application au moins une fois par
+  // semaine n'est jamais coupé, puisqu'il renouvelle en chemin.
   //
   // Mise en œuvre : chaque rotation écrit une ligne neuve, donc l'âge de la
   // ligne courante EST le temps écoulé depuis le dernier usage. Rien à
   // ajouter en base, rien à écrire à chaque requête.
   inactiviteMaxMs: Math.max(
-    Number(process.env.SESSION_INACTIVITE_MAX_MS) || 3 * 60 * 60 * 1000,
+    Number(process.env.SESSION_INACTIVITE_MAX_MS) || 7 * 24 * 60 * 60 * 1000,
     60 * 1000,
   ),
 };

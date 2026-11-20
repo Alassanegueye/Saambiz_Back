@@ -87,15 +87,15 @@ class RefreshTokenService {
       return { valide: false, motif: 'Session expirée, reconnectez-vous' };
     }
 
-    // INACTIVITÉ. Un jeton vit dix ans ; une session, trois heures de
-    // silence. Sans cette borne, un téléphone reposé pendant dix jours
+    // INACTIVITÉ. Un jeton vit dix ans ; une session, une semaine de
+    // silence. Sans cette borne, un téléphone reposé pendant des mois
     // rouvrait directement sur le compte — et un téléphone perdu restait
     // ouvert indéfiniment.
     //
     // L'âge de la ligne suffit à le dire : chaque rotation en écrit une
     // neuve, donc `createdAt` est l'heure du dernier usage. La fenêtre
     // glisse à chaque renouvellement, elle ne plafonne pas la session :
-    // qui travaille six heures d'affilée n'est jamais coupé.
+    // qui revient au moins une fois par semaine n'est jamais coupé.
     const inactif = Date.now() - new Date(enregistrement.createdAt).getTime();
     if (inactif > refreshTokenConfig.inactiviteMaxMs) {
       // Révoquée plutôt que laissée en place : le jeton ne doit pas pouvoir
@@ -107,7 +107,7 @@ class RefreshTokenService {
       });
       return {
         valide: false,
-        motif: 'Vous avez été déconnecté après trois heures sans activité. Reconnectez-vous.',
+        motif: 'Vous avez été déconnecté après une semaine sans activité. Reconnectez-vous.',
         inactivite: true,
       };
     }
