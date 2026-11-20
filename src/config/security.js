@@ -364,7 +364,30 @@ const cryptoConfig = {
   encoding: 'hex',
 };
 
+/**
+ * LE PAIEMENT EN LIGNE EST-IL OUVERT ?
+ *
+ * Wave et Orange Money ne sont pas encore intégrés. Tant que ce drapeau est
+ * à `false`, toute commande se règle hors de l'application — en espèces à la
+ * réception, ou par transfert direct à la boutique.
+ *
+ * UN SEUL ENDROIT À CHANGER le jour où l'intégration aboutit. Trois
+ * comportements en dépendent :
+ *   1. l'écran de commande grise « Wave ou Orange Money » et coche
+ *      « À la réception » (l'application lit ce drapeau via /app/config) ;
+ *   2. « Payer maintenant » ouvre une explication au lieu du choix de
+ *      l'opérateur, sur les commandes déjà créées en « en ligne » ;
+ *   3. le vendeur peut confirmer avoir été payé SUR TOUTE COMMANDE. Sans
+ *      cela, une commande marquée « en ligne » et réglée de la main à la
+ *      main restait « non payée » pour toujours : le serveur refusait la
+ *      confirmation en expliquant que le paiement se ferait « tout seul ».
+ */
+const paiementEnLigneActif = String(process.env.PAIEMENT_EN_LIGNE_ACTIF || '')
+  .trim()
+  .toLowerCase() === 'true';
+
 module.exports = {
+  paiementEnLigneActif,
   jwtConfig,
   refreshTokenConfig,
   bcryptConfig,

@@ -1,6 +1,7 @@
 const ConfigService = require('../../services/config/config.service');
 const logger = require('../../utils/logger');
 const CentreAideService = require('../../services/config/centreAide.service');
+const { paiementEnLigneActif } = require('../../config/security');
 
 /**
  * Réglages publics — lus sans compte par l'application mobile et les sites.
@@ -40,6 +41,9 @@ exports.getConfigApplication = async (req, res) => {
       minVersionIos: '1.0.0',
       maintenance: false,
       message: null,
+      // Le repli ne doit pas rouvrir le paiement en ligne : une panne de la
+      // base afficherait sinon Wave et Orange Money comme disponibles.
+      paiementEnLigneActif,
     });
   }
 };

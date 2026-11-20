@@ -24,6 +24,9 @@ describe('Réglages publics', () => {
         minVersionIos: '1.0.0',
         maintenance: false,
         message: null,
+        // Le repli ne doit pas rouvrir le paiement en ligne : une panne de
+        // la base afficherait sinon Wave et Orange Money comme disponibles.
+        paiementEnLigneActif: false,
       });
     },
   );

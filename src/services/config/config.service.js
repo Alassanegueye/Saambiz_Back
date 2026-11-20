@@ -2,6 +2,7 @@ const { ConfigApp } = require('../../models');
 const { ConflictError, NotFoundError } = require('../../errors/AppError');
 
 const PRIX_ABONNEMENT_KEY = 'prix_abonnement';
+const { paiementEnLigneActif } = require('../../config/security');
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Cache mémoire des réglages.
@@ -67,6 +68,11 @@ class ConfigService {
       minVersionIos: minIos?.valeur || '1.0.0',
       maintenance: maintenance?.valeur === 'true' || maintenance?.valeur === true,
       message: maintenance?.description || null,
+      // L'application grise « Wave ou Orange Money » tant que c'est faux, et
+      // coche « À la réception ». Elle lit cette configuration au démarrage :
+      // le jour de l'ouverture, les téléphones suivront sans nouvelle
+      // version à installer.
+      paiementEnLigneActif,
     };
   }
 

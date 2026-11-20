@@ -58,6 +58,10 @@ describe('ConfigService — cache des réglages', () => {
       minVersionIos: '1.0.0',
       maintenance: false,
       message: null,
+      // Wave et Orange Money ne sont pas branchés : l'application grise le
+      // paiement en ligne et coche « À la réception ». Faux par défaut —
+      // seul PAIEMENT_EN_LIGNE_ACTIF=true l'ouvre.
+      paiementEnLigneActif: false,
     });
   });
 

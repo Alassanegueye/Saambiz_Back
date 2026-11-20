@@ -9,6 +9,7 @@ const { sendNouvelleCommandeEmail, sendCommandeClientEmail } = require('../resen
 const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors/AppError');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 const { paginate, metaPagination } = require('../../utils/paginate');
+const { paiementEnLigneActif } = require('../../config/security');
 
 /**
  * Un montant tel qu'on le lit sur un écran verrouillé : « 5 500 FCFA ».
@@ -788,7 +789,16 @@ class CommandeService {
     if (commande.vendeurId !== vendeurId) {
       throw new ForbiddenError('Cette commande ne vous appartient pas');
     }
-    if (commande.modePaiement === 'en_ligne') {
+    // TANT QUE LE PAIEMENT EN LIGNE N'EST PAS OUVERT, toute commande se règle
+    // hors de l'application — y compris celles créées en « en ligne » avant
+    // cette bascule. Le vendeur doit donc pouvoir confirmer qu'il a été payé.
+    //
+    // Sans cette condition, une commande marquée « en ligne » et réglée de la
+    // main à la main restait « non payée » POUR TOUJOURS : le serveur
+    // refusait la confirmation en expliquant que le paiement se ferait tout
+    // seul, ce qui n'arrivait jamais puisque Wave et Orange Money ne sont pas
+    // branchés.
+    if (paiementEnLigneActif && commande.modePaiement === 'en_ligne') {
       throw new BadRequestError('Cette commande se règle en ligne : son paiement est confirmé automatiquement.');
     }
     if (['annulee', 'rejetee'].includes(commande.statut)) {
@@ -858,8 +868,12 @@ class CommandeService {
   }
 
   static _messageAcceptation(commande) {
-    if (commande.modePaiement !== 'en_ligne') {
-      return 'Votre commande est acceptée. Vous la réglerez à la réception.';
+    // Tant que le paiement en ligne est fermé, toute commande se règle avec
+    // la boutique — y compris celles créées en « en ligne » avant la
+    // bascule. Les renvoyer vers un écran de paiement qui n'aboutit pas
+    // serait leur faire perdre leur temps.
+    if (!paiementEnLigneActif || commande.modePaiement !== 'en_ligne') {
+      return 'Votre commande est acceptée. Vous la réglerez directement avec la boutique.';
     }
     return commande.acheteurId
       ? 'Votre commande est acceptée. Ouvrez « Mes commandes » dans l\'application pour la payer par Wave ou Orange Money.'
