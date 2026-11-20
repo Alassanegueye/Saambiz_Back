@@ -41,26 +41,15 @@ async function expireAbonnements() {
     }).catch(echecIgnore('notification abonnement expiré'));
   }
 
-  // Ce job ne touche plus au statut des comptes.
-  //
-  // Il y avait ici une etape « Desactiver vendeurs sans abonnement actif »
-  // qui chargeait Utilisateur.findAll() SANS filtre de role — la variable
-  // s'appelait `vendeurs`, mais la requete ramenait tout le monde — puis
-  // passait a `statut: 'inactif'` quiconque n'avait pas d'abonnement en
-  // cours. Les Admin et les Acheteur n'en ont jamais : chaque nuit a 00h00,
-  // tous leurs comptes etaient donc desactives, et auth.service refusait
-  // ensuite la connexion avec « Votre compte est inactif ».
-  //
-  // Elle etait aussi redondante et nuisible, meme corrigee du filtre de
-  // role : l'abonnement est deja exige route par route par
-  // finAbonnement.middleware (403 « abonnement expire »), alors que
-  // desactiver le compte bloque la connexion elle-meme — un vendeur dont
-  // l'abonnement venait d'expirer ne pouvait plus se connecter pour le
+  // Ce job ne touche pas au statut des comptes. L'abonnement est exigé route
+  // par route par finAbonnement.middleware (403 « abonnement expiré ») ;
+  // désactiver le compte bloquerait la connexion elle-même, et un vendeur
+  // dont l'abonnement vient d'expirer ne pourrait plus se connecter pour le
   // renouveler.
   //
-  // Un compte ne passe donc plus a 'inactif' que sur geste explicite :
-  // admin.service (suspension par un administrateur) ou account.service
-  // (desactivation par son proprietaire).
+  // Un compte ne passe à 'inactif' que sur geste explicite : admin.service
+  // (suspension par un administrateur) ou account.service (désactivation par
+  // son propriétaire).
 
   // 2. Envoyer rappels d'expiration (7j et 3j avant)
   const now = new Date();
@@ -96,12 +85,12 @@ async function expireAbonnements() {
       // `creerNotification` plutôt qu'un push direct : elle pose aussi la
       // ligne dans le centre de notifications, donc le compteur de non-lus
       // bouge et le vendeur retrouve le rappel en ouvrant l'application. Le
-      // push seul affichait une bannière qui ne laissait aucune trace.
+      // push seul afficherait une bannière qui ne laisse aucune trace.
       //
       // `type: 'abonnement'` et `abonnementId` ne sont pas décoratifs : c'est
       // ce que le téléphone lit pour ouvrir « Mon abonnement » quand on touche
-      // la notification. Avec l'ancien `type: 'rappel_abonnement'`, inconnu de
-      // l'application, le toucher retombait sur la messagerie.
+      // la notification. Un type inconnu de l'application ferait retomber le
+      // toucher sur la messagerie.
       NotificationService.creerNotification({
         utilisateurId: u.id,
         titre: `⏰ Abonnement expire dans ${jours} jour${jours > 1 ? 's' : ''}`,

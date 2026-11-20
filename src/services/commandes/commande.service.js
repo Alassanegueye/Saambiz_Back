@@ -180,8 +180,8 @@ class CommandeService {
     await commande.save({ transaction });
 
     // LE PRODUIT PASSE HORS LIGNE EN SILENCE, et c'est ce silence qui coûte :
-    // le vendeur continuait de croire qu'il vendait, alors que sa fiche
-    // n'était plus proposée à personne. Après le commit — un stock décrémenté
+    // le vendeur croirait vendre encore, alors que sa fiche
+    // n'est plus proposée à personne. Après le commit — un stock décrémenté
     // puis annulé ne doit pas laisser une fausse alerte derrière lui.
     if (epuises.length && transaction) {
       transaction.afterCommit(() =>
@@ -450,11 +450,11 @@ class CommandeService {
       // APRÈS LE COMMIT, ET SEULEMENT S'IL A LIEU.
       //
       // Le webhook de paiement appelle cette méthode avec SA transaction, qu'il
-      // valide lui-même après coup. Les lignes qui suivent s'exécutaient donc
-      // à l'intérieur d'une transaction encore ouverte : si son commit échouait
-      // ensuite, le client et le vendeur avaient déjà été prévenus d'un
-      // encaissement que la base n'a jamais enregistré. Et l'e-mail, qui
-      // relisait la commande hors transaction, y lisait encore l'ancien statut.
+      // valide lui-même après coup. Exécutées dans cette transaction encore
+      // ouverte, les lignes qui suivent préviendraient le client et le vendeur
+      // d'un encaissement que la base n'enregistrerait pas si le commit
+      // échouait ensuite ; et l'e-mail, qui relit la commande hors
+      // transaction, y lirait encore l'ancien statut.
       //
       // `afterCommit` ne se déclenche jamais sur un rollback, et vaut pour les
       // deux cas — transaction à nous, ou transaction de l'appelant.
@@ -490,10 +490,8 @@ class CommandeService {
    * PAGINEE, dix par page. L'application affiche « Precedent / Suivant » :
    * rien n'est perdu, tout se parcourt.
    *
-   * Elle rendait auparavant TOUT, sans limite.
-   *
-   * Un client qui commande chaque semaine depuis deux ans telecharge
-   * aujourd'hui cent commandes, leurs lignes et leurs vendeurs a chaque
+   * Sans limite, un client qui commande chaque semaine depuis deux ans
+   * telechargerait cent commandes, leurs lignes et leurs vendeurs a chaque
    * ouverture de l'onglet — et l'onglet se recharge au retour, sur
    * evenement, et toutes les 30 secondes.
    */
@@ -556,10 +554,10 @@ class CommandeService {
    * Annonce aux DEUX parties que cette commande a changé d'état.
    *
    * Les notifications existantes ne préviennent que l'acheteur, et seulement
-   * pour lui afficher un message : rien ne disait aux écrans de commandes de
-   * se relire. Resultat, le tableau de bord du vendeur et la fiche de
-   * l'acheteur pouvaient montrer deux statuts differents pour la meme
-   * commande, chacun figé sur ce qu'il avait lu en arrivant.
+   * pour lui afficher un message, sans dire aux écrans de commandes de se
+   * relire. Sans cette diffusion, le tableau de bord du vendeur et la fiche
+   * de l'acheteur pourraient montrer deux statuts differents pour la meme
+   * commande, chacun figé sur ce qu'il a lu en arrivant.
    *
    * La charge est volontairement minuscule : l'identifiant et les deux
    * statuts. Le client relit la commande s'il en a besoin — on ne diffuse ni
@@ -710,8 +708,8 @@ class CommandeService {
 
     // POINT 9 : une commande À LIVRER passe par « en livraison ».
     // `prete → livree` existe pour le RETRAIT EN BOUTIQUE, où il n'y a pas
-    // d'expédition. Ouvert à tous, il laissait marquer livrée une commande
-    // dont personne n'avait enregistré le départ.
+    // d'expédition. Ouvert à tous, il laisserait marquer livrée une commande
+    // dont personne n'a enregistré le départ.
     if (
       commande.statut === 'prete' &&
       nouveauStatut === 'livree' &&
@@ -729,10 +727,8 @@ class CommandeService {
     // vendeur : la commande est déjà dans l'état demandé. Il n'y a rien à
     // faire, et surtout rien à reprocher. On rend la commande telle quelle.
     //
-    // Avant, ce cas levait « Transition impossible : acceptee → acceptee » —
-    // une erreur technique, sur un écran qui montrait encore « en attente »
-    // puisque la première réponse n'était pas arrivée. Le vendeur se
-    // retrouvait bloqué devant une commande qu'il venait pourtant d'accepter.
+    // Une erreur bloquerait le vendeur devant une commande qu'il vient
+    // d'accepter, sur un écran qui affiche encore « en attente ».
     if (commande.statut === nouveauStatut) return commande;
 
     const autorises = TRANSITIONS[commande.statut] || [];
@@ -1027,16 +1023,15 @@ class CommandeService {
    * Annule (ou rejette) une commande. SEUL POINT DE PASSAGE : acheteur,
    * vendeur et administration y aboutissent tous.
    *
-   * UNE COMMANDE PAYÉE NE S'ANNULE PAS. L'ancien code la basculait en
-   * « remboursé » avec, en commentaire, « le remboursement réel via PSP
-   * reste à déclencher » — et rien ne le déclenchait : le client était
-   * débité, la comptabilité disait l'inverse. Une commande réglée se traite
-   * par la procédure de retour, qui, elle, trace un remboursement.
+   * UNE COMMANDE PAYÉE NE S'ANNULE PAS. Elle se traite par la procédure de
+   * retour, qui, elle, trace un remboursement : la basculer en « remboursé »
+   * sans déclencher le remboursement réel laisserait le client débité
+   * pendant que la comptabilité dirait l'inverse.
    *
    * La commande est RELUE ET VERROUILLÉE dans la transaction. Sans ce
-   * verrou, deux annulations simultanées lisaient toutes deux
-   * `stockDecremente = true` et restauraient toutes deux les quantités : le
-   * stock gonflait d'autant.
+   * verrou, deux annulations simultanées liraient toutes deux
+   * `stockDecremente = true` et restaureraient toutes deux les quantités : le
+   * stock gonflerait d'autant.
    */
   static async _annuler(commandeRecue, parQui, statutFinal = 'annulee', { auteurId = null, motif = null } = {}) {
     const t = await sequelize.transaction();
@@ -1124,7 +1119,7 @@ class CommandeService {
     return {
       commandeId: commande.id,
       // La référence et le statut voyagent avec la notification : le
-      // téléphone n'a plus à interroger le serveur pour savoir de quelle
+      // téléphone n'a pas à interroger le serveur pour savoir de quelle
       // commande on lui parle. Quand la lecture de la commande échoue à
       // l'ouverture — réseau coupé au réveil —, c'est ce qui permet encore
       // de dire « commande CMD-2026-… » plutôt que rien.
@@ -1181,11 +1176,11 @@ class CommandeService {
   /**
    * Le vendeur est prévenu qu'une commande arrive, puis qu'elle est payée.
    *
-   * L'e-mail ne part QU'À L'ARRIVÉE de la commande. Il partait aussi à
-   * l'encaissement, avec le même gabarit « Nouvelle commande » : le vendeur
-   * recevait deux fois le même e-mail pour une seule vente payée en ligne.
+   * L'e-mail ne part QU'À L'ARRIVÉE de la commande : le même gabarit
+   * « Nouvelle commande », renvoyé à l'encaissement, ferait recevoir au
+   * vendeur deux fois le même e-mail pour une seule vente payée en ligne.
    * L'encaissement, lui, reste annoncé par une notification — c'est un
-   * changement de statut, et ceux-là ne passent plus par l'e-mail.
+   * changement de statut, et ceux-là ne passent pas par l'e-mail.
    */
   static async _notifierVendeurNouvelleCommande(commande, paiementConfirme = false) {
     const titre = paiementConfirme ? '💰 Commande payée' : '🛒 Nouvelle commande';

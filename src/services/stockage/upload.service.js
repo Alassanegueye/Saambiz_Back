@@ -8,13 +8,13 @@ const r2 = require('./r2.service');
 //  Stockage des fichiers : Cloudflare R2, comme Widjila.
 //
 //  - Photos (produits, logos, bannières, promotions, profils, site) : bucket
-//    PUBLIC R2. La base garde l'URL publique complète, comme elle gardait
-//    celle de Cloudinary : l'application, le site et le back-office n'ont rien
-//    à changer.
+//    PUBLIC R2. La base garde l'URL publique complète, comme pour les images
+//    Cloudinary : l'application, le site et le back-office n'ont pas à savoir
+//    où l'image est rangée.
 //  - Pièces d'identité (certification) : bucket PRIVÉ. La base garde
 //    « prive:<clé> » ; l'administrateur reçoit un lien signé de dix minutes.
 //
-//  Cloudinary ne sert plus qu'en REPLI, tant que les variables R2_* ne sont
+//  Cloudinary ne sert qu'en REPLI, tant que les variables R2_* ne sont
 //  pas renseignées (un déploiement avant le .env ne casse donc rien), et pour
 //  supprimer les images déposées avant le passage à R2.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,11 +97,9 @@ async function preparer(buffer) {
 
   // NI IMAGE NI PDF : ON REFUSE, ON NE RANGE PAS.
   //
-  // Ce cas rendait auparavant `{ extension: 'bin', type:
-  // 'application/octet-stream' }`. Le fichier partait sur R2 sous un nom en
-  // « .bin », et aucun navigateur n'affiche un octet-stream : il le
-  // télécharge. Le vendeur voyait donc son envoi « réussir », puis une image
-  // cassée a sa place, sans un mot pour expliquer.
+  // Rangé sur R2 en « .bin » (`application/octet-stream`), le fichier ne
+  // s'afficherait nulle part : un navigateur télécharge un octet-stream. Le
+  // vendeur verrait son envoi « réussir », puis une image cassée à sa place.
   //
   // Les routes d'envoi verifient toutes les octets d'en-tete en amont
   // (upload.verifyMagicBytes), donc ce chemin ne devrait jamais s'ouvrir.
@@ -169,8 +167,8 @@ const uploadImage = async (fileBuffer, dossier = 'images') => {
   } catch (err) {
     // Panne ou configuration R2 : message clair (503), la cause au journal.
     // L'hôte et le bucket sont joints par r2.service : sans eux, le journal
-    // ne disait que « write EPROTO … SSL alert number 40 » et la clé du
-    // fichier — rien sur ce qu'il fallait corriger.
+    // ne dirait que « write EPROTO … SSL alert number 40 » et la clé du
+    // fichier, rien sur ce qu'il faut corriger.
     logger.error('[R2] envoi impossible', {
       message: err.message,
       code: err.code,

@@ -14,14 +14,13 @@ let io = null;
 // La signature seule ne suffit pas : un jeton d'accès reste signé et non
 // expiré après une déconnexion, un changement de mot de passe ou une
 // suppression de compte — ces gestes le mettent en LISTE NOIRE, et c'est
-// elle qui coupe l'accès. Ce middleware ne la consultait pas, alors que le
-// middleware HTTP le fait : un jeton révoqué ouvrait donc encore un socket
-// et rejoignait la salle `user:<id>`, d'où il continuait de recevoir les
-// messages et notifications du compte. Se déconnecter ne coupait pas le
-// temps réel.
+// elle qui coupe l'accès. Ce middleware la consulte, comme le middleware
+// HTTP : sinon un jeton révoqué ouvrirait encore un socket et rejoindrait la
+// salle `user:<id>`, d'où il recevrait les messages et notifications du
+// compte, et se déconnecter ne couperait pas le temps réel.
 //
 // Le statut du compte est vérifié pour la même raison : un compte suspendu
-// gardait son fil temps réel ouvert (équivalent de `checkActiveUser`).
+// garderait sinon son fil temps réel ouvert (équivalent de `checkActiveUser`).
 async function socketAuthMiddleware(socket, next) {
   try {
     const token = socket.handshake.auth?.token;

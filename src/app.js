@@ -206,9 +206,8 @@ apiRouter.use('/auth', authRoutes);
 apiRouter.use('/vitrine', vitrineRoutes);
 
 // Réglages publics (`/prix-abonnement`, `/app/config`). Montés sur le routeur
-// d'API : ils répondent donc aussi sous `/saambiz/v1/…`, alors qu'ils
-// n'existaient auparavant que sans version. Les anciennes adresses restent
-// servies par l'alias `/saambiz` plus bas.
+// d'API : ils répondent sous `/saambiz/v1/…`, et sans version par l'alias
+// `/saambiz` plus bas.
 apiRouter.use('/', configPubliqueRoutes);
 
 // Limiteur par compte pour tout ce qui suit. Le limiteur global compte par IP :
@@ -256,9 +255,9 @@ app.use('/saambiz', (req, res, next) => {
 // Sans ce champ, un déploiement n'est pas vérifiable : sonder /health juste
 // après l'avoir déclenché renvoie 200 — mais c'est l'ANCIENNE instance qui
 // répond, celle qui tourne encore pendant que la nouvelle se construit. La CI
-// passait donc au vert sans avoir rien prouvé, et un build cassé ressemblait
-// trait pour trait à un déploiement réussi. Comparer ce champ au SHA poussé
-// lève l'ambiguïté.
+// passerait donc au vert sans avoir rien prouvé, et un build cassé
+// ressemblerait trait pour trait à un déploiement réussi. Comparer ce champ
+// au SHA poussé lève l'ambiguïté.
 app.get('/health', async (req, res) => {
   const commit = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || null;
   try {
@@ -286,8 +285,8 @@ app.get('/health', async (req, res) => {
 
 // Gestionnaire d'erreurs global — DERNIER middleware.
 // Il traduit AppError, JWT, Multer, JSON malformé, 413 et toutes les erreurs
-// Sequelize ; l'ancienne version se contentait de relayer `err.status`, ce qui
-// renvoyait un 500 opaque pour un doublon ou un jeton expiré.
+// Sequelize : un doublon ou un jeton expiré reçoit son propre statut, pas un
+// 500 opaque.
 const errorHandler = require('./middlewares/errorHandler.middleware');
 app.use(errorHandler);
 

@@ -4,11 +4,11 @@ const logger = require('../utils/logger');
 /**
  * Gestionnaire d'erreurs global — DERNIER middleware monté.
  *
- * Il traduit en réponse HTTP tout ce qui peut remonter jusqu'ici. Le
- * précédent se contentait de lire `err.status` : une contrainte d'unicité
- * violée, un jeton expiré, un fichier trop lourd ou un JSON malformé
- * sortaient tous en 500 « Erreur serveur interne », ce qui rendait le
- * diagnostic impossible côté client comme côté support.
+ * Il traduit en réponse HTTP tout ce qui peut remonter jusqu'ici. Une
+ * contrainte d'unicité violée, un jeton expiré, un fichier trop lourd ou un
+ * JSON malformé reçoivent chacun un statut et un message parlants : sortis
+ * tous en 500 « Erreur serveur interne », ils rendraient le diagnostic
+ * impossible côté client comme côté support.
  *
  * Règle de fond : en production, seuls les messages d'erreurs *opérationnelles*
  * sortent. Le reste est masqué — un message Sequelize brut nomme les tables,

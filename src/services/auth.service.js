@@ -209,8 +209,7 @@ class AuthService {
       }).catch(echecIgnore('e-mail de bienvenue'));
 
       // Pas de second code de vérification : l'adresse vient d'être
-      // confirmée (jetonEmail). L'ancien envoi ici adressait au client un
-      // code inutile qui embrouillait le parcours.
+      // confirmée (jetonEmail), et un code de plus embrouillerait le parcours.
 
       return {
         success: true,
@@ -225,8 +224,8 @@ class AuthService {
 
       // Une erreur métier typée porte un message écrit pour l'utilisateur —
       // « Votre vérification a expiré », « Ce numéro est déjà utilisé ». La
-      // masquer derrière « erreur serveur » laissait la personne sans la
-      // moindre idée de ce qu'elle devait corriger. On la laisse remonter au
+      // masquer derrière « erreur serveur » laisserait la personne sans la
+      // moindre idée de ce qu'elle doit corriger. On la laisse remonter au
       // gestionnaire global, qui la traduit en son propre code HTTP.
       if (err && err.isOperational) throw err;
 

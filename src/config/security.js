@@ -75,7 +75,7 @@ const jwtConfig = {
 // côté des sessions légitimes.
 const refreshTokenConfig = {
   // Plafond de sessions ouvertes par compte (téléphones, comptes mémorisés,
-  // navigateurs). Trop bas, il déconnectait des appareils toujours utilisés.
+  // navigateurs). Trop bas, il déconnecterait des appareils toujours utilisés.
   maxParUtilisateur: Math.max(Number(process.env.REFRESH_MAX_PAR_UTILISATEUR) || 20, 20),
   // 10 ans, a garder aligne sur JWT_REFRESH_EXPIRES_IN : la ligne en base ne
   // doit pas expirer avant le jeton qu'elle valide, sinon la session tombe

@@ -838,7 +838,7 @@ class VendeurService {
 
     // Pièces d'identité : bucket PRIVÉ (R2_PRIVATE_BUCKET_NAME). La base garde
     // « prive:<clé> » ; le back-office les ouvre par un lien signé de dix
-    // minutes. Sous Cloudinary, elles avaient une adresse publique.
+    // minutes.
     const [pieceUrl, versoUrl] = await Promise.all([
       uploadDocumentPrive(fichier.buffer, 'certifications'),
       uploadDocumentPrive(verso.buffer, 'certifications'),
@@ -1264,10 +1264,9 @@ class VendeurService {
 
     const dernierOrdre = await ProduitImage.count({ where: { produitId } });
 
-    // Les téléversements partaient un par un, chacun attendant le précédent :
-    // huit images, c'était huit allers-retours vers Cloudinary mis bout à
-    // bout, là où ils ne dépendent pas les uns des autres. Sur une connexion
-    // mobile c'est la différence entre une attente et un délai dépassé.
+    // Les téléversements partent en parallèle : ils ne dépendent pas les uns
+    // des autres, et huit allers-retours mis bout à bout, sur une connexion
+    // mobile, font la différence entre une attente et un délai dépassé.
     // Le plafond de huit fichiers est posé par `upload.array('images', 8)` :
     // le parallélisme reste donc borné.
     const aTeleverser = files.filter((f) => f.buffer);

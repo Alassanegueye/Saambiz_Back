@@ -8,8 +8,7 @@ const { BadRequestError, ForbiddenError } = require('../../errors/AppError');
 const echecIgnore = require('../../utils/echecIgnore');
 
 // Un achat est le signal le plus fort dont on dispose pour les propositions de
-// l'accueil. Le calcul (catégorie de chaque produit) vit dans AccueilService :
-// ce contrôleur interrogeait auparavant les modèles lui-même.
+// l'accueil. Le calcul (catégorie de chaque produit) vit dans AccueilService.
 const nourrirAffinites = (acheteurId, items) =>
   AccueilService.enregistrerAffinitesAchat(acheteurId, items);
 

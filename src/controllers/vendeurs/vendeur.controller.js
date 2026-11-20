@@ -9,9 +9,9 @@ const { BadRequestError } = require('../../errors/AppError');
 /**
  * Espace vendeur.
  *
- * Le service lève désormais des erreurs typées (404 introuvable, 409 doublon,
- * 400 règle métier) : le contrôleur n'a plus à deviner un statut en lisant le
- * texte du message, et une panne inattendue ne sort plus en 404.
+ * Le service lève des erreurs typées (404 introuvable, 409 doublon,
+ * 400 règle métier) : le contrôleur ne déduit aucun statut du texte du
+ * message, et une panne inattendue n'est pas confondue avec un 404.
  *
  * Aucun `err.message` technique ne fuit dans un 500 — le gestionnaire
  * global masque les messages des erreurs non opérationnelles en production.

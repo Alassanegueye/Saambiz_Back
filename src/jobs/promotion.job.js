@@ -25,13 +25,10 @@ async function expirerPromotions() {
   // 3) Pour chaque produit concerné, retire le prix barré s'il n'a plus de promo active valide
   const produitIds = [...new Set(expirees.map(p => p.produitId).filter(Boolean))];
 
-  // Deux requêtes au total, quel que soit le nombre de produits.
-  //
-  // La boucle précédente en lançait deux PAR produit : un `count` pour savoir
-  // s'il restait une promotion active, puis un `update`. Sur une fin de
-  // campagne qui expire cent promotions, cela faisait deux cents allers-
-  // retours vers la base, un par un, pendant que la tâche tenait sa
-  // connexion.
+  // Deux requêtes au total, quel que soit le nombre de produits. Deux par
+  // produit (un `count`, puis un `update`) feraient, sur une fin de campagne
+  // qui expire cent promotions, deux cents allers-retours vers la base
+  // pendant que la tâche tient sa connexion.
   if (produitIds.length) {
     // 3a) Ceux qui gardent une promotion active : une seule requête groupée.
     const encoreEnPromo = await Promotion.findAll({

@@ -4,10 +4,10 @@ const logger = require('../utils/logger');
 const isProd = process.env.NODE_ENV === 'production';
 
 // Si la clé est absente, on n'instancie pas Resend : l'envoi d'e-mails est
-// désactivé. Acceptable en local, PAS en production : l'API répondait alors
-// « code envoyé » alors que rien ne partait, et le client attendait un email
-// qui n'arriverait jamais. En production, un envoi sans clé lève désormais une
-// erreur (l'application affiche « le code n'a pas pu être envoyé »).
+// désactivé. L'API ne doit pas pour autant répondre « code envoyé » quand rien
+// ne part : le client attendrait un email qui n'arrive jamais. Un envoi sans
+// clé lève donc une erreur (l'application affiche « le code n'a pas pu être
+// envoyé »), sauf pendant les tests automatisés.
 const _resendKey = process.env.RESEND_API_KEY;
 const resend = _resendKey ? new Resend(_resendKey) : null;
 if (!resend) {
@@ -44,9 +44,9 @@ function versTexte(html) {
  */
 async function sendEmail({ to, subject, html, text, attachments = [], nomExpediteur }) {
   if (!resend) {
-    // Plus de « succès » silencieux : sur Render le serveur tourne avec
-    // NODE_ENV=development, si bien que l'ancienne garde (production
-    // seulement) laissait l'API répondre « code envoyé » sans rien envoyer.
+    // Pas de « succès » silencieux, même hors production : sur Render le
+    // serveur tourne avec NODE_ENV=development, et une garde limitée à la
+    // production laisserait l'API répondre « code envoyé » sans rien envoyer.
     // Seuls les tests automatisés ignorent l'envoi.
     if (process.env.NODE_ENV === 'test') return null;
     throw new Error('Service e-mail non configuré (RESEND_API_KEY manquante).');

@@ -40,7 +40,7 @@ class PaiementService {
         // Appel Orange Money — retourne payment_url + pay_token
         const omResponse = await OrangeMoneyService.initiePaiement({
           // Orange Money attend le numéro national (9 chiffres) : les numéros
-          // sont désormais enregistrés au format international (+221…).
+          // sont enregistrés au format international (+221…).
           phone: String(numeroTelephone || '').replace(/[^\d+]/g, '').replace(/^(\+|00)?221(?=\d{9}$)/, ''),
           amount: montant,
           orderId,
@@ -114,10 +114,10 @@ class PaiementService {
       paiement.datePaiement = new Date();
       await paiement.save({ transaction: t });   // maintenant dans la transaction
 
-      // UN PAIEMENT QUI ÉCHOUE SE DIT. Sans cela, la commande restait « en
-      // attente » sans un mot : le client ne savait pas si son argent était
-      // parti, s'il devait recommencer, ni combien de temps attendre. Il
-      // appelait la boutique, ou il abandonnait.
+      // UN PAIEMENT QUI ÉCHOUE SE DIT. Sans cela, la commande resterait « en
+      // attente » sans un mot : le client ne saurait pas si son argent est
+      // parti, s'il doit recommencer, ni combien de temps attendre. Il
+      // appellerait la boutique, ou il abandonnerait.
       if (!isSuccess) {
         PaiementService._prevenirEchec(paiement, t);
       }
@@ -171,11 +171,10 @@ class PaiementService {
         if (vendeur) {
           // APRÈS LE COMMIT, ET SEULEMENT S'IL A LIEU.
           //
-          // L'e-mail et le push partaient d'ici, donc À L'INTÉRIEUR de la
-          // transaction encore ouverte : si le commit échouait ensuite, le
-          // vendeur avait déjà lu « Abonnement activé » pour un abonnement
-          // que la base n'a jamais enregistré, et il aurait fallu le
-          // rembourser d'un service qu'il croyait avoir.
+          // Envoyés depuis la transaction encore ouverte, l'e-mail et le push
+          // annonceraient « Abonnement activé » même si le commit échouait
+          // ensuite : le vendeur croirait avoir un abonnement que la base n'a
+          // jamais enregistré, et il faudrait le rembourser.
           t.afterCommit(() => {
             // L'ABONNEMENT GARDE SON E-MAIL : c'est une facture, avec un
             // montant et des dates, et un vendeur doit pouvoir la retrouver

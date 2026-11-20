@@ -6,9 +6,7 @@ const includeVendeurActif = require('../../utils/includeVendeurActif');
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
 
 // La taille de page vient de l'unique source, `utils/paginate` : dix, comme
-// partout ailleurs dans l'application. Elle valait quinze ici, vingt dans
-// vendeur.service et demandeRetour.service — trois valeurs pour la meme
-// regle, et aucune ne suivait l'autre quand on la changeait.
+// partout ailleurs dans l'application.
 const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
 
 // Les `pages: Math.ceil(count / LIMIT)` de ce fichier s'appuient dessus.

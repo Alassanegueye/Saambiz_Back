@@ -10,11 +10,6 @@ const migrate = require('./seed/migrate');
 // Charger toutes les associations de modèles
 require('./models/index');
 
-// Les modèles sont tous chargés par models/index.js ci-dessus : la liste
-// d'imports « explicites » qui suivait était redondante, et incomplète
-// (ligneCommande, refreshToken, boutique… y manquaient sans dommage, preuve
-// qu'elle ne servait à rien).
-
 const PORT = process.env.PORT || 3000;
 // Adresse bind configurable via env (127.0.0.1 derrière un proxy, 0.0.0.0 en direct)
 const HOST = process.env.HOST || '0.0.0.0';

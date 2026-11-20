@@ -9,15 +9,10 @@ const logger = require('../../utils/logger');
 /**
  * Visites des boutiques et vues des produits : UNE définition pour tout.
  *
- * Avant, deux compteurs portaient le même nom à l'écran : « Visites » sur le
- * tableau de bord additionnait les vues des produits, « visites » sur Ma
- * boutique comptait chaque chargement de la page d'accueil du site. Le
- * vendeur lisait 0 d'un côté et 9 de l'autre pour la même boutique.
- *
- * Une VISITE, désormais : une personne qui ouvre la boutique, dans
+ * Une VISITE : une personne qui ouvre la boutique, dans
  * l'application ou sur son site, comptée une fois par jour. Le vendeur
  * lui-même et les robots ne comptent pas. `boutique.vitrine_vues` reste le
- * total (sans repartir de zéro) et n'avance plus que d'une visite nouvelle ;
+ * total (sans repartir de zéro) et n'avance que d'une visite nouvelle ;
  * la table `visite_boutique` donne le détail par jour.
  *
  * Une VUE DE PRODUIT : une ouverture de fiche, hors vendeur et robots.

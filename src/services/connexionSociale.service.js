@@ -116,9 +116,9 @@ async function verifier(fournisseur, idToken, { nonce } = {}) {
 
   if (fournisseur === 'apple') {
     // Le nonce est EXIGÉ, pas seulement vérifié s'il est présent : l'absence
-    // de nonce dans le jeton était auparavant acceptée en silence, ce qui
-    // rendait la protection contre le rejeu contournable par un jeton émis
-    // sans nonce. L'application en envoie toujours un.
+    // de nonce acceptée en silence rendrait la protection contre le rejeu
+    // contournable par un jeton émis sans nonce. L'application en envoie
+    // toujours un.
     const attendu = crypto.createHash('sha256').update(String(nonce || '')).digest('hex');
     if (!nonce || !charge.nonce || charge.nonce !== attendu) {
       throw new UnauthorizedError(REFUS);

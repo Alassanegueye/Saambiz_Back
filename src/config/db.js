@@ -95,10 +95,10 @@ if (SUR_HEBERGEUR && !urlFournie && !hoteFourni) {
 // aucun PostgreSQL ne tourne.
 //
 // Le cas vient de la recopie du .env de développement dans le tableau de bord
-// de l'hébergeur : DB_HOST=localhost passait le contrôle ci-dessus — il n'est
-// pas vide — et l'on obtenait un refus de connexion sans rapport apparent avec
-// une variable mal réglée. Même logique que CORS_ORIGIN, qui refuse déjà une
-// origine locale en production.
+// de l'hébergeur : DB_HOST=localhost passe le contrôle ci-dessus, puisqu'il
+// n'est pas vide, et l'on obtiendrait un refus de connexion sans rapport
+// apparent avec une variable mal réglée. Même logique que CORS_ORIGIN, qui
+// refuse déjà une origine locale en production.
 const _hoteEffectif = urlFournie
   ? (() => { try { return new URL(urlFournie).hostname; } catch { return ''; } })()
   : hoteFourni;

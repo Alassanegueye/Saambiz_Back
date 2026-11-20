@@ -183,15 +183,15 @@ class AdminCatalogueService {
   /**
    * L'administration corrige une commande — SANS SORTIR DU WORKFLOW.
    *
-   * Elle s'en affranchissait complètement : aucun appel à la table des
-   * transitions, donc `en_attente → livree` passait d'un trait, sur une
-   * commande que personne n'avait préparée ni expédiée. Et `statutPaiement`
-   * s'écrivait à la main : un administrateur pouvait déclarer « payé » sans
-   * le moindre encaissement, ou « remboursé » sans remboursement.
+   * Elle suit la MÊME table des transitions que le vendeur : une commande
+   * que personne n'a préparée ni expédiée ne passe pas d'un trait de
+   * `en_attente` à `livree`.
    *
-   * Désormais : la MÊME table que le vendeur, et le statut de paiement
-   * n'est plus modifiable par cette route. Un encaissement se constate —
-   * par la passerelle, ou par le vendeur qui confirme avoir reçu l'argent.
+   * Le statut de paiement ne se modifie pas par cette route : un
+   * administrateur pourrait sinon déclarer « payé » sans le moindre
+   * encaissement, ou « remboursé » sans remboursement. Un encaissement se
+   * constate, par la passerelle ou par le vendeur qui confirme avoir reçu
+   * l'argent.
    */
   static async modifierCommande(id, donnees, adminId = null) {
     const commande = await Commande.findByPk(id);
@@ -275,16 +275,14 @@ class AdminCatalogueService {
   }
 
   /**
-   * UNE COMMANDE NE SE SUPPRIME PLUS. Jamais.
+   * Une commande ne se supprime jamais.
    *
-   * L'ancienne version appelait `destroy()` — suppression physique, le
-   * modèle n'étant pas `paranoid` — et ne refusait que les commandes payées.
-   * Une commande livrée mais non réglée, ou déjà annulée, disparaissait donc
-   * avec ses lignes et son historique : plus moyen de savoir ce qui avait
-   * été vendu, à qui, ni pourquoi le stock avait bougé.
+   * Le modèle n'étant pas `paranoid`, `destroy()` effacerait la commande avec
+   * ses lignes et son historique : plus moyen de savoir ce qui a été vendu,
+   * à qui, ni pourquoi le stock a bougé.
    *
-   * La route est conservée pour ne pas casser le back-office, mais elle
-   * répond désormais par un refus explicite qui dit quoi faire à la place.
+   * La route reste en place pour ne pas casser le back-office, mais elle
+   * répond par un refus explicite qui dit quoi faire à la place.
    * L'annulation, elle, garde tout : la commande reste lisible, son statut
    * dit ce qui s'est passé.
    */

@@ -60,8 +60,8 @@ const variable = (nom) => String(process.env[nom] || '').trim();
 /**
  * Cloudflare rend un identifiant de 32 caractères hexadécimaux. Un
  * copier-coller qui en perd un donne un hôte qui n'existe pas, et la seule
- * trace est une alerte TLS 40 — c'est arrivé : 31 caractères au lieu de 32,
- * et toutes les photos tombaient en 503 sans que rien ne désigne la cause.
+ * trace est une alerte TLS 40 : toutes les photos tombent en 503 sans que
+ * rien ne désigne la cause.
  *
  * Ce n'est qu'un AVERTISSEMENT, jamais un refus : le format appartient à
  * Cloudflare et peut changer. Mais une longueur inattendue est signalée, au
@@ -223,10 +223,9 @@ async function envoyer(buffer, cle, { prive = false, type } = {}) {
     }));
     return cle;
   } catch (err) {
-    // CE QUI MANQUAIT DANS LE JOURNAL. Un échec disait « write EPROTO … SSL
-    // alert number 40 » et la clé du fichier — rien sur l'hôte contacté ni
-    // sur le bucket visé, c'est-à-dire rien sur ce qu'il fallait corriger.
-    // Les identifiants, eux, ne sont jamais écrits.
+    // L'erreur emporte l'hôte contacté, le bucket visé et un indice : seul,
+    // le message (« write EPROTO … SSL alert number 40 ») ne dit rien de ce
+    // qu'il faut corriger. Les identifiants, eux, ne sont jamais écrits.
     err.hoteR2 = hoteR2();
     err.bucketR2 = bucket(prive) || '(non défini)';
     err.indice = indiceErreur(err);

@@ -2,10 +2,9 @@
 //
 // Vérification de l'adresse email AVANT la création du compte.
 //
-// L'ordre compte. Créer le compte puis demander un code laissait une ligne
-// utilisateur définitive derrière chaque adresse jamais confirmée — fautes de
-// frappe comprises — et n'empêchait rien : la connexion ne regardait pas le
-// drapeau `verifie`. Désormais, le compte n'existe qu'une fois le code validé.
+// L'ordre compte : le compte n'existe qu'une fois le code validé. Le créer
+// avant laisserait une ligne utilisateur définitive derrière chaque adresse
+// jamais confirmée, fautes de frappe comprises.
 //
 // Le parcours tient en trois appels :
 //   1. envoyerCode(email)            → un code à six chiffres part par mail

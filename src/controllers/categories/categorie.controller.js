@@ -12,8 +12,7 @@ class CategorieController {
   static getCategorieById = asyncHandler(async (req, res) => {
     const { id } = req.params;
     // Le service lève lui-même un NotFoundError : le 404 part tel quel vers
-    // errorHandler. L'ancienne traduction comparait le texte du message, et
-    // une simple reformulation côté service redonnait un 500.
+    // errorHandler.
     const result = await CategorieService.getCategorieById(id);
     return res.status(200).json({ success: true, ...result });
   });

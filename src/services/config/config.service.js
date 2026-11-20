@@ -11,7 +11,7 @@ const echecIgnore = require('../../utils/echecIgnore');
 //  Ces valeurs sont lues à chaque ouverture de l'application mobile
 //  (`/app/config`), à chaque commande (`frais_livraison`) et à chaque paiement
 //  d'abonnement, alors qu'elles changent quelques fois par an, depuis le
-//  dashboard. Une requête SQL par lecture, c'était autant d'aller-retours
+//  dashboard. Une requête SQL par lecture ferait autant d'allers-retours
 //  vers la base pour une réponse déjà connue.
 //
 //  Durée courte (60 s) plutôt qu'une invalidation parfaite : avec plusieurs

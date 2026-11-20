@@ -13,7 +13,8 @@ class FavoriService {
     });
     if (!created) return { success: false, message: 'Boutique déjà en favoris' };
 
-    // Le vendeur voit sa boutique gagner des abonnés sans jamais l'apprendre.
+    // Sans cette alerte, le vendeur verrait sa boutique gagner des abonnés
+    // sans jamais l'apprendre.
     // C'est le signal le moins coûteux à envoyer et le plus encourageant à
     // recevoir : quelqu'un a choisi de suivre ce qu'il fait.
     FavoriService._prevenirVendeur(acheteurId, boutiqueId).catch(echecIgnore('alerte nouvel abonné au vendeur'));

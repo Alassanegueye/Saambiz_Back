@@ -6,9 +6,9 @@ const isAdmin = require('../middlewares/isAdmin.middleware');
 const requirePermission = require('../middlewares/requirePermission.middleware');
 
 // Chaîne complète : identité → compte actif → rôle → permission fine.
-// Il manquait ici le contrôle du compte actif et celui du rôle : un compte
-// suspendu, ou un simple vendeur muni d'un jeton valide, atteignait la
-// gestion des administrateurs.
+// Sans le contrôle du compte actif et celui du rôle, un compte suspendu, ou
+// un simple vendeur muni d'un jeton valide, atteindrait la gestion des
+// administrateurs.
 router.use(authMiddleware);
 router.use(checkActiveUser);
 router.use(isAdmin);

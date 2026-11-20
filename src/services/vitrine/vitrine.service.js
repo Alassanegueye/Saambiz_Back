@@ -598,11 +598,9 @@ class VitrineService {
    * le vendeur a besoin pour rappeler et livrer, et c'est aussi la clé de
    * suivi (référence + téléphone).
    *
-   * Une version précédente ouvrait un « compte invité » en coulisse, parce
-   * que `commande.acheteurId` était obligatoire. Cela fabriquait des comptes
-   * que personne n'avait demandés, avec des adresses email inventées, et
-   * faisait coexister deux sortes de comptes. La colonne est désormais
-   * facultative.
+   * `commande.acheteurId` est donc facultatif. Un « compte invité » ouvert en
+   * coulisse fabriquerait des comptes que personne n'a demandés, avec des
+   * adresses email inventées, et ferait coexister deux sortes de comptes.
    */
   static _preparerClient({ nom, prenom, telephone, email }) {
     const tel = VitrineService.normaliserTelephone(telephone);

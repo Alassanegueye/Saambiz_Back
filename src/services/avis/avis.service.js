@@ -28,7 +28,8 @@ class AvisService {
 
     const stats = await this.statsBoutique(boutiqueId);
 
-    // Le vendeur ne savait pas qu'on l'avait noté — ni en bien, ni en mal.
+    // Sans cette alerte, le vendeur ne saurait pas qu'on l'a noté, ni en bien,
+    // ni en mal.
     // Un avis est la seule chose que ses clients lui disent publiquement, et
     // une mauvaise note qu'on découvre à temps peut encore se rattraper.
     AvisService._prevenirVendeur(boutique, acheteurId, n, commentaire).catch(echecIgnore('alerte avis au vendeur'));

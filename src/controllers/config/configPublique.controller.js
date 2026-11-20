@@ -6,11 +6,7 @@ const { paiementEnLigneActif } = require('../../config/security');
 /**
  * Réglages publics — lus sans compte par l'application mobile et les sites.
  *
- * Ces deux routes vivaient directement dans app.js, avec leur `require` du
- * service à l'intérieur du gestionnaire. Elles suivent désormais le même
- * chemin que les autres : route → contrôleur → service.
- *
- * Particularité conservée : en cas d'échec, on répond 200 avec des valeurs
+ * Particularité : en cas d'échec, on répond 200 avec des valeurs
  * par défaut au lieu d'une erreur. Une base momentanément indisponible ne
  * doit ni bloquer l'ouverture de l'application (écran de mise à jour forcée
  * déclenché à tort) ni masquer le prix sur la page d'abonnement. On journalise

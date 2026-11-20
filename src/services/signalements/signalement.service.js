@@ -28,10 +28,9 @@ class SignalementService {
   /**
    * Les signalements d'un utilisateur, AVEC CE QU'ILS VISENT.
    *
-   * La table ne garde qu'un `cibleId` et un `type` : l'application recevait
-   * donc une liste sans nom, et affichait la raison saisie à la place de la
-   * boutique. « dww » en gros titre, au-dessus d'une description — on ne
-   * savait plus de quoi on avait parlé.
+   * La table ne garde qu'un `cibleId` et un `type` : chaque signalement
+   * repart avec le nom et l'image de ce qu'il vise, sans quoi l'application
+   * afficherait la raison saisie à la place de la boutique.
    *
    * Les cibles sont relues en DEUX requêtes, une par type, et non une par
    * signalement.

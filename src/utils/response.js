@@ -1,11 +1,6 @@
 /**
- * Format unique des réponses de l'API.
- *
- * Auparavant, chaque route inventait sa forme : `{ success, message }`,
- * `{ message, data }`, `{ boutique }`, ou l'objet nu. Les clients
- * compensaient par des chaînes de repli du genre
- * `res.data?.produits || res.data?.data || res.data || []`, présentes dans
- * toutes les pages du dashboard vendeur.
+ * Format unique des réponses de l'API : les clients lisent toujours `data`,
+ * sans chaîne de repli d'une route à l'autre.
  *
  * Succès : { success: true,  message, data }
  * Échec  : { success: false, message, details? }
