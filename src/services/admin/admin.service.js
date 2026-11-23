@@ -10,6 +10,14 @@ const bcrypt = require('bcryptjs');
 const { generatePassword } = require('../../utils/generatePassword');
 const { bcryptConfig } = require('../../config/security');
 const { sendAccesUtilisateurEmail, sendCertificationEmail } = require('../resend.service');
+
+/**
+ * Les trois états d'un abonnement, dans l'ordre de l'énumération du modèle.
+ * `revoque` est distinct d'`expire` : un abonnement retiré par un
+ * administrateur n'est pas un abonnement arrivé à son terme, et le
+ * back-office doit pouvoir faire la différence.
+ */
+const STATUTS_ABONNEMENT = ['actif', 'expire', 'revoque'];
 const { urlLecture } = require('../stockage/upload.service');
 
 class AdminService {
@@ -215,8 +223,23 @@ class AdminService {
   }
 
   // 11. Lister les abonnements
-  static async getAbonnements() {
+  //
+  // `statut` était reçu par la route et jeté ici : le back-office envoyait
+  // bien `?statut=actif`, cette méthode ne prenait aucun argument, et le
+  // filtre de l'écran ne changeait donc rien à la liste affichée.
+  static async getAbonnements({ statut } = {}) {
+    const where = {};
+    if (statut) {
+      if (!STATUTS_ABONNEMENT.includes(statut)) {
+        throw new BadRequestError(
+          `Statut d'abonnement inconnu : ${statut}. Attendu : ${STATUTS_ABONNEMENT.join(', ')}.`
+        );
+      }
+      where.statut = statut;
+    }
+
     const abonnements = await Abonnement.findAll({
+      where,
       include: [{ model: Utilisateur, as: 'utilisateur', attributes: { exclude: ['mot_de_passe'] } }],
       order: [['createdAt', 'DESC']]
     });
@@ -683,9 +706,14 @@ class AdminService {
 
   // `paginate` borne `limit` à 100 : ces routes prenaient la valeur de la
   // requête telle quelle, et `?limit=1000000` chargeait toute la table.
-  static async tousLesPaiements({ statut, page = 1, limit = 20 } = {}) {
+  static async tousLesPaiements({ statut, recherche, page = 1, limit = 20 } = {}) {
     const where = {};
     if (statut) where.statut = statut;
+    // Recherche sur ce qui identifie un paiement : sa référence, la
+    // transaction de l'opérateur, le numéro appelé.
+    Object.assign(where, AdminService._recherche(recherche, [
+      'referencePaiement', 'transactionId', 'numeroTelephone',
+    ]));
     const p = paginate(page, limit);
     const { count, rows } = await Paiement.findAndCountAll({
       where,
@@ -708,10 +736,15 @@ class AdminService {
 
   // Paginé lui aussi : les échecs s'accumulent (chaque tentative Orange Money
   // abandonnée en crée un) et la liste était renvoyée en entier.
-  static async paiementsEchoues({ page = 1, limit = 20 } = {}) {
+  static async paiementsEchoues({ recherche, page = 1, limit = 20 } = {}) {
     const p = paginate(page, limit);
     const { count, rows } = await Paiement.findAndCountAll({
-      where: { statut: 'failed' },
+      where: {
+        statut: 'failed',
+        ...AdminService._recherche(recherche, [
+          'referencePaiement', 'transactionId', 'numeroTelephone',
+        ]),
+      },
       include: [{
         model: Utilisateur, as: 'utilisateur',
         attributes: ['id', 'nom', 'prenom', 'email']
@@ -763,10 +796,20 @@ class AdminService {
     return { message: 'Abonnement gratuit accordé avec succès', abonnement };
   }
 
+  /**
+   * Retire un abonnement avant son terme.
+   *
+   * `revoque` et non `expire` : les deux se ressemblent — l'accès est coupé
+   * dans les deux cas — mais ils ne disent pas la même chose. Un abonnement
+   * expiré n'a pas été renouvelé ; un abonnement révoqué a été retiré par un
+   * administrateur, et c'est une décision qu'on doit pouvoir retrouver.
+   * Confondus, le back-office ne pouvait plus dire lequel des deux s'était
+   * produit.
+   */
   static async revoquerAbonnement(abonnementId) {
     const abonnement = await Abonnement.findByPk(abonnementId);
     if (!abonnement) throw new NotFoundError('Abonnement introuvable');
-    await abonnement.update({ statut: 'expire' });
+    await abonnement.update({ statut: 'revoque' });
     return { message: 'Abonnement révoqué avec succès' };
   }
 
@@ -830,8 +873,27 @@ class AdminService {
 
   // -------------------- COMMANDES (e-commerce) --------------------
 
-  // Liste paginée de toutes les commandes (filtrable par statut)
-  static async toutesLesCommandes({ statut, boutiqueId, page = 1, limit = 20 } = {}) {
+  /**
+   * Clause de recherche sur plusieurs colonnes, ou `{}` si rien n'est cherché.
+   *
+   * Ces listes paginées n'acceptaient aucun terme de recherche : le
+   * back-office filtrait donc dans la page affichée, dix lignes, tout en
+   * laissant croire qu'il cherchait dans l'historique entier. Chercher une
+   * commande qu'on ne trouvait pas revenait à conclure qu'elle n'existait pas.
+   *
+   * `iLike` : la casse ne compte pas — on cherche « diop » comme « DIOP ».
+   * Les caractères `%` et `_` saisis par l'utilisateur sont échappés, sinon
+   * « 100% » ramènerait toute la table.
+   */
+  static _recherche(recherche, champs) {
+    const terme = String(recherche || '').trim();
+    if (!terme) return {};
+    const motif = `%${terme.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    return { [Op.or]: champs.map((champ) => ({ [champ]: { [Op.iLike]: motif } })) };
+  }
+
+  // Liste paginée de toutes les commandes (filtrable par statut et recherche)
+  static async toutesLesCommandes({ statut, boutiqueId, recherche, page = 1, limit = 20 } = {}) {
     const where = {};
     if (statut) where.statut = statut;
     if (boutiqueId) {
@@ -839,6 +901,11 @@ class AdminService {
       if (!boutique) throw new NotFoundError('Boutique introuvable');
       where.vendeurId = boutique.vendeurId;
     }
+    // La recherche porte sur la commande elle-même : sa référence et le
+    // client saisi quand il n'a pas de compte.
+    Object.assign(where, AdminService._recherche(recherche, [
+      'referenceCommande', 'clientNom', 'clientPrenom', 'clientTelephone',
+    ]));
 
     // Borne haute à 100 (voir utils/paginate) ; `page` et `limit` arrivent
     // de la requête sans contrôle.
@@ -880,9 +947,15 @@ class AdminService {
   // Statistiques e-commerce globales
   static async statsEcommerce() {
     // Chiffre d'affaires = somme des commandes payées
+    // `statutPaiement` (l'attribut du modèle) et non `statut_paiement` (la
+    // colonne) : Sequelize laisse passer une clé inconnue comme référence
+    // brute, si bien que les deux visaient la même colonne — par chance. Le
+    // comptage juste en dessous employait déjà l'attribut ; l'écart aurait
+    // cessé d'être sans conséquence le jour où un attribut se serait appelé
+    // `statut_paiement`.
     const caRow = await Commande.findOne({
       attributes: [[fn('COALESCE', fn('SUM', col('montant_total')), 0), 'ca']],
-      where: { statut_paiement: 'paye' },
+      where: { statutPaiement: 'paye' },
       raw: true,
     });
     const chiffreAffaires = parseFloat(caRow?.ca || 0);

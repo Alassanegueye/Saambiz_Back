@@ -18,8 +18,8 @@ class AuditService {
    * Journal filtrable : administrateur, action, type de cible, période.
    * `du` / `au` : dates ISO (YYYY-MM-DD) incluses.
    */
-  static async lister({ page = 1, limit = 20, adminId, action, cible, du, au } = {}) {
-    const where = AuditService._filtres({ adminId, action, cible, du, au });
+  static async lister({ page = 1, limit = 20, adminId, action, cible, du, au, recherche } = {}) {
+    const where = AuditService._filtres({ adminId, action, cible, du, au, recherche });
     const l = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     const p = Math.max(parseInt(page, 10) || 1, 1);
 
@@ -29,14 +29,32 @@ class AuditService {
       order: [['createdAt', 'DESC']],
       limit: l,
       offset: (p - 1) * l,
+      // La recherche peut porter sur l'administrateur joint : sans cela,
+      // Sequelize limiterait dans une sous-requête où la jointure n'existe pas.
+      subQuery: false,
     });
 
     return { logs: rows, total: count, page: p, pages: Math.ceil(count / l) };
   }
 
-  static _filtres({ adminId, action, cible, du, au } = {}) {
+  static _filtres({ adminId, action, cible, du, au, recherche } = {}) {
     const where = {};
     if (adminId) where.adminId = adminId;
+
+    // Recherche libre : l'action, le type d'élément touché, ou le nom de
+    // l'administrateur. Sans elle, le back-office ne cherchait que dans la
+    // page affichée — dix lignes sur un journal qui en compte des milliers.
+    const terme = String(recherche || '').trim();
+    if (terme) {
+      const motif = `%${terme.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      where[Op.or] = [
+        { action: { [Op.iLike]: motif } },
+        { cible: { [Op.iLike]: motif } },
+        { '$admin.nom$': { [Op.iLike]: motif } },
+        { '$admin.prenom$': { [Op.iLike]: motif } },
+      ];
+    }
+
     if (action) where.action = action.includes('%') ? { [Op.iLike]: action } : { [Op.iLike]: `%${action}%` };
     if (cible) where.cible = cible;
     const debut = du ? new Date(`${du}T00:00:00`) : null;

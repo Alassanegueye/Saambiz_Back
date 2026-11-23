@@ -791,7 +791,12 @@ class VendeurService {
     });
 
     const now = new Date();
-    if (abonnement) {
+    // `statut === 'actif'` et non la seule date de fin : un abonnement révoqué
+    // par un administrateur garde sa `dateFin`, parfois lointaine. Sans cette
+    // condition, le vendeur se voyait répondre « votre abonnement est encore
+    // actif » alors qu'il venait d'être retiré — il ne pouvait donc ni vendre
+    // ni se réabonner jusqu'à l'échéance initiale.
+    if (abonnement && abonnement.statut === 'actif') {
       const fin = new Date(abonnement.dateFin);
       const joursRestants = Math.ceil((fin - now) / (1000 * 60 * 60 * 24));
       if (joursRestants > 7) throw new BadRequestError('Votre abonnement est encore actif (plus de 7 jours restants)');

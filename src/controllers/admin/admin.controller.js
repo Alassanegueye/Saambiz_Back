@@ -105,7 +105,7 @@ exports.suspendreAcheteur = asyncHandler(async (req, res) => {
 
 // -------------------- LISTE ABONNEMENTS --------------------
 exports.getAbonnements = asyncHandler(async (req, res) => {
-  const result = await AdminService.getAbonnements();
+  const result = await AdminService.getAbonnements({ statut: req.query.statut });
   return res.status(200).json(result);
 });
 
@@ -298,8 +298,10 @@ exports.produitsEnAttente = asyncHandler(async (req, res) => {
 // -------------------- COMMANDES (e-commerce) --------------------
 
 exports.toutesCommandes = asyncHandler(async (req, res) => {
-  const { statut, boutiqueId, page, limit } = req.query;
-  const result = await AdminService.toutesLesCommandes({ statut, boutiqueId, page, limit });
+  const { statut, boutiqueId, recherche, page, limit } = req.query;
+  const result = await AdminService.toutesLesCommandes({
+    statut, boutiqueId, recherche, page, limit,
+  });
   return res.status(200).json(result);
 });
 
@@ -311,8 +313,8 @@ exports.statsEcommerce = asyncHandler(async (req, res) => {
 // -------------------- DEMANDES DE RETOUR / REMBOURSEMENT --------------------
 
 exports.listerDemandesRetour = asyncHandler(async (req, res) => {
-  const { statut, page, limit } = req.query;
-  const result = await DemandeRetourService.listerDemandes({ statut, page, limit });
+  const { statut, recherche, page, limit } = req.query;
+  const result = await DemandeRetourService.listerDemandes({ statut, recherche, page, limit });
   return res.status(200).json({ success: true, ...result });
 });
 
@@ -326,8 +328,8 @@ exports.traiterDemandeRetour = asyncHandler(async (req, res) => {
 // -------------------- LOGS D'AUDIT --------------------
 
 exports.listerAuditLogs = asyncHandler(async (req, res) => {
-  const { page, limit, adminId, action, cible, du, au } = req.query;
-  const result = await AuditService.lister({ page, limit, adminId, action, cible, du, au });
+  const { page, limit, adminId, action, cible, du, au, recherche } = req.query;
+  const result = await AuditService.lister({ page, limit, adminId, action, cible, du, au, recherche });
   return res.status(200).json({ success: true, ...result });
 });
 

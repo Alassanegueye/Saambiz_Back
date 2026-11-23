@@ -396,18 +396,20 @@ router.get('/stats-ecommerce',
 
 // -------------------- DEMANDES DE RETOUR / REMBOURSEMENT --------------------
 router.get('/demandes-retour',
-  requirePermission('COMMANDES', 'view'),
+  // Le menu « Retours » existe désormais ; `COMMANDES` reste accepté pour
+  // que les droits déjà attribués continuent de fonctionner.
+  requirePermission(['RETOURS', 'COMMANDES'], 'view'),
   adminController.listerDemandesRetour);
 router.put('/demandes-retour/:id/traiter',
-  requirePermission('COMMANDES', 'update'),
+  requirePermission(['RETOURS', 'COMMANDES'], 'update'),
   adminController.traiterDemandeRetour);
 
 // -------------------- LOGS D'AUDIT --------------------
 router.get('/audit-logs/resume',
-  requirePermission('ADMINS', 'view'),
+  requirePermission(['ACTIVITE', 'ADMINS'], 'view'),
   adminController.resumeActivite);
 router.get('/audit-logs',
-  requirePermission('ADMINS', 'view'),
+  requirePermission(['ACTIVITE', 'ADMINS'], 'view'),
   adminController.listerAuditLogs);
 
 module.exports = router;

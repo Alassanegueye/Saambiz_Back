@@ -9,6 +9,7 @@ const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors
 // table. Le helper partage plafonne a cent.
 const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
 const echecIgnore = require('../../utils/echecIgnore');
+const { Op } = require('sequelize');
 
 const DEFAULT_PAGE_SIZE = LIMITE_DEFAUT;
 
@@ -73,9 +74,30 @@ class DemandeRetourService {
   }
 
   // -------------------- ADMIN : liste paginée --------------------
-  static async listerDemandes({ statut, page = 1, limit = DEFAULT_PAGE_SIZE } = {}) {
+  /**
+   * @param {Object} filtres
+   * @param {string} [filtres.recherche] motif cherché dans la raison du
+   *   retour, la référence de la commande ou le nom de l'acheteur. Sans lui,
+   *   le back-office ne pouvait chercher que dans la page affichée.
+   */
+  static async listerDemandes({ statut, recherche, page = 1, limit = DEFAULT_PAGE_SIZE } = {}) {
     const where = {};
     if (statut) where.statut = statut;
+
+    const terme = String(recherche || '').trim();
+    if (terme) {
+      // `%` et `_` échappés : saisis tels quels, ils ramèneraient tout.
+      const motif = `%${terme.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      // `$table.colonne$` cherche dans les modèles joints. Les deux jointures
+      // sont des `belongsTo` : Sequelize produit de simples LEFT JOIN, sans
+      // sous-requête qui ferait mentir la pagination.
+      where[Op.or] = [
+        { raison: { [Op.iLike]: motif } },
+        { '$commande.reference_commande$': { [Op.iLike]: motif } },
+        { '$acheteur.nom$': { [Op.iLike]: motif } },
+        { '$acheteur.prenom$': { [Op.iLike]: motif } },
+      ];
+    }
 
     const { limit: l, offset } = paginate(page, limit);
     const { rows, count } = await DemandeRetour.findAndCountAll({
@@ -87,6 +109,10 @@ class DemandeRetourService {
       order: [['createdAt', 'DESC']],
       limit: l,
       offset,
+      // Nécessaire dès qu'une clause porte sur une table jointe : sans cela
+      // Sequelize applique la limite dans une sous-requête où la jointure
+      // n'existe pas encore.
+      subQuery: false,
     });
 
     return {

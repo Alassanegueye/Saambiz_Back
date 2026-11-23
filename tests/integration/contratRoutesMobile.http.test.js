@@ -21,7 +21,7 @@
  * Les deux adresses sont couvertes : `/saambiz/v1` (référence) et `/saambiz`
  * (alias historique, encore appelé par les applications installées).
  *
- * 126 routes, dont 101 protégées.
+ * 135 routes, dont 109 protégées.
  */
 
 const request = require('supertest');
@@ -82,10 +82,13 @@ const ROUTES = [
   { methode: 'GET', chemin: '/categories', url: '/categories', protegee: false },
   { methode: 'GET', chemin: '/categories/:id', url: '/categories/3f6c1c2e-0000-4000-8000-000000000000', protegee: false },
   { methode: 'GET', chemin: '/categories/:id/boutiques', url: '/categories/3f6c1c2e-0000-4000-8000-000000000000/boutiques', protegee: false },
+  { methode: 'GET', chemin: '/centre-aide', url: '/centre-aide', protegee: false },
   { methode: 'GET', chemin: '/commandes', url: '/commandes', protegee: true },
   { methode: 'POST', chemin: '/commandes', url: '/commandes', protegee: true },
   { methode: 'GET', chemin: '/commandes/:id', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000', protegee: true },
   { methode: 'PUT', chemin: '/commandes/:id/annuler', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/annuler', protegee: true },
+  { methode: 'PATCH', chemin: '/commandes/:id/demande-annulation', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/demande-annulation', protegee: true },
+  { methode: 'POST', chemin: '/commandes/:id/demande-annulation', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/demande-annulation', protegee: true },
   { methode: 'POST', chemin: '/commandes/:id/demande-retour', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/demande-retour', protegee: true },
   { methode: 'PATCH', chemin: '/commandes/:id/paiement', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/paiement', protegee: true },
   { methode: 'POST', chemin: '/commandes/:id/payer', url: '/commandes/3f6c1c2e-0000-4000-8000-000000000000/payer', protegee: true },
@@ -104,6 +107,9 @@ const ROUTES = [
   { methode: 'GET', chemin: '/messages/:userId', url: '/messages/3f6c1c2e-0000-4000-8000-000000000000', protegee: true },
   { methode: 'GET', chemin: '/messages/conversations', url: '/messages/conversations', protegee: true },
   { methode: 'GET', chemin: '/messages/non-lus', url: '/messages/non-lus', protegee: true },
+  { methode: 'GET', chemin: '/messages/site', url: '/messages/site', protegee: true },
+  { methode: 'DELETE', chemin: '/messages/site/:id', url: '/messages/site/3f6c1c2e-0000-4000-8000-000000000000', protegee: true },
+  { methode: 'PUT', chemin: '/messages/site/:id/lire', url: '/messages/site/3f6c1c2e-0000-4000-8000-000000000000/lire', protegee: true },
   { methode: 'GET', chemin: '/notifications', url: '/notifications', protegee: true },
   { methode: 'PUT', chemin: '/notifications/:id/lire', url: '/notifications/3f6c1c2e-0000-4000-8000-000000000000/lire', protegee: true },
   { methode: 'GET', chemin: '/notifications/non-lues', url: '/notifications/non-lues', protegee: true },
@@ -135,6 +141,9 @@ const ROUTES = [
   { methode: 'GET', chemin: '/vendeur/ma-vitrine', url: '/vendeur/ma-vitrine', protegee: true },
   { methode: 'PUT', chemin: '/vendeur/ma-vitrine', url: '/vendeur/ma-vitrine', protegee: true },
   { methode: 'GET', chemin: '/vendeur/ma-vitrine/apercu', url: '/vendeur/ma-vitrine/apercu', protegee: true },
+  { methode: 'POST', chemin: '/vendeur/ma-vitrine/photos', url: '/vendeur/ma-vitrine/photos', protegee: true },
+  { methode: 'DELETE', chemin: '/vendeur/ma-vitrine/photos/:photoId', url: '/vendeur/ma-vitrine/photos/3f6c1c2e-0000-4000-8000-000000000000', protegee: true },
+  { methode: 'PUT', chemin: '/vendeur/ma-vitrine/photos/ordre', url: '/vendeur/ma-vitrine/photos/ordre', protegee: true },
   { methode: 'GET', chemin: '/vendeur/mes-conversations', url: '/vendeur/mes-conversations', protegee: true },
   { methode: 'PUT', chemin: '/vendeur/modifier-boutique', url: '/vendeur/modifier-boutique', protegee: true },
   { methode: 'PUT', chemin: '/vendeur/modifier-produit/:id', url: '/vendeur/modifier-produit/3f6c1c2e-0000-4000-8000-000000000000', protegee: true },
@@ -165,8 +174,8 @@ function appeler(base, route) {
 
 describe('Contrat des routes mobiles', () => {
   it('l\'inventaire couvre bien toutes les routes attendues', () => {
-    expect(ROUTES).toHaveLength(126);
-    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(101);
+    expect(ROUTES).toHaveLength(135);
+    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(109);
   });
 
   describe.each(['/saambiz/v1', '/saambiz'])('adresse %s', (base) => {

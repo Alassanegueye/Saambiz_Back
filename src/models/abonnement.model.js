@@ -34,8 +34,12 @@ const Abonnement = sequelize.define('Abonnement', {
     allowNull: false,
   },
 
+  // `revoque` est distinct d'`expire` : un abonnement retiré par un
+  // administrateur n'est pas un abonnement arrivé à son terme. Les deux
+  // étaient confondus — révoquer posait `expire` —, et le back-office ne
+  // pouvait plus dire lequel des deux s'était produit.
   statut: {
-    type: DataTypes.ENUM('actif', 'expire'),
+    type: DataTypes.ENUM('actif', 'expire', 'revoque'),
     defaultValue: 'actif',
   },
 
