@@ -12,6 +12,32 @@ const { paginate, LIMITE_DEFAUT } = require('../../utils/paginate');
 // Les `pages: Math.ceil(count / LIMIT)` de ce fichier s'appuient dessus.
 const LIMIT = LIMITE_DEFAUT;
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  VISIBILITÉ D'UN PRODUIT AU CATALOGUE
+//
+//  `statut` vaut 'approuve' par défaut (produit.model.js) : la modération est
+//  RÉACTIVE, et 'rejete' n'a d'autre rôle que de retirer un produit du
+//  catalogue. Encore faut-il que quelqu'un le lise.
+//
+//  Aucune des douze requêtes de ce fichier ne le lisait. Un administrateur
+//  retirait un article contrefait, son vendeur recevait « n'est plus proposé
+//  aux clients », et l'article restait listé, cherchable et commandable.
+//  L'administrateur croyait l'avoir retiré, le vendeur croyait qu'il l'était.
+//
+//  UNE SEULE CONSTANTE pour les douze, et non douze `statut: 'approuve'`
+//  recopiés : c'est l'oubli sur la treizième requête qui rouvrirait le trou,
+//  et un oubli ne se voit pas à la lecture. Les surfaces plus récentes
+//  (`catalogue.service.js`, `vitrine.service.js`) procèdent déjà ainsi avec
+//  leurs propres constantes.
+//
+//  CE QUE CE FILTRE NE TOUCHE PAS : l'historique des commandes.
+//  `LigneCommande` garde le nom, l'image et le prix du produit en propre, et
+//  aucune requête de commande ne joint la table `produit`. Un acheteur
+//  continue donc de voir une commande passée sur un article depuis retiré —
+//  « plus au catalogue » n'est pas « effacé du passé ».
+// ═══════════════════════════════════════════════════════════════════════════
+const PRODUIT_VISIBLE = Object.freeze({ statut: 'approuve' });
+
 class AcheteurService {
 
   // ==============================
@@ -41,7 +67,7 @@ class AcheteurService {
         limit,
         offset,
         distinct: true,
-        where: { quantite: { [Op.gt]: 0 }, vendeurId: { [Op.in]: vendeurIds } },
+        where: { ...PRODUIT_VISIBLE, quantite: { [Op.gt]: 0 }, vendeurId: { [Op.in]: vendeurIds } },
         include: [
           {
             model: Categorie,
@@ -91,6 +117,7 @@ class AcheteurService {
         offset,
         distinct: true,
         where: {
+          ...PRODUIT_VISIBLE,
           quantite: { [Op.gt]: 0 },
           vendeurId: { [Op.in]: vendeurIds },
           [Op.or]: [
@@ -145,7 +172,7 @@ class AcheteurService {
         limit,
         offset,
         distinct: true,
-        where: { quantite: { [Op.gt]: 0 }, vendeurId: { [Op.in]: vendeurIds } },
+        where: { ...PRODUIT_VISIBLE, quantite: { [Op.gt]: 0 }, vendeurId: { [Op.in]: vendeurIds } },
         include: [
           {
             model: Categorie,
@@ -189,11 +216,15 @@ class AcheteurService {
   // ==============================
   static async contacterVendeurWhatsapp(produitId) {
     try {
-      logger.info("WhatsApp produitId:", produitId);
-
       const now = new Date();
 
-      const produit = await Produit.findByPk(produitId, {
+      // `findOne` avec le filtre de visibilité, et non `findByPk` : on ne met
+      // pas un client en relation avec un vendeur au sujet d'un article que la
+      // modération a retiré. La route répondait déjà 404 quand le vendeur n'a
+      // pas d'abonnement actif, donc l'application sait traiter ce cas — elle
+      // affiche un message et n'ouvre pas WhatsApp.
+      const produit = await Produit.findOne({
+        where: { id: produitId, ...PRODUIT_VISIBLE },
         include: [
           {
             model: Categorie,
@@ -335,7 +366,7 @@ Merci.
       const { rows, count } = await Produit.findAndCountAll({
         limit,
         offset,
-        where: { quantite: { [Op.gt]: 0 } },
+        where: { ...PRODUIT_VISIBLE, quantite: { [Op.gt]: 0 } },
         include: [
           {
             model: Categorie,
@@ -388,7 +419,11 @@ Merci.
   // ==============================
   static async getDetailProduit(produitId) {
     const now = new Date();
-    const produit = await Produit.findByPk(produitId, {
+    // `findOne` avec le filtre, et non `findByPk` : c'est la route par laquelle
+    // un produit retiré restait consultable par son identifiant, alors même
+    // qu'il avait disparu de toutes les listes.
+    const produit = await Produit.findOne({
+      where: { id: produitId, ...PRODUIT_VISIBLE },
       include: [
         { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] },
         {
@@ -419,7 +454,7 @@ Merci.
         {
           model: Produit,
           as: 'produits',
-          where: { disponible: true },
+          where: { ...PRODUIT_VISIBLE, disponible: true },
           required: false,
           attributes: ['id', 'nom', 'prix', 'prix_promo', 'image', 'vues', 'marque', 'statut'],
           include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }]
@@ -437,7 +472,7 @@ Merci.
   // ==============================
   static async listerProduitsAvecFiltres({ categorieId, prixMin, prixMax, tri, disponible, q, marque, enPromo, acheteurId, page = 1 }) {
     const { limit, offset } = paginate(page);
-    const where = {};
+    const where = { ...PRODUIT_VISIBLE };
 
     // Ne montre que les produits des boutiques suivies
     const vendeurIds = await this._vendeurIdsSuivis(acheteurId);
@@ -489,7 +524,7 @@ Merci.
     const vendeurIds = await this._vendeurIdsSuivis(acheteurId);
 
     const produits = await Produit.findAll({
-      where: { disponible: true, vues: { [Op.gt]: 0 }, vendeurId: { [Op.in]: vendeurIds } },
+      where: { ...PRODUIT_VISIBLE, disponible: true, vues: { [Op.gt]: 0 }, vendeurId: { [Op.in]: vendeurIds } },
       include: [
         { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] },
         includeVendeurActif(),
@@ -511,7 +546,7 @@ Merci.
 
     const [produits, nouvellesBoutiques] = await Promise.all([
       Produit.findAndCountAll({
-        where: { disponible: true, quantite: { [Op.gt]: 0 } },
+        where: { ...PRODUIT_VISIBLE, disponible: true, quantite: { [Op.gt]: 0 } },
         include: [
           { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] },
           includeVendeurActif(),
@@ -585,6 +620,11 @@ Merci.
       include: [
         {
           model: Produit,
+          // `required: true` avec le filtre : une promotion dont le produit a
+          // été retiré par la modération ne s'affiche plus, au lieu de
+          // s'afficher avec un produit vide.
+          required: true,
+          where: PRODUIT_VISIBLE,
           attributes: ['id', 'nom', 'prix', 'image'],
           include: [
             { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] },
@@ -616,6 +656,7 @@ Merci.
     const [produits, boutiques] = await Promise.all([
       Produit.findAll({
         where: {
+          ...PRODUIT_VISIBLE,
           disponible: true,
           vendeurId: { [Op.in]: vendeurIds },
           [Op.or]: [

@@ -262,7 +262,14 @@ class CommandeService {
       const produit = produits.get(ligne.produitId);
       if (!produit) continue;
       produit.quantite += ligne.quantite;
-      if (produit.quantite > 0) produit.disponible = true;
+      // Le retour de stock remet en ligne ce que la rupture avait retiré —
+      // mais il n'a pas à défaire une décision de modération. Sans le
+      // contrôle du statut, annuler une commande portant un article
+      // entre-temps refusé le remettait en vente, et le trou se rouvrait
+      // tout seul sans que personne n'ait rien fait.
+      if (produit.quantite > 0 && produit.statut === 'approuve') {
+        produit.disponible = true;
+      }
       await produit.save({ transaction });
     }
 
@@ -328,6 +335,22 @@ class CommandeService {
 
         const produit = produits.get(item.produitId);
         if (!produit) throw new BadRequestError(`Produit introuvable : ${item.produitId}`);
+        // UNE DÉCISION DE MODÉRATION S'APPLIQUE À TOUT LE MONDE, le vendeur
+        // compris. C'est la seule exception à la tolérance ci-dessous : il
+        // peut vendre au comptoir un article hors ligne ou en rupture, parce
+        // qu'il sait ce qu'il a en boutique ; il ne peut pas vendre un article
+        // que la plateforme a retiré.
+        //
+        // Ce contrôle manquait, et c'était le plus coûteux de l'affaire : la
+        // création de commande ne regardait que `disponible`, jamais `statut`.
+        // Un article contrefait retiré par un administrateur continuait donc
+        // de se vendre.
+        if (produit.statut === 'rejete') {
+          throw new BadRequestError(
+            `« ${produit.nom} » a été retiré par la modération et ne peut plus être commandé.`,
+          );
+        }
+
         // Commande saisie par le vendeur lui-même : il peut y mettre un
         // produit hors ligne ou en rupture de stock — il sait ce qu'il a.
         const saisieVendeur = origine === 'dashboard';

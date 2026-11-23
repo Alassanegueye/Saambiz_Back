@@ -33,6 +33,9 @@
  */
 
 const mockProduitFindByPk = jest.fn();
+const mockProduitFindOne = jest.fn();
+const mockProduitFindAndCountAll = jest.fn();
+const mockFavoriFindAll = jest.fn();
 const mockProduitFindAll = jest.fn();
 const mockBoutiqueFindByPk = jest.fn();
 
@@ -57,8 +60,9 @@ jest.mock('../../src/config/db', () => ({
 jest.mock('../../src/models', () => ({
   Produit: {
     findByPk: (...a) => mockProduitFindByPk(...a),
+    findOne: (...a) => mockProduitFindOne(...a),
     findAll: (...a) => mockProduitFindAll(...a),
-    findAndCountAll: jest.fn(),
+    findAndCountAll: (...a) => mockProduitFindAndCountAll(...a),
     count: jest.fn(),
     update: jest.fn(),
     create: jest.fn(),
@@ -68,7 +72,7 @@ jest.mock('../../src/models', () => ({
   Categorie: { findAll: jest.fn(), findByPk: jest.fn() },
   Utilisateur: { findByPk: jest.fn(), findOne: jest.fn(), findAll: jest.fn() },
   Abonnement: { findOne: jest.fn(), findAll: jest.fn() },
-  Favori: { findAll: jest.fn(), findOne: jest.fn(), count: jest.fn() },
+  Favori: { findAll: (...a) => mockFavoriFindAll(...a), findOne: jest.fn(), count: jest.fn() },
   Promotion: { findAll: jest.fn(), findOne: jest.fn() },
   Message: { findAll: jest.fn(), count: jest.fn() },
   Notification: { count: jest.fn(), findAll: jest.fn() },
@@ -98,6 +102,7 @@ const BOUTIQUE = 'eeeeeeee-0000-4000-8000-00000000000e';
 
 beforeEach(() => {
   mockProduitFindByPk.mockReset();
+  mockProduitFindOne.mockReset();
   mockProduitFindAll.mockReset();
   mockBoutiqueFindByPk.mockReset();
 });
@@ -147,26 +152,195 @@ describe('H-01 (a) — rejeterProduit retire le produit de la vente', () => {
     expect(ecrits).not.toHaveProperty('disponible');
   });
 
-  it.failing('un produit rejeté ne redevient pas disponible au retour de stock', async () => {
-    // LIMITE CONNUE du correctif (a). `_restituerStock` remet
-    // `disponible = true` dès que la quantité repasse au-dessus de zéro,
-    // SANS regarder `statut` (commande.service.js). Annuler une commande qui
-    // portait un produit entre-temps rejeté le remet donc en vente.
-    //
-    // Le correctif est d'une ligne — `&& produit.statut === 'approuve'` —
-    // mais il est dans `commande.service.js`, un service du périmètre
-    // mobile : il attend l'accord de l'utilisateur.
-    const source = require('fs').readFileSync(
-      require('path').join(__dirname, '../../src/services/commandes/commande.service.js'),
-      'utf8',
-    );
-    expect(source).toMatch(/produit\.quantite > 0 && produit\.statut === 'approuve'/);
+  /**
+   * LE TROU QUI SE ROUVRAIT TOUT SEUL.
+   *
+   * `_restaurerStock` remettait `disponible = true` des que la quantite
+   * repassait au-dessus de zero, sans regarder `statut`. Annuler une commande
+   * portant un produit entre-temps retire le remettait donc en vente — sans
+   * que personne n'ait rien fait, et sans trace.
+   *
+   * Ce test exerce le COMPORTEMENT. Une premiere version se contentait d'une
+   * expression reguliere sur le fichier source : elle aurait passe au vert sur
+   * un commentaire contenant la bonne phrase, et elle ne disait rien de ce que
+   * le code fait vraiment.
+   */
+  describe('le retour de stock ne défait pas une décision de modération', () => {
+    const { Commande, LigneCommande } = require('../../src/models');
+    let CommandeService;
+
+    /** Rejoue `_restaurerStock` sur un produit donné et rend son état. */
+    async function restituer(produit) {
+      CommandeService = require('../../src/services/commandes/commande.service');
+      LigneCommande.findAll.mockResolvedValue([
+        { produitId: produit.id, quantite: 2 },
+      ]);
+      mockProduitFindAll.mockResolvedValue([produit]);
+
+      const commande = {
+        id: 'cmd-1',
+        stockDecremente: true,
+        save: jest.fn(),
+      };
+      await CommandeService._restaurerStock(commande, {
+        LOCK: { UPDATE: 'UPDATE' },
+      });
+      return produit;
+    }
+
+    it('un produit APPROUVÉ repasse bien en ligne', async () => {
+      // Le cas legitime doit continuer de marcher : c'est tout l'interet du
+      // retour de stock, et une protection qui le casserait serait un defaut.
+      const produit = {
+        id: 'p-ok', nom: 'Sac', statut: 'approuve',
+        quantite: 0, disponible: false, save: jest.fn(),
+      };
+      await restituer(produit);
+
+      expect(produit.quantite).toBe(2);
+      expect(produit.disponible).toBe(true);
+    });
+
+    it('un produit REJETÉ récupère son stock mais reste hors ligne', async () => {
+      const produit = {
+        id: 'p-rejete', nom: 'Montre contrefaite', statut: 'rejete',
+        quantite: 0, disponible: false, save: jest.fn(),
+      };
+      await restituer(produit);
+
+      // Le stock revient — il n'y a pas de raison de le perdre, le vendeur
+      // l'a physiquement.
+      expect(produit.quantite).toBe(2);
+      // Mais il ne repart pas en vente.
+      expect(produit.disponible).toBe(false);
+    });
+
+    it('un produit EN ATTENTE reste hors ligne aussi', async () => {
+      const produit = {
+        id: 'p-attente', nom: 'Sac', statut: 'en_attente',
+        quantite: 0, disponible: false, save: jest.fn(),
+      };
+      await restituer(produit);
+
+      expect(produit.disponible).toBe(false);
+    });
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Ce qui est DÉJÀ correct : les surfaces récentes filtrent bien
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LES ROUTES DE LISTE — c'est par elles que le produit restait visible
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('H-01 (b) — chaque liste du catalogue porte le filtre de visibilité', () => {
+  /**
+   * Les méthodes exercées ici sont celles qui listent des produits a un
+   * client. Elles sont appelees par l'application mobile publiee : un produit
+   * retire doit disparaitre de leurs resultats, et c'est l'effet voulu.
+   *
+   * L'assertion porte sur la clause `where` transmise a Sequelize, pas sur le
+   * nombre de lignes rendues : c'est la requete qui doit etre bornee. Un
+   * filtrage fait apres coup, en JavaScript, serait contournable des qu'une
+   * pagination s'y ajoute — on ne filtre pas la page courante, on filtre la
+   * requete.
+   */
+  const LISTES = [
+    ['listerTousProduits', (s) => s.listerTousProduits(ACHETEUR, 1)],
+    ['rechercherProduits', (s) => s.rechercherProduits(ACHETEUR, 'sac', 1)],
+    ['filtrerParVille', (s) => s.filtrerParVille(ACHETEUR, 'Dakar', 1)],
+    ['getProduitsByBoutique', (s) => s.getProduitsByBoutique(BOUTIQUE, 1)],
+    ['listerProduitsAvecFiltres', (s) => s.listerProduitsAvecFiltres({ acheteurId: ACHETEUR })],
+    ['decouverte', (s) => s.decouverte({ page: 1 })],
+    ['produitsTendance', (s) => s.produitsTendance(ACHETEUR)],
+    ['rechercheGlobale', (s) => s.rechercheGlobale(ACHETEUR, 'sac')],
+  ];
+
+  const ACHETEUR = 'cccccccc-0000-4000-8000-00000000000c';
+
+  beforeEach(() => {
+    mockFavoriFindAll.mockResolvedValue([
+      { boutique: { vendeurId: 'v1' } },
+    ]);
+    mockProduitFindAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+    mockProduitFindAll.mockResolvedValue([]);
+    // `getProduitsByBoutique` resout d'abord la boutique.
+    mockBoutiqueFindByPk.mockResolvedValue({ id: BOUTIQUE, vendeurId: 'v1' });
+  });
+
+  for (const [nom, appeler] of LISTES) {
+    it(`${nom} borne sa requête sur statut: approuve`, async () => {
+      await appeler(AcheteurService).catch(() => {});
+
+      const appels = [
+        ...mockProduitFindAndCountAll.mock.calls,
+        ...mockProduitFindAll.mock.calls,
+      ];
+      expect(appels.length).toBeGreaterThan(0); // la méthode a bien requêté
+
+      // Au moins une requête produit, et toutes celles qui en font doivent
+      // porter le filtre.
+      const avecFiltre = appels.filter(
+        (a) => a[0] && a[0].where && a[0].where.statut === 'approuve',
+      );
+      expect(avecFiltre.length).toBe(appels.length);
+    });
+  }
+
+  it('la constante est unique et gelée — douze recopies auraient divergé', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '../../src/services/acheteurs/acheteurs.service.js'),
+      'utf8',
+    );
+    // Une seule déclaration, et elle est gelée.
+    expect(src.match(/const PRODUIT_VISIBLE/g)).toHaveLength(1);
+    expect(src).toContain("Object.freeze({ statut: 'approuve' })");
+
+    // Aucun `statut: 'approuve'` recopié a la main dans du CODE. Les lignes de
+    // commentaire sont ecartees : la premiere version de cette assertion les
+    // comptait et echouait sur le commentaire qui explique justement pourquoi
+    // il n'y a qu'une constante.
+    const recopies = src
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+      .filter((l) => l.includes("statut: 'approuve'") && !l.includes('Object.freeze'));
+    expect(recopies).toEqual([]);
+
+    // Douze usages au moins : c'est le nombre de requêtes à couvrir.
+    expect((src.match(/PRODUIT_VISIBLE/g) || []).length).toBeGreaterThanOrEqual(12);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  « PLUS AU CATALOGUE » N'EST PAS « EFFACÉ DU PASSÉ »
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('H-01 (b) — l\'historique des commandes survit au retrait', () => {
+  it('aucune requête de commande ne joint la table produit', () => {
+    // C'est ce qui rend l'historique structurellement insensible au filtre de
+    // visibilite : un acheteur qui a commande un article depuis retire
+    // continue de voir sa commande et ses lignes.
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '../../src/services/commandes/commande.service.js'),
+      'utf8',
+    );
+    expect(src).not.toMatch(/model:\s*Produit\b/);
+  });
+
+  it('la ligne de commande garde le nom, l\'image et le prix en propre', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '../../src/models/ligneCommande.model.js'),
+      'utf8',
+    );
+    // Denormalisation volontaire : sans elle, retirer un produit du catalogue
+    // viderait les commandes passees.
+    for (const champ of ['nomProduit', 'imageProduit', 'prixUnitaire']) {
+      expect(src).toContain(champ);
+    }
+  });
+});
 
 describe('Le filtre de visibilité EST appliqué sur les surfaces récentes', () => {
   it('le catalogue public exige statut: approuve', () => {
@@ -195,33 +369,30 @@ describe('Le filtre de visibilité EST appliqué sur les surfaces récentes', ()
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('T-22 — un produit rejeté ne doit plus être visible', () => {
-  it.failing('la fiche produit refuse un produit rejeté', async () => {
-    // La base renvoie le produit : c'est au service de ne pas le servir.
-    mockProduitFindByPk.mockResolvedValue({
-      id: PRODUIT_REJETE,
-      nom: 'Montre contrefaite',
-      statut: 'rejete',
-      disponible: true,
-    });
+  it('la fiche produit refuse un produit rejeté', async () => {
+    // La requête est bornée : un produit rejeté n'est pas trouvé.
+    mockProduitFindOne.mockResolvedValue(null);
 
-    // Attendu : soit un refus, soit une requête qui exclut `rejete`.
-    // Constaté aujourd'hui : le produit est renvoyé tel quel.
     await expect(AcheteurService.getDetailProduit(PRODUIT_REJETE)).rejects.toThrow();
   });
 
-  it.failing('la fiche produit borne au moins sa requête sur le statut', async () => {
-    mockProduitFindByPk.mockResolvedValue({ id: PRODUIT_REJETE, statut: 'rejete' });
+  it('la fiche produit borne sa requête sur le statut', async () => {
+    mockProduitFindOne.mockResolvedValue(null);
 
     await AcheteurService.getDetailProduit(PRODUIT_REJETE).catch(() => {});
 
-    // `findByPk(id, options)` : le second argument devrait porter le filtre.
-    const options = mockProduitFindByPk.mock.calls[0][1] || {};
-    expect(options.where).toEqual(
-      expect.objectContaining({ statut: 'approuve' }),
+    // Cette assertion a été réécrite avec le correctif : elle portait sur
+    // `findByPk(id, options)`, et le service utilise desormais `findOne` —
+    // précisément pour pouvoir poser un `where`. Laissée telle quelle, elle
+    // aurait continué d'« échouer » sur un `mock.calls[0]` absent, donc de
+    // passer en `it.failing` alors que le défaut était corrigé.
+    const { where } = mockProduitFindOne.mock.calls[0][0];
+    expect(where).toEqual(
+      expect.objectContaining({ id: PRODUIT_REJETE, statut: 'approuve' }),
     );
   });
 
-  it.failing('le détail d\'une boutique n\'inclut pas ses produits rejetés', async () => {
+  it('le détail d\'une boutique n\'inclut pas ses produits rejetés', async () => {
     mockBoutiqueFindByPk.mockResolvedValue({
       id: BOUTIQUE,
       favoris: [],
@@ -258,7 +429,7 @@ describe('T-22 — un produit rejeté ne doit pas être commandable', () => {
    * test marqué `failing` qui échoue pour la mauvaise raison ne prouve rien
    * et passerait au vert sans que le défaut soit corrigé.
    */
-  it.failing('la création de commande refuse un produit rejeté', async () => {
+  it('la création de commande refuse un produit rejeté', async () => {
     const CommandeService = require('../../src/services/commandes/commande.service');
     const { Commande } = require('../../src/models');
 
