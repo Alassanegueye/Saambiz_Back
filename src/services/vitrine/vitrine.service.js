@@ -31,6 +31,7 @@ const { BadRequestError, ForbiddenError, NotFoundError } = require('../../errors
 const logger = require('../../utils/logger');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 const { estEmailValide } = require('../../utils/email');
+const choisirDansTable = require('../../utils/choixDansTable');
 
 // Mises en page proposées au vendeur. Trois suffisent à couvrir ce que
 // vendent les boutiques sénégalaises : du prêt-à-porter qui se montre en
@@ -500,7 +501,11 @@ class VitrineService {
       where,
       include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
       attributes: ATTRIBUTS_PRODUIT,
-      order: enPromo ? VitrineService._ordrePromo() : (ORDRES[tri] || ORDRES.pertinence),
+      // Voir utils/choixDansTable : `ORDRES[tri] ||` laissait passer
+      // `tri=constructor` et `tri=__proto__`.
+      order: enPromo
+        ? VitrineService._ordrePromo()
+        : choisirDansTable(ORDRES, tri, ORDRES.pertinence),
       limit: l,
       offset: (p - 1) * l,
       distinct: true,

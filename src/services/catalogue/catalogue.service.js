@@ -4,6 +4,7 @@ const {
 } = require('../../models');
 const { NotFoundError } = require('../../errors/AppError');
 const CategorieService = require('../categories/categorie.service');
+const choisirDansTable = require('../../utils/choixDansTable');
 
 /**
  * Catalogue public : ce que voit un client, connecté ou non.
@@ -220,7 +221,10 @@ class CatalogueService {
       where,
       attributes: ATTRIBUTS,
       include: [{ model: Categorie, as: 'categorie', attributes: ['id', 'nom', 'slug', 'icone', 'specifications'] }],
-      order: TRIS[f.tri] || (f.promo ? TRIS.promos : TRIS.recents),
+      // `choisirDansTable` et non `TRIS[f.tri] ||` : la recherche directe
+      // traverse la chaîne des prototypes, et `tri=constructor` renvoyait
+      // la fonction `Object` — vraie, donc le repli ne jouait pas.
+      order: choisirDansTable(TRIS, f.tri, f.promo ? TRIS.promos : TRIS.recents),
       limit,
       offset: (page - 1) * limit,
       distinct: true,
