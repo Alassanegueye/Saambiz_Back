@@ -64,8 +64,8 @@ function ligne(ilYaMs, extra = {}) {
 beforeEach(() => jest.clearAllMocks());
 
 describe('La règle', () => {
-  test('trois heures, et c’est la valeur par défaut', () => {
-    expect(refreshTokenConfig.inactiviteMaxMs).toBe(3 * HEURE);
+  test('une semaine, et c’est la valeur par défaut', () => {
+    expect(refreshTokenConfig.inactiviteMaxMs).toBe(7 * 24 * HEURE);
   });
 
   test('une valeur absurde ne désactive pas la règle', () => {
@@ -85,9 +85,9 @@ describe('Une session qui a servi récemment', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  test('deux heures cinquante-neuf : elle continue encore', async () => {
-    // La limite doit être nette : on ne ferme pas « vers » trois heures.
-    mockFindOne.mockResolvedValue(ligne(3 * HEURE - MINUTE));
+  test('six jours et vingt-trois heures : elle continue encore', async () => {
+    // La limite doit être nette : on ne ferme pas « vers » une semaine.
+    mockFindOne.mockResolvedValue(ligne(7 * 24 * HEURE - MINUTE));
 
     expect((await RefreshTokenService.verifier(jetonPour('u-1'))).valide).toBe(true);
   });
@@ -104,19 +104,19 @@ describe('Une session qui a servi récemment', () => {
 });
 
 describe('Une session restée silencieuse', () => {
-  test('trois heures et une minute : elle est fermée', async () => {
-    mockFindOne.mockResolvedValue(ligne(3 * HEURE + MINUTE));
+  test('une semaine et une minute : elle est fermée', async () => {
+    mockFindOne.mockResolvedValue(ligne(7 * 24 * HEURE + MINUTE));
 
     const r = await RefreshTokenService.verifier(jetonPour('u-1'));
 
     expect(r.valide).toBe(false);
     expect(r.inactivite).toBe(true);
-    expect(r.motif).toMatch(/trois heures/i);
+    expect(r.motif).toMatch(/une semaine/i);
   });
 
   test('le jeton est révoqué, pas seulement refusé', async () => {
     // Refusé sans être révoqué, il resterait présentable indéfiniment.
-    mockFindOne.mockResolvedValue(ligne(4 * HEURE));
+    mockFindOne.mockResolvedValue(ligne(8 * 24 * HEURE));
 
     await RefreshTokenService.verifier(jetonPour('u-1'));
 
@@ -135,7 +135,7 @@ describe('Une session restée silencieuse', () => {
   test('le délai de grâce ne la ressuscite pas', async () => {
     // La grâce existe pour un remplaçant perdu en chemin (réseau coupé
     // pendant la rotation), pas pour rouvrir ce que le temps a fermé.
-    mockFindOne.mockResolvedValue(ligne(5 * HEURE, {
+    mockFindOne.mockResolvedValue(ligne(8 * 24 * HEURE, {
       rotatedAt: new Date(Date.now() - MINUTE),
     }));
 
