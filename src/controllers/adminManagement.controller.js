@@ -44,7 +44,11 @@ exports.modifierAdmin = asyncHandler(async (req, res) => {
 });
 
 exports.supprimerAdmin = asyncHandler(async (req, res) => {
-  const result = await AdminManagementService.supprimerAdmin(req.params.userId);
+  // L'identité du demandeur vient du jeton, jamais du corps de la requête :
+  // c'est elle qui permet au service de refuser une auto-suppression.
+  const result = await AdminManagementService.supprimerAdmin(req.params.userId, {
+    demandeurId: req.user.id,
+  });
   tracer(req, 'supprimer_admin', 'admin', req.params.userId);
   res.json(result);
 });
