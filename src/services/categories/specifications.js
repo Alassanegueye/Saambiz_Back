@@ -6,7 +6,7 @@ const { BadRequestError, ValidationError } = require('../../errors/AppError');
  * Le format est décrit dans src/constants/specificationsCategories.js.
  */
 
-const TYPES = ['variantes', 'liste', 'choix', 'texte', 'nombre', 'oui_non'];
+const TYPES = ['variantes', 'couleurs', 'liste', 'choix', 'texte', 'nombre', 'oui_non'];
 const MAX_CHAMPS = 20;
 const MAX_OPTIONS = 60;
 // Caractéristiques que le vendeur ajoute lui-même, par produit.
@@ -36,6 +36,43 @@ const sansDoublon = (liste) => {
 };
 
 const texteCourt = (v, max) => String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
+
+/**
+ * Couleurs d'un produit : un code et un nom par couleur.
+ *
+ * Pourquoi un type à part, et pas des `variantes` : le vendeur tapait
+ * « Noir, Blanc, Rouge » à la main, avec ses fautes et ses synonymes — le
+ * client voyait « rouge », « Rouge vif » et « bordeaux » pour la même étoffe,
+ * et rien ne permettait d'afficher la couleur elle-même. Ici le code vient
+ * du nuancier et le nom reste libre : on montre la couleur, on écrit le mot.
+ *
+ * Une valeur arrivée sous forme de texte (une catégorie passée de
+ * `variantes` à `couleurs`) est conservée sans code : la perdre au premier
+ * enregistrement serait une mauvaise surprise, et le vendeur n'a plus qu'à
+ * choisir la teinte.
+ */
+const HEXA = /^#[0-9a-f]{6}$/i;
+
+function nettoyerCouleurs(brut) {
+  const liste = Array.isArray(brut) ? brut : (typeof brut === 'string' ? decouper(brut) : []);
+  const vues = new Set();
+  const propres = [];
+  for (const entree of liste) {
+    const objet = typeof entree === 'string' ? { nom: entree } : (entree || {});
+    const code = HEXA.test(String(objet.code || '').trim())
+      ? String(objet.code).trim().toLowerCase()
+      : null;
+    const nom = texteCourt(objet.nom, 40) || code || '';
+    if (!nom) continue;
+    // Deux fois la même teinte ne sert à rien ; à défaut de code, le nom
+    // fait foi.
+    const empreinte = (code || nom).toLowerCase();
+    if (vues.has(empreinte)) continue;
+    vues.add(empreinte);
+    propres.push(code ? { code, nom } : { nom });
+  }
+  return propres.slice(0, MAX_OPTIONS);
+}
 
 /** Nettoie un tableau d'options : textes non vides, sans doublon. */
 function nettoyerOptions(options) {
@@ -76,6 +113,8 @@ function normaliserSchema(entree) {
     cles.add(cle);
 
     const champ = { cle, libelle, type };
+    // `couleurs` n'a rien à déclarer : le nuancier est universel, l'admin
+    // n'a pas à énumérer les teintes du monde.
     if (['variantes', 'liste', 'choix'].includes(type)) {
       champ.options = nettoyerOptions(brut?.options);
       if (type === 'variantes') champ.libre = brut?.libre === true || brut?.libre === 'true';
@@ -160,6 +199,16 @@ function validerAttributs(schema, attributs) {
         // Les variantes restent un tableau : c'est ce que la vitrine et
         // l'application proposent au client. Une liste n'est qu'une info.
         resultat[champ.cle] = champ.type === 'variantes' ? uniques.slice(0, MAX_OPTIONS) : uniques.join(', ');
+        break;
+      }
+      case 'couleurs': {
+        const couleurs = nettoyerCouleurs(brut);
+        if (!couleurs.length) {
+          delete resultat[champ.cle];
+          if (champ.obligatoire) erreurs.push({ champ: champ.cle, message: `${champ.libelle} : à renseigner` });
+          break;
+        }
+        resultat[champ.cle] = couleurs;
         break;
       }
       case 'choix': {
