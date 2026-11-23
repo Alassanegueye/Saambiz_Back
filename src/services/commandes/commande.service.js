@@ -1,4 +1,5 @@
 // services/commandes/commande.service.js
+const crypto = require('crypto');
 const { Commande, LigneCommande, Produit, Utilisateur, Boutique, HistoriqueCommande } = require('../../models');
 const sequelize = require('../../config/db');
 const ConfigService = require('../config/config.service');
@@ -60,6 +61,11 @@ const LIBELLES_STATUT = {
 
 const libelle = (statut) => LIBELLES_STATUT[statut] || statut;
 
+// Alphabet des références de commande : chiffres et majuscules, c'est-à-dire
+// base 36 — le même jeu de caractères qu'avant, pour que les références déjà
+// imprimées sur des reçus restent du même genre. Voir `_genererReference`.
+const ALPHABET_REFERENCE = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 // Le vendeur, avec sa boutique : le client reconnaît une commande au nom de
 // la boutique, pas à celui de la personne qui la tient. Une fonction plutôt
 // qu'un objet partagé : Sequelize annote les `include` qu'on lui passe.
@@ -74,9 +80,39 @@ class CommandeService {
 
   // -------------------- HELPERS --------------------
 
+  /**
+   * Référence de commande : `CMD-<année>-<6 caractères>`.
+   *
+   * Tirée par `crypto.randomInt` et non par `Math.random`, pour deux raisons.
+   *
+   * LA PREMIÈRE est que cette référence est un FACTEUR D'AUTHENTIFICATION.
+   * Le suivi de commande sans compte (`GET /vitrine/commande/:reference`) la
+   * demande avec le numéro de téléphone du client, et rend la commande : nom,
+   * articles, adresse de livraison, montant. `Math.random` n'est pas
+   * cryptographique — l'état interne du générateur se reconstitue à partir de
+   * quelques tirages observés —, donc un vendeur qui collecte les références
+   * de ses propres commandes peut prédire celles qui suivent. Il resterait le
+   * téléphone à deviner, et le plafond de 40 essais par dix minutes ; mais on
+   * ne veut pas qu'un facteur d'authentification soit prédictible, même
+   * accompagné.
+   *
+   * LA SECONDE est la régularité du format. `Math.random().toString(36)`
+   * rendait entre 1 et 6 caractères selon le tirage : un nombre un peu petit
+   * donnait « CMD-2026-ABC », et réduisait d'autant l'espace des références.
+   * Six caractères sont maintenant garantis, soit 36⁶ ≈ 2,2 milliards de
+   * valeurs à chaque fois.
+   *
+   * `randomInt` plutôt qu'un reste de division sur `randomBytes` : 256 n'est
+   * pas un multiple de 36, et le reste favoriserait les quatre premiers
+   * caractères de l'alphabet. Le biais serait faible et sans conséquence
+   * pratique — autant ne pas l'introduire.
+   */
   static _genererReference() {
     const annee = new Date().getFullYear();
-    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+    let rand = '';
+    for (let i = 0; i < 6; i += 1) {
+      rand += ALPHABET_REFERENCE[crypto.randomInt(ALPHABET_REFERENCE.length)];
+    }
     return `CMD-${annee}-${rand}`;
   }
 
