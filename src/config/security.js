@@ -68,6 +68,31 @@ const jwtConfig = {
   // la boucle ci-dessus a déjà exigé une valeur distincte.
   resetSecret: _resetSecret || _accessSecret,
   resetExpiresIn: process.env.JWT_RESET_EXPIRES_IN || '1h',
+
+  // ─── Options de VÉRIFICATION, en un seul endroit ───────────────────────
+  //
+  // Tous les jetons du projet sont émis par `jwt.sign` sans option
+  // `algorithm`, donc en HS256. Mais `jwt.verify(token, secret)` sans options
+  // accepte toute la famille HMAC — HS256, HS384 et HS512 — puisque le même
+  // secret les signe toutes. Aucun jeton légitime n'arrive en HS384 ni en
+  // HS512 : les accepter élargit la surface sans aucun bénéfice.
+  //
+  // `jsonwebtoken` 9 refuse déjà « alg: none », et les trois secrets
+  // distincts ferment la confusion entre jeton d'accès, de rafraîchissement
+  // et de réinitialisation. L'épinglage est donc de la défense en
+  // profondeur, pas la fermeture d'une porte ouverte.
+  //
+  // UN SEUL ENDROIT À CHANGER, parce que cinq appels s'en servent : les deux
+  // middlewares d'authentification, la poignée de main des sockets, et les
+  // deux vérifications de jeton de rafraîchissement. Cinq copies de la même
+  // option auraient fini par diverger — et une option de sécurité qui
+  // diverge, c'est une faille à l'endroit qu'on a oublié.
+  //
+  // À comparer avec `connexionSociale.service.js`, qui épingle de son côté
+  // `algorithms`, `issuer` ET `audience` pour les jetons Google et Apple :
+  // le projet savait faire, cela n'avait simplement jamais été appliqué à ses
+  // propres jetons.
+  optionsVerification: { algorithms: ['HS256'] },
 };
 
 // Nombre maximal de sessions simultanées par compte. Au-delà, la plus

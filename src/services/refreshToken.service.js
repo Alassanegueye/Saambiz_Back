@@ -64,7 +64,7 @@ class RefreshTokenService {
   static async verifier(token) {
     let charge;
     try {
-      charge = jwt.verify(token, jwtConfig.refreshSecret);
+      charge = jwt.verify(token, jwtConfig.refreshSecret, jwtConfig.optionsVerification);
     } catch {
       return { valide: false, motif: 'Jeton de rafraîchissement invalide ou expiré' };
     }
@@ -166,7 +166,7 @@ class RefreshTokenService {
   /** Jeton remplacé par une rotation il y a moins de DELAI_GRACE_MS. */
   static async _dansLeDelaiDeGrace(token) {
     try {
-      jwt.verify(token, jwtConfig.refreshSecret);
+      jwt.verify(token, jwtConfig.refreshSecret, jwtConfig.optionsVerification);
     } catch {
       return null;
     }

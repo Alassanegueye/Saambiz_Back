@@ -26,7 +26,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   // Signature et expiration d'abord (aucune I/O).
-  const decoded = jwt.verify(token, jwtConfig.secret);
+  const decoded = jwt.verify(token, jwtConfig.secret, jwtConfig.optionsVerification);
 
   // Puis la révocation explicite : déconnexion, changement de mot de passe,
   // suppression de compte.

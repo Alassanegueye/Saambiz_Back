@@ -30,7 +30,7 @@ async function socketAuthMiddleware(socket, next) {
 
     // Signature d'abord, aucune I/O : un jeton forgé est rejeté sans
     // faire travailler PostgreSQL (même ordre que le middleware HTTP).
-    const decoded = jwt.verify(token, jwtConfig.secret);
+    const decoded = jwt.verify(token, jwtConfig.secret, jwtConfig.optionsVerification);
 
     const revoque = await TokenBlacklist.findOne({ where: { token } });
     if (revoque) {
