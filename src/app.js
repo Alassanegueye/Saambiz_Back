@@ -113,21 +113,33 @@ app.use((req, _res, next) => {
   next();
 });
 
-// rawBody uniquement sur la route webhook Orange (évite double bufferisation)
-app.use('/saambiz/paiement/webhook/orange', (req, res, next) => {
-  let data = '';
-  req.on('data', chunk => { data += chunk; });
-  req.on('end', () => { req.rawBody = data; });
-  next();
-});
-
+// Les deux notifications de paiement signent LE CORPS BRUT, à l'octet près.
+// Il est donc conservé avant que le parseur ne le remplace par un objet.
+//
+// POURQUOI UN SEUL ENDROIT POUR LES DEUX. Orange avait son propre middleware,
+// monté sur `/saambiz/paiement/webhook/orange`. Or le routeur d'API est exposé
+// à DEUX adresses (`/saambiz/v1/…`, la référence, et `/saambiz/…`, l'alias
+// historique) : le corps brut n'était donc collecté que sur la seconde. Sur
+// l'adresse de référence, `req.rawBody` était absent et la vérification de
+// signature retombait sur `JSON.stringify(req.body)` — une RÉ-SÉRIALISATION,
+// qui ne rend les octets d'origine que si l'émetteur a envoyé du JSON compact.
+// Aucun risque de contournement (le HMAC reste infalsifiable), mais une
+// notification légitime pouvait être rejetée : paiement encaissé côté
+// opérateur, jamais confirmé côté SaamBiz.
+//
+// Ce middleware-là avait un second défaut : il appelait `next()` sans attendre
+// la fin du flux, donc il courait contre le parseur qui lit le même flux.
+// Le `verify` d'`express.json` reçoit le tampon déjà complet — il n'y a plus
+// de course, plus de double bufferisation, et la règle vaut pour les deux
+// adresses d'un coup.
+//
 // 512 ko : les fichiers passent par Multer, pas par ce parseur. Une limite
 // haute ici n'apporte rien et offre une surface d'épuisement mémoire.
-// La signature des notifications Wave porte sur le corps brut, à l'octet près.
+const CORPS_BRUT_REQUIS = /\/paiement\/webhook\/(orange|wave)\b/;
 app.use(express.json({
   limit: '512kb',
   verify: (req, _res, tampon) => {
-    if (req.originalUrl.includes('/paiement/webhook/wave')) req.rawBody = tampon.toString('utf8');
+    if (CORPS_BRUT_REQUIS.test(req.originalUrl)) req.rawBody = tampon.toString('utf8');
   },
 }));
 app.use(express.urlencoded({ extended: true, limit: '512kb' }));
