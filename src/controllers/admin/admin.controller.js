@@ -28,9 +28,10 @@ const tracer = (req, action, cible, cibleId, details = {}) =>
 
 // -------------------- LISTE DES VENDEURS --------------------
 exports.listeVendeur = asyncHandler(async (req, res) => {
-  const result = await AdminService.listerVendeur();
+  const { statut, recherche, page, limit } = req.query;
+  const result = await AdminService.listerVendeur({ statut, recherche, page, limit });
   return res.status(200).json({
-    message: result.message,
+    ...result,
     vendeurs: result.vendeurs.map((vendeur) => formatUser(vendeur)),
   });
 });
@@ -61,8 +62,9 @@ exports.nombreProduitsActifs = asyncHandler(async (req, res) => {
 
 // -------------------- LISTE DES CLIENTS --------------------
 exports.listeClients = asyncHandler(async (req, res) => {
-  const result = await AdminService.listerClients();
-  return res.status(200).json({ message: result.message, clients: result.clients });
+  const { statut, recherche, page, limit } = req.query;
+  const result = await AdminService.listerClients({ statut, recherche, page, limit });
+  return res.status(200).json(result);
 });
 
 // -------------------- NOMBRE DE CLIENTS --------------------
@@ -105,7 +107,8 @@ exports.suspendreAcheteur = asyncHandler(async (req, res) => {
 
 // -------------------- LISTE ABONNEMENTS --------------------
 exports.getAbonnements = asyncHandler(async (req, res) => {
-  const result = await AdminService.getAbonnements({ statut: req.query.statut });
+  const { statut, recherche, page, limit } = req.query;
+  const result = await AdminService.getAbonnements({ statut, recherche, page, limit });
   return res.status(200).json(result);
 });
 
@@ -396,8 +399,10 @@ exports.optionsBoutiques = asyncHandler(async (req, res) => {
 });
 
 exports.listerProduits = asyncHandler(async (req, res) => {
-  const { boutiqueId, statut } = req.query;
-  res.status(200).json(await AdminCatalogueService.listerProduits({ boutiqueId, statut }));
+  const { boutiqueId, statut, recherche, page, limit } = req.query;
+  res.status(200).json(await AdminCatalogueService.listerProduits({
+    boutiqueId, statut, recherche, page, limit,
+  }));
 });
 
 exports.detailProduit = asyncHandler(async (req, res) => {

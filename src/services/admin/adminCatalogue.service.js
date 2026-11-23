@@ -7,6 +7,7 @@ const VendeurService = require('../vendeurs/vendeur.service');
 const CommandeService = require('../commandes/commande.service');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
 const echecIgnore = require('../../utils/echecIgnore');
+const { paginate } = require('../../utils/paginate');
 
 /**
  * Produits et commandes gérés depuis le dashboard admin.
@@ -65,18 +66,83 @@ class AdminCatalogueService {
 
   // -------------------- PRODUITS --------------------
 
-  static async listerProduits({ boutiqueId, statut } = {}) {
-    const where = {};
-    if (boutiqueId) where.vendeurId = await AdminCatalogueService._vendeurIdDeBoutique(boutiqueId);
-    if (statut === 'disponibles') Object.assign(where, { disponible: true, quantite: { [Op.gt]: 0 } });
-    if (statut === 'indisponibles') where[Op.or] = [{ disponible: false }, { quantite: { [Op.lte]: 0 } }];
+  /** Clause d'un filtre de disponibilité. */
+  static _filtreDisponibilite(statut) {
+    if (statut === 'disponibles') return { disponible: true, quantite: { [Op.gt]: 0 } };
+    if (statut === 'indisponibles') return { [Op.or]: [{ disponible: false }, { quantite: { [Op.lte]: 0 } }] };
+    return {};
+  }
 
-    const produits = await Produit.findAll({
-      where,
-      include: [VENDEUR_AVEC_BOUTIQUE, { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }],
+  /**
+   * Combien de produits dans chaque état, pour les pastilles de filtre.
+   * Comptés sur toute la table : sur la page affichée, ils auraient annoncé
+   * « 10 en vente » quel que soit le catalogue.
+   */
+  static async _compteursProduits(base) {
+    const compter = (extra) => Produit.count({ where: { ...base, ...extra } });
+    const [tous, disponibles, indisponibles] = await Promise.all([
+      compter({}),
+      compter(AdminCatalogueService._filtreDisponibilite('disponibles')),
+      compter(AdminCatalogueService._filtreDisponibilite('indisponibles')),
+    ]);
+    return { '': tous, disponibles, indisponibles };
+  }
+
+  /**
+   * Catalogue de toutes les boutiques.
+   *
+   * Paginé à la demande : sans `page` ni `limit`, la liste entière est
+   * renvoyée comme avant — c'est ce dont le formulaire de commande a besoin
+   * pour proposer les produits d'une boutique.
+   */
+  static async listerProduits({ boutiqueId, statut, recherche, page, limit } = {}) {
+    const base = {};
+    if (boutiqueId) base.vendeurId = await AdminCatalogueService._vendeurIdDeBoutique(boutiqueId);
+
+    const where = { ...base, ...AdminCatalogueService._filtreDisponibilite(statut) };
+
+    // La recherche porte sur le produit et sur sa boutique : c'est ainsi
+    // qu'un administrateur cherche — « le savon de chez Awa ».
+    const terme = String(recherche || '').trim();
+    if (terme) {
+      const motif = `%${terme.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      where[Op.and] = [{
+        [Op.or]: [
+          { nom: { [Op.iLike]: motif } },
+          { marque: { [Op.iLike]: motif } },
+          { '$categorie.nom$': { [Op.iLike]: motif } },
+          { '$vendeur.nom$': { [Op.iLike]: motif } },
+          { '$vendeur.prenom$': { [Op.iLike]: motif } },
+        ],
+      }];
+    }
+
+    const include = [VENDEUR_AVEC_BOUTIQUE, { model: Categorie, as: 'categorie', attributes: ['id', 'nom'] }];
+    const compteurs = await AdminCatalogueService._compteursProduits(base);
+
+    if (page === undefined && limit === undefined) {
+      const produits = await Produit.findAll({
+        where, include, order: [['createdAt', 'DESC']], subQuery: false,
+      });
+      return { produits: produits.map(aplatir), compteurs };
+    }
+
+    const p = paginate(page, limit);
+    const { rows, count } = await Produit.findAndCountAll({
+      where, include,
       order: [['createdAt', 'DESC']],
+      limit: p.limit,
+      offset: p.offset,
+      subQuery: false,
+      distinct: true,
     });
-    return { produits: produits.map(aplatir) };
+    return {
+      produits: rows.map(aplatir),
+      total: count,
+      page: p.page,
+      pages: Math.ceil(count / p.limit),
+      compteurs,
+    };
   }
 
   static async detailProduit(id) {

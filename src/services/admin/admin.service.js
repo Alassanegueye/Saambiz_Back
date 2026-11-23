@@ -22,24 +22,106 @@ const { urlLecture } = require('../stockage/upload.service');
 
 class AdminService {
 
+  /**
+   * Clause de recherche d'un compte : nom, prénom, e-mail, téléphone.
+   */
+  static _rechercheCompte(recherche) {
+    return AdminService._recherche(recherche, ['nom', 'prenom', 'email', 'telephone']);
+  }
+
+  /**
+   * Clause correspondant à un filtre d'état de compte.
+   *
+   * Un compte supprimé par son titulaire n'est ni actif ni suspendu : il est
+   * parti. Le confondre avec une suspension faisait proposer un
+   * « Réactiver » sans effet — l'API refuse la connexion de toute façon.
+   */
+  static _filtreStatutCompte(statut) {
+    if (statut === 'actifs') return { statut: 'actif', compteSupprime: false };
+    if (statut === 'inactifs') return { statut: 'inactif', compteSupprime: false };
+    if (statut === 'supprimes') return { compteSupprime: true };
+    return {};
+  }
+
+  /**
+   * Combien de comptes dans chaque état, pour les pastilles de filtre.
+   *
+   * Ces effectifs viennent du serveur depuis que les listes sont paginées :
+   * calculés sur la page affichée, ils auraient annoncé « 2 actifs » quand
+   * la plateforme en compte deux cents.
+   */
+  static async _compteursComptes(role, base = {}) {
+    const compter = (extra) => Utilisateur.count({ where: { role, ...base, ...extra } });
+    const [tous, actifs, inactifs, supprimes] = await Promise.all([
+      compter({}),
+      compter(AdminService._filtreStatutCompte('actifs')),
+      compter(AdminService._filtreStatutCompte('inactifs')),
+      compter(AdminService._filtreStatutCompte('supprimes')),
+    ]);
+    return { '': tous, actifs, inactifs, supprimes };
+  }
+
+  /**
+   * Liste de comptes, paginée **à la demande**.
+   *
+   * Sans `page` ni `limit`, la liste entière est renvoyée comme avant : le
+   * formulaire de commande du back-office appelle cette route pour remplir
+   * son menu déroulant de clients, et une page de dix l'aurait amputé sans
+   * que rien ne le dise. La pagination est donc une demande explicite de
+   * l'appelant, pas un changement imposé à tous.
+   */
+  static async _listerComptes({ role, cle, inclure, statut, recherche, page, limit }) {
+    const where = {
+      role,
+      ...AdminService._filtreStatutCompte(statut),
+      ...AdminService._rechercheCompte(recherche),
+    };
+    const options = {
+      attributes: { exclude: ['mot_de_passe'] },
+      where,
+      ...(inclure ? { include: inclure } : {}),
+      order: [['createdAt', 'DESC']],
+    };
+
+    const paginee = page !== undefined || limit !== undefined;
+    if (!paginee) {
+      const lignes = await Utilisateur.findAll(options);
+      return { [cle]: lignes, compteurs: await AdminService._compteursComptes(role) };
+    }
+
+    const p = paginate(page, limit);
+    const { rows, count } = await Utilisateur.findAndCountAll({
+      ...options,
+      limit: p.limit,
+      offset: p.offset,
+      // Une jointure `hasMany` (les boutiques) ferait compter les lignes
+      // jointes au lieu des comptes.
+      distinct: true,
+    });
+    return {
+      [cle]: rows,
+      total: count,
+      page: p.page,
+      pages: Math.ceil(count / p.limit),
+      compteurs: await AdminService._compteursComptes(role),
+    };
+  }
+
   // 1. Lister tous les vendeurs
-  static async listerVendeur() {
+  static async listerVendeur(filtres = {}) {
     try {
-      const vendeurs = await Utilisateur.findAll({
-        attributes: { exclude: ['mot_de_passe'] },
-        where: { role: 'Vendeur' },
+      const resultat = await AdminService._listerComptes({
+        ...filtres,
+        role: 'Vendeur',
+        cle: 'vendeurs',
         // La boutique et l'état de son site : l'admin peut l'activer d'ici.
-        include: [{
+        inclure: [{
           model: Boutique, as: 'boutiques', required: false,
           attributes: ['id', 'nom', 'slug', 'statut', 'vitrineActive', 'vitrineConfiguree'],
         }],
-        order: [['createdAt', 'DESC']]
       });
 
-      return {
-        message: "Liste des vendeurs",
-        vendeurs
-      };
+      return { message: 'Liste des vendeurs', ...resultat };
 
     } catch (error) {
       logger.error('Erreur listerVendeur', { message: error.message });
@@ -127,19 +209,15 @@ class AdminService {
   }
 
   // 5. Liste des clients
-  static async listerClients() {
+  static async listerClients(filtres = {}) {
     try {
-
-      const { rows } = await Utilisateur.findAndCountAll({
-        where: { role: 'Acheteur' },
-        attributes: { exclude: ['mot_de_passe'] },
-        order: [['createdAt', 'DESC']]
+      const resultat = await AdminService._listerComptes({
+        ...filtres,
+        role: 'Acheteur',
+        cle: 'clients',
       });
 
-      return {
-        message: "Liste des clients",
-        clients: rows
-      };
+      return { message: 'Liste des clients', ...resultat };
 
     } catch (error) {
       logger.error('Erreur listerClients', { message: error.message });
@@ -227,7 +305,7 @@ class AdminService {
   // `statut` était reçu par la route et jeté ici : le back-office envoyait
   // bien `?statut=actif`, cette méthode ne prenait aucun argument, et le
   // filtre de l'écran ne changeait donc rien à la liste affichée.
-  static async getAbonnements({ statut } = {}) {
+  static async getAbonnements({ statut, recherche, page, limit } = {}) {
     const where = {};
     if (statut) {
       if (!STATUTS_ABONNEMENT.includes(statut)) {
@@ -238,12 +316,64 @@ class AdminService {
       where.statut = statut;
     }
 
-    const abonnements = await Abonnement.findAll({
-      where,
-      include: [{ model: Utilisateur, as: 'utilisateur', attributes: { exclude: ['mot_de_passe'] } }],
-      order: [['createdAt', 'DESC']]
+    // La recherche porte sur le vendeur abonné : c'est ainsi qu'on cherche
+    // un abonnement, pas par son identifiant.
+    const terme = String(recherche || '').trim();
+    if (terme) {
+      const motif = `%${terme.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      where[Op.or] = [
+        { '$utilisateur.nom$': { [Op.iLike]: motif } },
+        { '$utilisateur.prenom$': { [Op.iLike]: motif } },
+        { '$utilisateur.email$': { [Op.iLike]: motif } },
+      ];
+    }
+
+    const include = [{
+      model: Utilisateur, as: 'utilisateur',
+      attributes: { exclude: ['mot_de_passe'] },
+    }];
+
+    // Effectifs par état, comptés sur toute la table : les pastilles de
+    // filtre annonceraient sinon ceux de la page affichée.
+    const compteurs = await AdminService._compteursAbonnements();
+
+    // Sans `page` ni `limit`, la liste entière est renvoyée comme avant.
+    if (page === undefined && limit === undefined) {
+      const abonnements = await Abonnement.findAll({
+        where, include, order: [['createdAt', 'DESC']], subQuery: false,
+      });
+      return { message: 'Liste des abonnements', abonnements, compteurs };
+    }
+
+    const p = paginate(page, limit);
+    const { rows, count } = await Abonnement.findAndCountAll({
+      where, include,
+      order: [['createdAt', 'DESC']],
+      limit: p.limit,
+      offset: p.offset,
+      subQuery: false,
+      distinct: true,
     });
-    return { message: 'Liste des abonnements', abonnements };
+    return {
+      message: 'Liste des abonnements',
+      abonnements: rows,
+      total: count,
+      page: p.page,
+      pages: Math.ceil(count / p.limit),
+      compteurs,
+    };
+  }
+
+  /** Combien d'abonnements dans chacun des trois états. */
+  static async _compteursAbonnements() {
+    const [tous, ...parStatut] = await Promise.all([
+      Abonnement.count(),
+      ...STATUTS_ABONNEMENT.map((s) => Abonnement.count({ where: { statut: s } })),
+    ]);
+    return Object.fromEntries([
+      ['', tous],
+      ...STATUTS_ABONNEMENT.map((s, i) => [s, parStatut[i]]),
+    ]);
   }
 
   // 13. Approuver un produit
