@@ -391,10 +391,27 @@ class AdminService {
   }
 
   // 14. Rejeter un produit
+  //
+  // `disponible: false` accompagne le statut, et ce n'est pas une redondance.
+  // Le statut seul ne retirait RIEN : les routes `/acheteurs/*` ne le
+  // consultent jamais, et la création de commande non plus — elle ne regarde
+  // que `disponible` (commande.service.js). Un produit refusé restait donc
+  // listé, consultable et surtout COMMANDABLE, pendant que le vendeur lisait
+  // « n'est plus proposé aux clients ».
+  //
+  // Ce que cette ligne ferme, et ce qu'elle ne ferme pas :
+  //   • la VENTE est bloquée — c'est la conséquence la plus coûteuse ;
+  //   • le produit disparaît des surfaces qui filtrent `disponible` (détail
+  //     d'une boutique, tendances, découverte, recherche globale) ;
+  //   • il reste visible sur celles qui ne filtrent ni `statut` ni
+  //     `disponible`, dont la fiche produit `/acheteurs/produit/:id`.
+  // Le filtre de visibilité centralisé dans `acheteurs.service.js` est la
+  // correction complète ; elle touche le périmètre mobile et attend l'accord
+  // de l'utilisateur. Voir H-01 dans docs/audit-securite-2026-11-23.md.
   static async rejeterProduit(produitId) {
     const produit = await Produit.findByPk(produitId);
     if (!produit) throw new NotFoundError('Produit introuvable');
-    await produit.update({ statut: 'rejete' });
+    await produit.update({ statut: 'rejete', disponible: false });
     // Sans ce mot, le produit disparaissait de la boutique sans explication :
     // le vendeur le croyait en ligne et attendait des ventes qui ne
     // viendraient jamais.
