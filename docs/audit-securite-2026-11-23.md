@@ -65,7 +65,14 @@ avant les défauts :
 **Aucune.** Je n'ai trouvé ni compromission totale, ni prise de contrôle
 d'administration, ni accès multi-boutiques.
 
-### Une vulnérabilité HIGH — le rejet d'un produit par la modération ne retire rien
+### Une vulnérabilité HIGH — **corrigée** : le rejet de produit ne retirait rien
+
+> **Statut au 23 novembre, après arbitrage de l'utilisateur : CORRIGÉE EN ENTIER.**
+> Le filtre de visibilité est centralisé dans `acheteurs.service.js`
+> (`PRODUIT_VISIBLE`, une constante gelée, douze usages), la création de
+> commande refuse un produit retiré, et le retour de stock ne défait plus une
+> décision de modération. 22 tests, dont **14 échouent sans les correctifs**.
+> Détail en **section 4.1**. Ce qui suit décrit le défaut tel qu'il était.
 
 C'est le défaut le plus important de cet audit, et il touche directement une action
 de ton back-office.
@@ -345,8 +352,8 @@ conditionnelle ou impact modéré) · **LOW** (faiblesse de configuration) ·
 | D-22 | Pollution de paramètres | **NOT TESTED** | Express 5 range les paramètres répétés en tableau. Les schémas Joi devraient les refuser là où ils s'appliquent, mais je ne l'ai pas exercé | — | **NOT TESTED** |
 | D-23 | Messages d'erreur sans détail interne | **PASS** | `errorHandler.middleware.js:136, 141` — la pile ne part qu'au journal ; en production, un message non maîtrisé sur un 500 est remplacé | — | Déjà testé (`erreurs.http.test.js`, `erreurs.test.js`) |
 | D-24 | Pas de secret dans les réponses | **PASS** | `webhookOrange.http.test.js:62-68` vérifie que `pay_token` ne revient pas ; attributs explicites dans toute la vitrine (`vitrine.route.js:21-22`) | — | Déjà testé |
-| D-25 | **Une décision de modération prend effet** | **FAIL** | `admin.service.js:397` écrit `statut: 'rejete'` sans toucher `disponible` ; les 12 méthodes de `acheteurs.service.js` qui lisent `Produit` ne filtrent jamais `statut` ; `commande.service.js:298` ne le contrôle pas — voir **H-01** | Filtre de visibilité centralisé + contrôle à la commande. **Périmètre mobile : section 9** | **À ajouter (T-22)** |
-| D-26 | Le filtre de visibilité est appliqué sur les surfaces récentes | **PASS** | `catalogue.service.js:180, 241, 350, 362` · `vitrine.service.js:302` · `categorie.service.js:69` · `accueil.service.js:633` — toutes exigent `statut: 'approuve'`. Le défaut **D-25** est circonscrit au service hérité | — | **À ajouter (T-22)** |
+| D-25 | **Une décision de modération prend effet** | **PASS** *(corrigé le 23/11)* | Trois verrous, là où il n'y en avait aucun : `rejeterProduit` écrit `disponible: false` avec le statut ; `PRODUIT_VISIBLE` borne les **douze** requêtes de `acheteurs.service.js` ; la création de commande refuse un produit `rejete` ; et `_restaurerStock` ne remet en ligne qu'un produit `approuve` | Appliquée — voir **4.1** et **4.1 bis** | **22 tests**, dont **14 échouent sans les correctifs** |
+| D-26 | Le filtre de visibilité est appliqué sur les surfaces récentes | **PASS** | `catalogue.service.js:180, 241, 350, 362` · `vitrine.service.js:302` · `categorie.service.js:69` · `accueil.service.js:633` — toutes exigent `statut: 'approuve'`. Ce sont elles qui ont servi de modèle au correctif du service hérité | — | Couvert par `visibiliteProduitRejete.test.js` |
 | D-27 | Format des identifiants d'URL validé avant la requête SQL | **PARTIAL** | Validé explicitement à deux endroits seulement : `vendeur.service.js:612` (`UUID.test`, avec le commentaire « ferait échouer la requête SQL en erreur 500 ») et `message.service.js:201, 208` (`FORMAT_UUID`). Les ~40 autres routes à `:id` transmettent la valeur brute à Sequelize | **Un seul middleware de validation de paramètres** fermerait les ~40 routes d'un coup — le garde-fou unique plutôt que quarante rustines | **NOT TESTED** : je n'ai pas pu observer le 500, faute de PostgreSQL ici. Le commentaire du dépôt l'affirme, ce n'est pas ma propre preuve |
 
 ### E. Jetons, sessions et cookies
@@ -451,7 +458,57 @@ de comportement ne concerne que des cas qu'aucun client n'émet.
 **Suite complète après ces sept correctifs : `68 suites, 1343 tests, tous verts`.**
 Aucune régression.
 
-#### Ce que ces correctifs ne font PAS
+### 4.1 bis Correction de H-01 EN ENTIER — autorisée après coup
+
+L'utilisateur a ensuite arbitré en faveur de la version complète. Elle touche
+deux services du périmètre mobile, et c'est pour cela qu'elle attendait son
+accord.
+
+**Vérifié AVANT d'appliquer**, parce que ce correctif change ce que
+l'application publiée affiche :
+
+- **`GET /acheteurs/produit/:id` n'a aucun appelant dans l'application.**
+  L'endpoint est déclaré (`api_endpoints.dart:44`) et jamais utilisé : l'écran
+  de détail passe par `/catalogue/produits/:id`
+  (`catalogue_remote_datasource.dart:62`), qui filtrait **déjà**
+  `statut: 'approuve'`. Le risque redouté sur cette route était donc nul.
+- **L'écran de détail dégrade proprement** en cas d'échec : un `catch` conserve
+  la fiche déjà affichée et arrête le chargement des produits similaires. Pas
+  de plantage, pas de message technique.
+- **Le contact WhatsApp affiche un message en français** (« WhatsApp n'a pas pu
+  s'ouvrir. Réessayez. ») et cette route répondait **déjà** 404 quand le vendeur
+  n'a pas d'abonnement actif : aucun nouveau mode de défaillance.
+- **L'historique des commandes est structurellement insensible au filtre.**
+  `LigneCommande` garde `nomProduit`, `imageProduit` et `prixUnitaire` en
+  propre, et **aucune** requête de `commande.service.js` ne joint `Produit` —
+  vérifié, et retenu par deux tests. « Plus au catalogue » n'est pas « effacé
+  du passé ».
+
+| # | Correction | Fichiers | Preuve |
+|---|---|---|---|
+| 8 | **Filtre de visibilité centralisé** : `PRODUIT_VISIBLE`, une constante **gelée**, posée sur les **douze** requêtes du service. Une constante et non douze `statut: 'approuve'` recopiés — c'est l'oubli sur la treizième requête qui rouvrirait le trou, et un oubli ne se voit pas à la lecture. Les deux `findByPk` deviennent des `findOne` avec `where`, précisément pour pouvoir borner | `src/services/acheteurs/acheteurs.service.js` | 10 tests sur les listes + 2 sur la fiche et le détail de boutique + 1 sur l'unicité de la constante |
+| 9 | **La commande refuse un produit retiré.** Seule exception à la tolérance accordée au vendeur, qui peut vendre au comptoir un article hors ligne ou en rupture : il ne peut pas vendre un article que la plateforme a retiré | `src/services/commandes/commande.service.js` | 1 test — `Commande.create` n'est pas appelé |
+| 10 | **Le retour de stock ne défait plus une décision de modération** (`_restaurerStock`). C'était le trou qui se rouvrait tout seul : annuler une commande portant un article entre-temps retiré le remettait en vente, sans trace. Le stock revient — le vendeur l'a physiquement — mais l'article ne repart pas en vente | `src/services/commandes/commande.service.js` | 3 tests de **comportement** : approuvé → repasse en ligne, rejeté et en attente → restent hors ligne |
+
+**Suite complète : `68 suites, 1356 tests, tous verts`.**
+**14 des 22 tests de `visibiliteProduitRejete.test.js` échouent sans ces
+correctifs** — vérifié en restaurant le code d'origine.
+
+Deux de mes propres tests ont été refaits en route, et c'est instructif :
+
+- l'assertion sur la requête de la fiche produit portait sur
+  `findByPk(id, options)`. Le correctif passe à `findOne`, donc elle aurait
+  continué d'« échouer » sur un `mock.calls[0]` absent — c'est-à-dire de passer
+  en `it.failing` alors que le défaut était corrigé ;
+- la vérification de `_restaurerStock` n'était qu'une **expression régulière
+  sur le fichier source**. Elle serait passée au vert sur un commentaire
+  contenant la bonne phrase. Remplacée par trois tests qui exercent le
+  comportement.
+
+**`it.failing` restants dans tout le dépôt : 2**, tous deux pour **M-01**, que
+l'utilisateur n'a pas autorisé. Les cinq de H-01 sont devenus des tests verts.
+
+#### Ce que les sept premiers correctifs ne faisaient PAS
 
 Il faut le dire précisément, sinon le tableau ci-dessus se lit comme une
 victoire qu'il n'est pas :
@@ -463,7 +520,7 @@ victoire qu'il n'est pas :
   filtrent ni `statut` ni `disponible` : le produit rejeté reste consultable,
   notamment par `GET /acheteurs/produit/:id`. La correction à la source est le
   filtre de visibilité centralisé, qui touche le périmètre mobile.
-- **Une limite de l'atténuation, trouvée en l'appliquant.** `_restituerStock`
+- **Une limite de l'atténuation, trouvée en l'appliquant.** `_restaurerStock`
   (`commande.service.js`) remet `disponible = true` dès que la quantité
   repasse au-dessus de zéro, **sans regarder `statut`**. Annuler une commande
   qui portait un produit entre-temps rejeté le remet donc en vente. Le
@@ -486,7 +543,7 @@ Les cinq restantes, dans l'ordre où je les ferais.
 
 | Ordre | FAIL / Vulnérabilité | Cause réelle | Correction | Fichiers | Test qui échoue sans le correctif | Risque de régression |
 |---|---|---|---|---|---|---|
-| 1 | **H-01** — le rejet de modération ne retire pas vraiment | Les 12 méthodes de `acheteurs.service.js` ne filtrent jamais `statut` ; `commande.service.js` non plus | Filtre de visibilité centralisé (`statut: 'approuve'`) dans `acheteurs.service.js`, contrôle du statut à la création de commande, et `&& produit.statut === 'approuve'` dans `_restituerStock` | `acheteurs.service.js`, `commande.service.js` | **T-22** : les 5 `it.failing` de `visibiliteProduitRejete.test.js` passent au vert | **PÉRIMÈTRE MOBILE** — des produits aujourd'hui visibles disparaîtraient des listes. C'est l'effet voulu, à confirmer |
+| 1 | **H-01** — le rejet de modération ne retire pas vraiment | Les 12 méthodes de `acheteurs.service.js` ne filtrent jamais `statut` ; `commande.service.js` non plus | Filtre de visibilité centralisé (`statut: 'approuve'`) dans `acheteurs.service.js`, contrôle du statut à la création de commande, et `&& produit.statut === 'approuve'` dans `_restaurerStock` | `acheteurs.service.js`, `commande.service.js` | **T-22** : les 5 `it.failing` de `visibiliteProduitRejete.test.js` passent au vert | **PÉRIMÈTRE MOBILE** — des produits aujourd'hui visibles disparaîtraient des listes. C'est l'effet voulu, à confirmer |
 | 2 | **B-07, B-08 / M-01** — énumération de comptes | Les contrôles d'état du compte précèdent la vérification du mot de passe | Déplacer les blocs `compteSupprime` et `statut !== 'actif'` **après** `bcrypt.compare` | `src/services/auth.service.js` | **T-04** : un mot de passe faux sur un compte suspendu renvoie le message générique ; le bon mot de passe renvoie toujours le message précis | **Faible.** Le message utile est conservé pour l'utilisateur légitime |
 | 3 | **L-03** — `checkActiveUser` manquant | Oubli : seul routeur authentifié sans ce middleware | `router.use(checkActiveUser)` | `src/routes/deviceToken.route.js` | **T-13** : un compte `inactif` reçoit 403 sur `/device-token/register` | **Faible.** Aligne ce routeur sur les dix autres |
 | 4 | **L-11** — PDF accepté partout | Liste blanche unique pour toutes les routes | Paramétrer `verifyMagicBytes` par types attendus ; PDF réservé à la pièce d'identité | `upload.middleware.js`, routes concernées | **T-09** : un PDF est refusé comme photo de produit, accepté comme pièce d'identité | **Moyen** — à vérifier depuis l'application mobile |
@@ -872,18 +929,20 @@ correct — mais c'est à savoir pour tout test de middleware à venir.
 
 ---
 
-## 9. Défauts du périmètre mobile — documentés, non corrigés
+## 9. Défauts du périmètre mobile
 
 Ta consigne : « évite de toucher les API du mobile qui sont déjà bonnes ». Je la
 respecte. Mais une faille ne devient pas acceptable parce qu'elle est sur une route
 mobile : voici ce que j'ai trouvé là, classé, avec le correctif que je recommande.
-**Rien de tout cela n'est appliqué. C'est ta décision.**
+
+**H-01 a depuis été arbitré et corrigé** (section 4.1 bis). Le reste n'est **pas**
+appliqué et attend ta décision.
 
 | ID | Gravité | Défaut | Endpoints concernés | Correctif recommandé | Risque de casser le contrat d'API |
 |---|---|---|---|---|---|
-| **H-01** | **HIGH** | Le rejet d'un produit par la modération ne le retire d'aucune route `/acheteurs/*`, et ne l'empêche pas d'être commandé. Détail complet en section 2 | ~10 endpoints `/acheteurs/*` + `POST /commandes` | Centraliser un filtre `statut: 'approuve'` dans `acheteurs.service.js`, et contrôler `statut` dans `commande.service.js:298` | **Faible sur la forme, réel sur le fond** : aucun champ de réponse ne change, mais des produits aujourd'hui visibles disparaîtraient des listes. C'est l'effet voulu — à toi de confirmer que c'est bien celui que tu veux |
+| **H-01** | ~~HIGH~~ **CORRIGÉ** | Le rejet d'un produit ne le retirait d'aucune route `/acheteurs/*` et ne l'empêchait pas d'être commandé. **Corrigé en entier** après ton arbitrage : filtre centralisé sur les 12 requêtes, refus à la commande, et retour de stock qui ne défait plus la modération | ~10 endpoints `/acheteurs/*` + `POST /commandes` | — | **Vérifié avant d'appliquer** : `GET /acheteurs/produit/:id` n'a aucun appelant dans l'application, l'écran de détail passe par `/catalogue/produits/:id` qui filtrait déjà. Seul effet réel : des produits retirés disparaissent des listes — c'est l'effet voulu |
 | **N-01** | LOW | `getDetailProduit` (`acheteurs.service.js:389`) et `getDetailBoutique` (l.415) n'ont **aucune liste blanche d'attributs** sur l'entité principale : ils renvoient la ligne `Produit` ou `Boutique` entière, y compris des champs internes (`vendeurId`, `statut`, réglages du site). `getDetailBoutique` ne filtre pas non plus le `statut` de la boutique : une boutique en pause reste consultable | `GET /acheteurs/produit/:id`<br>`GET /acheteurs/boutique/:id` | Poser une liste d'attributs explicite, comme le fait déjà toute la vitrine (`vitrine.route.js:21-22`) et `catalogue.service.js:51-54` | **Réel** : retirer des champs d'une réponse casse une version publiée qui les lit. À faire en ajoutant, jamais en retirant, ou à la prochaine version majeure de l'application |
-| **N-02** | INFO | Traces de mise au point laissées en production, et au format non structuré contrairement au reste du projet : `logger.info("WhatsApp produitId:", produitId)` (`acheteurs.service.js:192`) et `logger.debug(…)` (l.240) | `GET /acheteurs/contacter-vendeur-par-whatsapp/:id` | Retirer, ou passer au journal structuré du projet | Nul — aucun effet sur les réponses |
+| **N-02** | ~~INFO~~ **partiellement corrigé, et ma description était fausse** | Je signalais **deux** traces de mise au point. Vérification faite, il n'y en avait qu'une : `logger.info("WhatsApp produitId:", produitId)`, au format non structuré, **retirée** en passant sur ce service. Le `logger.debug` voisin, lui, est **délibéré et correct** — il journalise la *présence* du téléphone et non le numéro, avec un commentaire qui l'explique. Je l'avais mis dans le même sac à tort | `GET /acheteurs/contacter-vendeur-par-whatsapp/:id` | Fait | Nul |
 | **D-11** | LOW | 36 écritures du périmètre mobile sans schéma Joi au bord de la route (le détail est dans l'annexe). La validation existe souvent dans le contrôleur ou le service, mais elle est dispersée | 36 endpoints, voir l'annexe | Schémas Joi centralisés, **en acceptant au moins ce qui l'est aujourd'hui** | **Réel si l'on resserre** : un schéma plus strict que le comportement actuel refuse des requêtes qu'une application publiée envoie. À faire schéma par schéma, en vérifiant chaque champ contre ce que l'application transmet vraiment |
 
 ### Ce qui est explicitement **correct** sur le périmètre mobile
