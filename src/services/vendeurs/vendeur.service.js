@@ -903,7 +903,18 @@ class VendeurService {
     if (boutique) {
       const [produitStats, favoriCount, recentes] = await Promise.all([
         Produit.findAll({ where: { vendeurId }, attributes: ['vues'] }),
-        Favori.count({ where: { boutiqueId: boutique.id } }),
+        // Jointure obligatoire sur l'acheteur, et non un simple compte des
+        // lignes : un client qui supprime son compte laisse sa ligne
+        // d'abonnement derrière lui. Comptées, ces lignes orphelines
+        // donnaient au tableau de bord un nombre d'abonnés que la liste
+        // (`abonnes()`, qui les écarte) ne retrouvait jamais — un vendeur
+        // lisait « 1 client abonné » sur son accueil et « personne » sur sa
+        // page Abonnés. `Utilisateur` étant en suppression douce, la
+        // jointure suffit à les exclure.
+        Favori.count({
+          where: { boutiqueId: boutique.id },
+          include: [{ model: Utilisateur, as: 'acheteur', attributes: [], required: true }],
+        }),
         VisiteService.recentes(boutique.id),
       ]);
       visitesRecentes = recentes;
