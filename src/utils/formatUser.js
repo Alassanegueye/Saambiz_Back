@@ -31,6 +31,27 @@ const formatUser = (utilisateur) => {
 
   if (utilisateur.role === 'Vendeur' && utilisateur.boutiques) {
     userFormatted.boutiques = utilisateur.boutiques;
+
+    // `boutique` au singulier, en plus de la liste : c'est ce que
+    // l'application mobile lit pour afficher la boutique sous le nom du
+    // vendeur, sur son écran de choix de compte. Son lecteur existait déjà
+    // et tolère les deux formes (objet ou chaîne) — le champ n'était
+    // simplement jamais envoyé, et la ligne restait sans boutique.
+    //
+    // Ajouté plutôt que substitué à `boutiques` : une application déjà
+    // installée lit peut-être la liste, et la lui retirer la casserait.
+    const premiere = Array.isArray(utilisateur.boutiques)
+      ? utilisateur.boutiques[0]
+      : utilisateur.boutiques;
+    const nom = premiere?.nom || premiere?.dataValues?.nom;
+    if (nom) {
+      userFormatted.boutique = {
+        id: premiere.id ?? null,
+        nom,
+        slug: premiere.slug ?? null,
+        logo: premiere.logo ?? null,
+      };
+    }
   }
 
   return userFormatted;
