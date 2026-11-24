@@ -63,3 +63,40 @@ describe('formatUser — la boutique d’un vendeur', () => {
     expect(sortie.boutiques).toBeUndefined();
   });
 });
+
+/**
+ * LE PIÈGE QUI A COÛTÉ LA FONCTIONNALITÉ.
+ *
+ * `formatUser` est une liste blanche : tout champ qu'elle ne nomme pas est
+ * silencieusement perdu. `ouvrirSession` allait chercher la boutique du
+ * vendeur et la joignait à la session — le travail était fait — mais le
+ * contrôleur passait la réponse par ici, qui la jetait. Rien n'arrivait sur
+ * le téléphone, et les deux moitiés avaient l'air correctes.
+ */
+describe('formatUser — la boutique posée par ouvrirSession', () => {
+  const vendeurAvecSession = {
+    id: 'u1', nom: 'GUEYE', prenom: 'Alassane', email: 'a@exemple.sn', role: 'Vendeur',
+    // Ce que `ouvrirSession` renvoie : la boutique à côté, sans la liste.
+    boutique: { id: 'b1', nom: 'Aloushop', logo: 'https://x/l.png' },
+  };
+
+  it('ne jette plus la boutique que la session avait jointe', () => {
+    const sortie = formatUser(vendeurAvecSession);
+    expect(sortie.boutique).toEqual({
+      id: 'b1', nom: 'Aloushop', slug: null, logo: 'https://x/l.png',
+    });
+  });
+
+  it('garde celle de la session plutôt que celle tirée de la liste', () => {
+    const sortie = formatUser({
+      ...vendeurAvecSession,
+      boutiques: [{ id: 'b2', nom: 'Une autre' }],
+    });
+    expect(sortie.boutique.nom).toBe('Aloushop');
+  });
+
+  it('ne la joint toujours pas à un acheteur', () => {
+    const sortie = formatUser({ ...vendeurAvecSession, role: 'Acheteur' });
+    expect(sortie.boutique).toBeUndefined();
+  });
+});

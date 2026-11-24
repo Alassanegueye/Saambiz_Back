@@ -29,6 +29,28 @@ const formatUser = (utilisateur) => {
     dateSuppression: utilisateur.dateSuppression ?? null,
   };
 
+  // LE PIÈGE DE CETTE FONCTION : c'est une liste blanche. Tout champ qu'elle
+  // ne nomme pas est SILENCIEUSEMENT PERDU.
+  //
+  // `ouvrirSession` allait chercher la boutique du vendeur et la joignait à
+  // la session — avec un commentaire expliquant pourquoi l'écran de choix de
+  // compte en a besoin. Le contrôleur passait ensuite la réponse par ici, qui
+  // la jetait : elle n'était pas dans la liste. Le travail était fait des deux
+  // côtés, et rien n'arrivait sur le téléphone.
+  //
+  // On reprend donc la boutique où qu'elle soit : déjà posée par
+  // `ouvrirSession`, ou à tirer de la liste `boutiques` quand la requête l'a
+  // chargée.
+  if (utilisateur.role === 'Vendeur' && utilisateur.boutique) {
+    const b = utilisateur.boutique;
+    userFormatted.boutique = {
+      id: b.id ?? null,
+      nom: b.nom,
+      slug: b.slug ?? null,
+      logo: b.logo ?? null,
+    };
+  }
+
   if (utilisateur.role === 'Vendeur' && utilisateur.boutiques) {
     userFormatted.boutiques = utilisateur.boutiques;
 
@@ -44,7 +66,7 @@ const formatUser = (utilisateur) => {
       ? utilisateur.boutiques[0]
       : utilisateur.boutiques;
     const nom = premiere?.nom || premiere?.dataValues?.nom;
-    if (nom) {
+    if (nom && !userFormatted.boutique) {
       userFormatted.boutique = {
         id: premiere.id ?? null,
         nom,
