@@ -9,6 +9,9 @@
 const REFERENTIEL_CATEGORIES = [
   { slug: 'mode-femme',              nom: 'Mode femme',                icone: 'checkroom',       description: 'Robes, boubous, pagnes, ensembles et prêt-à-porter femme' },
   { slug: 'mode-homme',              nom: 'Mode homme',                icone: 'man',             description: 'Chemises, pantalons, boubous et prêt-à-porter homme' },
+  // Un tissu se vend au mètre, au yard ou à la pièce, avec ses motifs :
+  // rien à voir avec un habit prêt à porter.
+  { slug: 'tissus',                  nom: 'Tissus & pagnes',           icone: 'content_cut',     description: 'Wax, bazin, getzner, soie, lin et pagnes, au mètre, au yard ou à la pièce' },
   { slug: 'chaussures-sacs',         nom: 'Chaussures & sacs',         icone: 'shopping_bag',    description: 'Chaussures, sandales, sacs et maroquinerie' },
   { slug: 'beaute-cosmetiques',      nom: 'Beauté & cosmétiques',      icone: 'spa',             description: 'Soins, maquillage, parfums, cheveux et mèches' },
   { slug: 'bijoux-accessoires',      nom: 'Bijoux & accessoires',      icone: 'diamond',         description: 'Bijoux, montres, lunettes et accessoires' },
@@ -36,6 +39,9 @@ const ALIAS_CATEGORIES = {
   'mode & vêtements': ['mode-femme', 'mode-homme'],
   mode: ['mode-femme', 'mode-homme'],
   'vêtements': ['mode-femme', 'mode-homme'],
+  tissu: ['tissus'],
+  tissus: ['tissus'],
+  pagnes: ['tissus'],
   chaussures: ['chaussures-sacs'],
   sacs: ['chaussures-sacs'],
   'beauté': ['beaute-cosmetiques'],
