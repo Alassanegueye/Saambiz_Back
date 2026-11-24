@@ -6,14 +6,55 @@ const { REFERENTIEL_CATEGORIES } = require('../../src/constants/categories');
 const spec = (slug) => normaliserSchema(SPECIFICATIONS_CATEGORIES[slug]);
 
 describe('Suggestions par catégorie', () => {
-  test('chaque catégorie a une entrée valide, sans liste imposée ni champ obligatoire', () => {
+  test('chaque catégorie a une entrée', () => {
     for (const c of REFERENTIEL_CATEGORIES) {
       expect(SPECIFICATIONS_CATEGORIES).toHaveProperty(c.slug);
+    }
+  });
+
+  /*
+   * Ce test en remplace un autre, qui exigeait « aucune liste imposée ni
+   * champ obligatoire » pour toute catégorie. Cette règle a été levée le
+   * 24 novembre 2026 : les vêtements proposent les tailles courantes à
+   * cocher, et les tissus ont une unité de vente obligatoire.
+   *
+   * Reste l'invariant qui protège vraiment le vendeur : une liste de
+   * variantes est une SUGGESTION, jamais une cage. Sans `libre`, le service
+   * refuse toute valeur hors liste — un vendeur qui tape « 46 » ou « Taille
+   * unique » verrait son produit rejeté, alors que c'est précisément ce que
+   * le commentaire du référentiel lui promet.
+   */
+  test('une liste de variantes reste une suggestion : le vendeur garde la main', () => {
+    // La liste des fautifs plutôt qu'un booléen : l'échec nomme alors la
+    // catégorie et le champ, au lieu de dire « false au lieu de true ».
+    const enCage = [];
+    for (const c of REFERENTIEL_CATEGORIES) {
       for (const champ of spec(c.slug)) {
-        expect(champ.obligatoire).toBeUndefined();
-        expect(champ.options || []).toEqual([]);
+        if (champ.type === 'variantes' && (champ.options || []).length && champ.libre !== true) {
+          enCage.push(`${c.slug}/${champ.cle}`);
+        }
       }
     }
+    expect(enCage).toEqual([]);
+  });
+
+  /*
+   * Un champ obligatoire est désormais permis, mais il doit être
+   * satisfaisable : demander une valeur sans proposer de liste ni laisser
+   * taper librement bloquerait la publication du produit.
+   */
+  test('un champ obligatoire propose de quoi y répondre', () => {
+    const impossibles = [];
+    for (const c of REFERENTIEL_CATEGORIES) {
+      for (const champ of spec(c.slug)) {
+        if (!champ.obligatoire) continue;
+        const ouvert = champ.libre === true || ['texte', 'nombre', 'oui_non'].includes(champ.type);
+        if (!ouvert && (champ.options || []).length === 0) {
+          impossibles.push(`${c.slug}/${champ.cle}`);
+        }
+      }
+    }
+    expect(impossibles).toEqual([]);
   });
 });
 
