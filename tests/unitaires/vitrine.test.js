@@ -147,3 +147,41 @@ describe('Ce qu\'une boutique publie', () => {
     expect(VitrineService._exposerBoutique({ ...base, vitrineCommande: false }).commandeActivee).toBe(false);
   });
 });
+
+/**
+ * L'EMAIL EST DEVENU OBLIGATOIRE À LA COMMANDE.
+ *
+ * Il était facultatif, et le commentaire du service disait pourquoi :
+ * l'exiger fait abandonner des commandes. Ce raisonnement tenait tant que le
+ * suivi passait par la référence et le téléphone. Depuis que le client reçoit
+ * un lien unique — le seul moyen qu'il a de revenir voir sa commande, et de
+ * recevoir chaque changement d'étape — une commande sans adresse est une
+ * commande que personne ne pourra suivre.
+ */
+describe('Coordonnées du client à la commande', () => {
+  const valides = { nom: 'Fall', prenom: 'Awa', telephone: '77 123 45 67' };
+
+  it('refuse une commande sans adresse email', () => {
+    expect(() => VitrineService._preparerClient(valides))
+      .toThrow(/adresse email/i);
+    expect(() => VitrineService._preparerClient({ ...valides, email: '   ' }))
+      .toThrow(/adresse email/i);
+  });
+
+  it('refuse une adresse qui n’en est pas une, et le dit simplement', () => {
+    expect(() => VitrineService._preparerClient({ ...valides, email: 'awa@@exemple' }))
+      .toThrow(/ne semble pas valide/i);
+  });
+
+  it('accepte une adresse valide et la normalise', () => {
+    const client = VitrineService._preparerClient({ ...valides, email: '  AWA@Exemple.SN ' });
+    expect(client.email).toBe('awa@exemple.sn');
+  });
+
+  it('continue d’exiger le nom, le prénom et un numéro joignable', () => {
+    expect(() => VitrineService._preparerClient({ ...valides, prenom: 'A', email: 'a@b.sn' }))
+      .toThrow(/prénom et votre nom/i);
+    expect(() => VitrineService._preparerClient({ ...valides, telephone: '123', email: 'a@b.sn' }))
+      .toThrow(/téléphone/i);
+  });
+});

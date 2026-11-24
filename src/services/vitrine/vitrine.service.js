@@ -32,6 +32,8 @@ const logger = require('../../utils/logger');
 const { normaliserTelephone, erreurTelephone } = require('../../utils/telephone');
 const { estEmailValide } = require('../../utils/email');
 const choisirDansTable = require('../../utils/choixDansTable');
+const LienSuiviService = require('./lienSuivi.service');
+const { sendLienSuiviEmail } = require('../resend.service');
 
 // Mises en page proposées au vendeur. Trois suffisent à couvrir ce que
 // vendent les boutiques sénégalaises : du prêt-à-porter qui se montre en
@@ -619,12 +621,19 @@ class VitrineService {
       throw new BadRequestError('Indiquez votre prénom et votre nom.');
     }
 
-    // L'email reste facultatif : l'exiger ferait abandonner des commandes
-    // pour une information dont le vendeur n'a pas besoin — il appelle.
+    // L'email est obligatoire depuis que le suivi passe par un lien unique :
+    // c'est la seule adresse où l'envoyer, et sans lui le client n'a aucun
+    // moyen de revenir voir où en est sa commande. Il reçoit aussi chaque
+    // changement d'étape à cette adresse.
     const emailNet = String(email || '').trim().toLowerCase();
-    const emailValide = emailNet && estEmailValide(emailNet) ? emailNet : null;
+    if (!emailNet) {
+      throw new BadRequestError('Indiquez votre adresse email : c’est là que vous recevrez le lien de suivi de votre commande.');
+    }
+    if (!estEmailValide(emailNet)) {
+      throw new BadRequestError('Cette adresse email ne semble pas valide. Exemple : nom@exemple.com');
+    }
 
-    return { nom: nomNet, prenom: prenomNet, telephone: tel, email: emailValide };
+    return { nom: nomNet, prenom: prenomNet, telephone: tel, email: emailNet };
   }
 
   /**
@@ -693,11 +702,28 @@ class VitrineService {
       origine: 'vitrine',
     });
 
+    // Le lien de suivi part aussitôt, et son échec n'annule pas la commande :
+    // elle est enregistrée, le vendeur l'a reçue. Un email qui ne part pas
+    // se rattrape — par « j'ai perdu mon lien » — une commande perdue, non.
+    let suivi = null;
+    try {
+      suivi = await VitrineService._envoyerLienCommande(commande, coordonnees, boutique);
+    } catch (err) {
+      logger.warn('vitrine:lien_suivi_non_envoye', {
+        commande: commande.referenceCommande,
+        message: err.message,
+      });
+    }
+
     return {
       reference: commande.referenceCommande,
       // Le téléphone repart dans la réponse : c'est la clé de suivi, et le
       // client a pu le saisir sous une autre forme que celle enregistrée.
       telephone: coordonnees.telephone,
+      // L'adresse où le lien vient de partir, pour le dire à l'écran plutôt
+      // que de laisser le client chercher dans quelle boîte regarder.
+      email: coordonnees.email,
+      lienSuiviEnvoye: Boolean(suivi),
       montantProduits: commande.montantProduits,
       fraisLivraison: commande.fraisLivraison,
       montantTotal: commande.montantTotal,
@@ -833,6 +859,57 @@ class VitrineService {
       boutique: boutique ? boutique.get({ plain: true }) : null,
     };
   }
+  // ══════════════════════════════════════════════════════════════════
+  //  LIEN DE SUIVI — commandes passées sans compte
+  // ══════════════════════════════════════════════════════════════════
+
+  /** L'adresse publique d'un lien de suivi. Tenue par LienSuiviService. */
+  static urlSuivi(jeton) {
+    return LienSuiviService.url(jeton);
+  }
+
+  /**
+   * Fabrique un lien pour cette commande et l'envoie au client, avec le
+   * récapitulatif. C'est le premier email qu'il reçoit, et celui qui porte
+   * son accès : s'il le perd, il en redemande un.
+   */
+  static async _envoyerLienCommande(commande, coordonnees, boutique) {
+    const { jeton, expiresAt } = await LienSuiviService.creer(coordonnees.email, commande.id);
+    await CommandeService.emailClient(commande, 'recue', null, {
+      lien: LienSuiviService.url(jeton),
+      expireLe: expiresAt,
+    });
+    return { expiresAt };
+  }
+
+  /**
+   * « J'ai perdu mon lien » : on en renvoie un, s'il y a des commandes
+   * derrière cette adresse. Rien n'est dit à l'appelant dans le cas
+   * contraire — c'est le contrôleur qui répond la même chose aux deux.
+   */
+  static async envoyerLienSuivi(email) {
+    const adresse = String(email || '').trim().toLowerCase();
+    if (!estEmailValide(adresse)) {
+      throw new BadRequestError('Indiquez une adresse email valide.');
+    }
+
+    if (!(await LienSuiviService.aDesCommandes(adresse))) return false;
+
+    const { jeton, expiresAt } = await LienSuiviService.creer(adresse, null);
+    try {
+      await sendLienSuiviEmail({
+        to: adresse,
+        lien: VitrineService.urlSuivi(jeton),
+        expireLe: expiresAt,
+        jours: LienSuiviService.dureeJours,
+      });
+    } catch (err) {
+      logger.warn('vitrine:renvoi_lien_suivi_echoue', { message: err.message });
+      return false;
+    }
+    return true;
+  }
+
 }
 
 module.exports = VitrineService;

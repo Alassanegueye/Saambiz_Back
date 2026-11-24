@@ -1210,7 +1210,11 @@ class CommandeService {
    * client sans compte (commande passée sur le site de la boutique) : on
    * écrit à l'adresse connue, s'il y en a une.
    */
-  static async _emailClient(commande, etape, messagePerso = null) {
+  static async emailClient(commande, etape, messagePerso = null, lienInfo = null) {
+    return CommandeService._emailClient(commande, etape, messagePerso, lienInfo);
+  }
+
+  static async _emailClient(commande, etape, messagePerso = null, lienInfo = null) {
     const complete = await Commande.findByPk(commande.id, {
       include: [
         { model: LigneCommande, as: 'lignes', attributes: ['nomProduit', 'quantite', 'sousTotal'] },
@@ -1221,6 +1225,25 @@ class CommandeService {
     const to = complete.acheteur?.email || complete.clientEmail;
     if (!to) return;
     const boutique = await CommandeService._boutiqueDuVendeur(complete.vendeurId);
+
+    // Une commande passée sans compte n'a pas d'écran où revenir : chaque
+    // email porte donc un lien de suivi, fabriqué à l'instant. Un lien neuf
+    // à chaque étape plutôt qu'un lien ressorti : le jeton en clair n'existe
+    // que dans le message où il part, la base n'en garde que l'empreinte —
+    // il n'y a rien à ressortir.
+    let lien = lienInfo;
+    if (!lien && !complete.acheteurId && complete.clientEmail) {
+      try {
+        const LienSuiviService = require('../vitrine/lienSuivi.service');
+        const { jeton, expiresAt } = await LienSuiviService.creer(complete.clientEmail, complete.id);
+        lien = { lien: LienSuiviService.url(jeton), expireLe: expiresAt };
+      } catch (err) {
+        // Sans lien, l'email part quand même : connaître l'étape vaut mieux
+        // que ne rien recevoir.
+        logger.warn('commande:lien_suivi_absent_de_email', { message: err.message });
+      }
+    }
+
     await sendCommandeClientEmail({
       to,
       etape,
@@ -1229,6 +1252,8 @@ class CommandeService {
       commande: complete,
       lignes: complete.lignes || [],
       messagePerso,
+      lien: lien?.lien || null,
+      expireLe: lien?.expireLe || null,
     });
   }
 

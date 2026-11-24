@@ -93,6 +93,52 @@ router.get('/commande/:reference', limiteSuivi, VitrineController.suivreCommande
 
 /**
  * @swagger
+ * /vitrine/suivi/{jeton}:
+ *   get:
+ *     summary: Suivre ses commandes par lien unique, sans compte
+ *     tags: [Vitrine]
+ *     parameters:
+ *       - in: path
+ *         name: jeton
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Commandes de l'adresse liée au lien }
+ *       404: { description: Lien inconnu }
+ *       410: { description: Lien expiré — en redemander un }
+ */
+router.get('/suivi/:jeton', limiteSuivi, VitrineController.suivreParLien);
+
+/**
+ * Redemander un lien. Plafond plus serré que la consultation : c'est une
+ * route qui ENVOIE un email, et une boîte qu'on inonde est une plainte pour
+ * courrier indésirable. Trois par quart d'heure et par adresse IP suffisent
+ * à quelqu'un qui s'est trompé de boîte.
+ */
+const limiteDemandeLien = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.VITRINE_LIEN_RATE_LIMIT_MAX) || 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de demandes. Réessayez dans quelques minutes.',
+  },
+});
+
+/**
+ * @swagger
+ * /vitrine/suivi/demander-lien:
+ *   post:
+ *     summary: Recevoir un nouveau lien de suivi par email
+ *     tags: [Vitrine]
+ *     responses:
+ *       200: { description: Réponse identique que l'adresse existe ou non }
+ */
+router.post('/suivi/demander-lien', limiteDemandeLien, VitrineController.demanderLienSuivi);
+
+/**
+ * @swagger
  * /vitrine/{slug}:
  *   get:
  *     summary: Page d'accueil du site d'une boutique

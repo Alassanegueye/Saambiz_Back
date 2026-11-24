@@ -1,6 +1,7 @@
 const sequelize = require('../config/db');
 const Boutique = require('./boutique.model');
 const VerificationEmail = require('./verificationEmail.model');
+const LienSuivi = require('./lienSuivi.model');
 const Utilisateur = require('./utilisateur.model');
 const Menu = require('./menu.model');
 const Permission = require('./permission.model');
@@ -178,6 +179,12 @@ RefreshToken.belongsTo(Utilisateur, { foreignKey: 'utilisateurId', as: 'utilisat
 Utilisateur.hasOne(PreferenceClient, { foreignKey: 'utilisateurId', as: 'preferences' });
 PreferenceClient.belongsTo(Utilisateur, { foreignKey: 'utilisateurId', as: 'utilisateur' });
 
+// Lien de suivi d'une commande sans compte : rattaché à la commande qui l'a
+// fait naître, détaché si elle disparaît — le lien reste alors valable pour
+// les autres commandes de la même adresse.
+Commande.hasMany(LienSuivi, { foreignKey: 'commandeId', as: 'liensSuivi' });
+LienSuivi.belongsTo(Commande, { foreignKey: 'commandeId', as: 'commande' });
+
 module.exports = {
   sequelize,
   Utilisateur, Produit, Categorie, Boutique, Abonnement, Paiement,
@@ -186,5 +193,5 @@ module.exports = {
   Signalement, TokenBlacklist, RefreshToken, ConfigApp, QuestionFrequente, DeviceToken, MessageSite,
   Menu, Permission,
   ProduitImage, DemandeRetour, AuditLog, HistoriqueCommande, Avis, PreferenceClient,
-  VerificationEmail, BoutiqueCategorie,
+  VerificationEmail, BoutiqueCategorie, LienSuivi,
 };

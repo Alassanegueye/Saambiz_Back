@@ -8,6 +8,7 @@
 // dix-huit autres du projet : le fichier de routes n'a pas à le savoir.
 
 const VitrineService = require('../../services/vitrine/vitrine.service');
+const LienSuiviService = require('../../services/vitrine/lienSuivi.service');
 const VisiteService = require('../../services/visites/visite.service');
 const asyncHandler = require('../../middlewares/asyncHandler');
 const { ok, created } = require('../../utils/response');
@@ -80,4 +81,37 @@ exports.envoyerMessage = asyncHandler(async (req, res) => {
 exports.suivreCommande = asyncHandler(async (req, res) => {
   const data = await VitrineService.suivreCommande(req.params.reference, req.query.telephone);
   return ok(res, data, 'Commande retrouvée.');
+});
+
+/**
+ * GET /vitrine/suivi/:jeton — le suivi par lien unique.
+ *
+ * Le jeton est dans le CHEMIN et non dans la requête : un paramètre de
+ * requête se retrouve dans les journaux d'accès du serveur et dans l'en-tête
+ * `Referer` envoyé aux ressources tierces de la page. Le chemin aussi, mais
+ * le lien n'a pas d'autre forme partageable — et c'est pour ça qu'il expire.
+ *
+ * Trois issues distinctes, et le front en dépend : 200 avec les commandes,
+ * 410 quand le lien a expiré (écran « demandez-en un autre »), 404 quand il
+ * n'a jamais existé.
+ */
+exports.suivreParLien = asyncHandler(async (req, res) => {
+  const data = await LienSuiviService.ouvrir(req.params.jeton);
+  return ok(res, data, 'Commandes retrouvées.');
+});
+
+/**
+ * POST /vitrine/suivi/demander-lien — « j'ai perdu mon lien ».
+ *
+ * La réponse est la même que l'adresse existe ou non. Dire « aucune commande
+ * à cette adresse » transformerait la route en détecteur de clients : on
+ * saurait, adresse par adresse, qui a commandé dans quelle boutique.
+ */
+exports.demanderLienSuivi = asyncHandler(async (req, res) => {
+  await VitrineService.envoyerLienSuivi(req.body?.email);
+  return ok(
+    res,
+    { duree: LienSuiviService.dureeJours },
+    "Si des commandes existent à cette adresse, un lien de suivi vient d'y être envoyé.",
+  );
 });

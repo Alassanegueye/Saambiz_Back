@@ -126,8 +126,25 @@ const encadre = (lignes, couleur = NAVY) => `
           .join('')}
       </table>`;
 
+
+/**
+ * Bouton d'action. Posé dans un tableau et non en `<a>` seul : Outlook ignore
+ * `padding` sur un lien, le bouton s'y afficherait comme du texte souligné.
+ * L'adresse est répétée en dessous par l'appelant quand elle compte — un
+ * client de messagerie qui n'affiche pas les liens laisse sinon le lecteur
+ * sans recours.
+ */
+const bouton = (libelle, url) => `
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 18px">
+        <tr>
+          <td style="background:${NAVY};border-radius:10px">
+            <a href="${url}" style="display:inline-block;padding:13px 26px;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none;${POLICE}">${echapper(libelle)}</a>
+          </td>
+        </tr>
+      </table>`;
+
 /** Liste à puces. */
 const liste = (elements) =>
   `<ul style="margin:0 0 14px;padding-left:20px;color:#48597A;line-height:1.9">${elements.map((e) => `<li>${e}</li>`).join('')}</ul>`;
 
-module.exports = { LOGO_URL, NAVY, OR, echapper, entete, enteteBoutique, miseEnPage, salutation, paragraphe, note, blocCode, encadre, liste };
+module.exports = { LOGO_URL, NAVY, OR, echapper, entete, enteteBoutique, miseEnPage, salutation, paragraphe, note, blocCode, encadre, liste, bouton };
