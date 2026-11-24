@@ -21,11 +21,25 @@ const v = (cle, libelle, aide) => ({ cle, libelle, type: 'variantes', options: [
 const t = (cle, libelle, aide) => ({ cle, libelle, type: 'texte', ...(aide ? { aide } : {}) });
 
 const tailles = v('tailles', 'Tailles', 'Ex. S, M, L, XL');
+// Les vêtements proposent les tailles courantes à cocher ; le vendeur peut
+// toujours taper la sienne (« 46 », « Taille unique »).
+const taillesVetements = { ...tailles, options: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL'] };
 const couleurs = v('couleurs', 'Couleurs', 'Ex. Noir, Blanc, Rouge');
 
 const SPECIFICATIONS_CATEGORIES = {
-  'mode-femme': [tailles, couleurs, t('matiere', 'Tissu', 'Ex. wax, bazin, coton')],
-  'mode-homme': [tailles, couleurs, t('matiere', 'Tissu', 'Ex. wax, bazin, coton')],
+  // Le tissu n'est plus une case des vêtements : il a sa propre catégorie.
+  'mode-femme': [taillesVetements, couleurs],
+  'mode-homme': [taillesVetements, couleurs],
+  tissus: [
+    {
+      cle: 'unite', libelle: 'Vendu au', type: 'choix', obligatoire: true, aide: "L'unité de votre prix",
+      options: ['Mètre', 'Yard', 'Pièce de 6 yards', 'Demi-pièce (3 yards)', 'Coupon', 'Rouleau'],
+    },
+    t('matiere', 'Type de tissu', 'Ex. wax, bazin riche, getzner, soie, lin'),
+    v('modeles', 'Modèles ou motifs', 'Ex. motif fleuri, motif 2, uni'),
+    couleurs,
+    t('largeur', 'Largeur du tissu', 'Ex. 1,15 m'),
+  ],
   'chaussures-sacs': [v('pointures', 'Pointures', 'Ex. 38, 39, 40'), couleurs, t('matiere', 'Matière')],
   'beaute-cosmetiques': [v('contenances', 'Contenances', 'Ex. 100 ml, 250 ml'), v('teintes', 'Teintes ou parfums')],
   'bijoux-accessoires': [tailles, couleurs, t('matiere', 'Matière', 'Ex. or, argent, perles')],
@@ -43,7 +57,7 @@ const SPECIFICATIONS_CATEGORIES = {
   'patisserie-gateaux': [v('tailles', 'Tailles', 'Ex. 6 parts, 10 parts'), v('parfums', 'Parfums', 'Ex. vanille, chocolat')],
   'enfants-bebes': [v('ages', 'Âges ou tailles', 'Ex. 0-3 mois, 2 ans, 4 ans'), couleurs],
   'sante-bien-etre': [v('contenances', 'Contenances', 'Ex. 60 gélules, 500 ml')],
-  'sport-loisirs': [tailles, couleurs],
+  'sport-loisirs': [taillesVetements, couleurs],
   artisanat: [couleurs, t('dimensions', 'Dimensions'), t('matiere', 'Matière')],
   services: [v('formules', 'Formules', 'Ex. simple, complète'), t('zone', 'Zone', 'Ex. Dakar et banlieue')],
   autre: [],
