@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { fn, col, where, Op } = require('sequelize');
 const Utilisateur = require('../models/utilisateur.model');
 const ConfigApp = require('../models/configApp.model');
 const { Menu, Permission } = require('../models');
@@ -17,9 +18,36 @@ async function seedAdmin() {
   }
 
   try {
-    let admin = await Utilisateur.findOne({ where: { email } });
-
+    // Le compte, MÊME SUPPRIMÉ : `utilisateur` est paranoïaque (suppression
+    // logique) et son adresse reste unique en base. Chercher sans les
+    // supprimés faisait croire le compte absent après une suppression depuis
+    // l'administration : le seed le recréait, la base refusait l'adresse
+    // (« Validation error »), et le conteneur ne démarrait plus.
+    // Casse ignorée : « Admin@… » et « admin@… » sont la même adresse.
+    const adresse = String(email).trim().toLowerCase();
+    let admin = await Utilisateur.findOne({
+      where: where(fn('lower', col('email')), adresse),
+      paranoid: false,
+    });
+    // Supprimé depuis l'administration, son adresse a été libérée sous la
+    // forme `supprime.<id>.<adresse>` (admin.management.service) : c'est
+    // toujours lui, et il ne doit pas revenir au redémarrage suivant.
     if (!admin) {
+      const echappee = adresse.replace(/[\\%_]/g, (c) => `\\${c}`);
+      admin = await Utilisateur.findOne({
+        where: where(fn('lower', col('email')), { [Op.like]: `supprime.%.${echappee}` }),
+        paranoid: false,
+      });
+      if (admin && !admin.isSoftDeleted()) admin = null;
+    }
+
+    if (admin && admin.isSoftDeleted()) {
+      // Supprimé volontairement depuis l'administration : on ne le ressuscite
+      // pas, et on ne bloque pas le démarrage. Pour le rétablir, changer
+      // ADMIN_EMAIL ou restaurer le compte en base.
+      logger.warn(`[SEED] Le compte ${email} (ADMIN_EMAIL) a été supprimé depuis l'administration : il n'est pas recréé.`);
+      admin = null;
+    } else if (!admin) {
       const hash = await bcrypt.hash(mdp, 12);
       admin = await Utilisateur.create({
         nom: 'Super',
@@ -37,7 +65,7 @@ async function seedAdmin() {
 
     // Accorder à l'admin TOUTES les permissions sur TOUS les menus (bootstrap).
     // Sans cela, le login renvoie une liste de menus vide → menu latéral vide.
-    const menus = await Menu.findAll();
+    const menus = admin ? await Menu.findAll() : [];
     if (menus.length === 0) {
       logger.warn('[SEED] Aucun menu trouvé — lancez le seed des menus avant (ou via runSeed).');
     }

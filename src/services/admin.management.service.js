@@ -1,10 +1,35 @@
 const bcrypt = require('bcryptjs');
-const { Op } = require('sequelize');
+const { Op, fn, col, where } = require('sequelize');
 const { Utilisateur, Menu, Permission, sequelize } = require('../models');
 const { generatePassword } = require('../utils/generatePassword');
 const { sendNewAdminEmail } = require('./resend.service');
 const { bcryptConfig } = require('../config/security');
 const logger = require('../utils/logger');
+
+/**
+ * Adresse d'un compte supprimé, rendue libre : `supprime.<8 car. de l'id>.<adresse>`.
+ *
+ * `utilisateur` est paranoïaque (suppression logique) et son adresse est
+ * unique en base, supprimés compris : sans cela, un administrateur supprimé
+ * gardait son adresse pour toujours, et on ne pouvait plus recréer un admin
+ * avec le même e-mail. La forme reste une adresse valide (validation isEmail
+ * du modèle) et garde la trace de l'adresse d'origine.
+ */
+const adresseLiberee = (utilisateur) => {
+  const [local, domaine] = String(utilisateur.email).split('@');
+  return `supprime.${String(utilisateur.id).slice(0, 8)}.${local}@${domaine}`.slice(0, 255);
+};
+
+const PREFIXE_LIBERE = /^supprime\.[0-9a-f]{8}\./i;
+
+/** Libère l'adresse (et le téléphone) d'un compte supprimé ou à supprimer. */
+async function libererIdentifiants(utilisateur, options = {}) {
+  if (PREFIXE_LIBERE.test(utilisateur.email || '')) return;
+  await utilisateur.update(
+    { email: adresseLiberee(utilisateur), telephone: null },
+    { ...options, hooks: false },
+  );
+}
 
 class AdminManagementService {
 
@@ -12,8 +37,15 @@ class AdminManagementService {
    * Crée un nouvel administrateur avec permissions et envoi d'email
    */
   static async creerAdmin({ nom, prenom, email, permissions = [] }) {
-    const existing = await Utilisateur.findOne({ where: { email: email.toLowerCase().trim() } });
-    if (existing) {
+    // Supprimés compris : un compte supprimé AVANT que la suppression ne
+    // libère l'adresse la retient encore — on la libère ici.
+    const existing = await Utilisateur.findOne({
+      where: where(fn('lower', col('email')), email.toLowerCase().trim()),
+      paranoid: false,
+    });
+    if (existing && existing.isSoftDeleted()) {
+      await libererIdentifiants(existing);
+    } else if (existing) {
       throw Object.assign(new Error('Un utilisateur avec cet email existe déjà.'), { status: 409 });
     }
 
@@ -143,7 +175,12 @@ class AdminManagementService {
       );
     }
 
-    await admin.destroy(); // suppression logique (paranoid)
+    // Suppression logique (paranoid), adresse et téléphone libérés : on peut
+    // recréer un administrateur avec le même e-mail.
+    await sequelize.transaction(async (transaction) => {
+      await libererIdentifiants(admin, { transaction });
+      await admin.destroy({ transaction });
+    });
     logger.warn('admin_supprime', { cible: userId, parQui: demandeurId, restants });
     return { message: 'Administrateur supprimé.' };
   }
@@ -202,3 +239,5 @@ class AdminManagementService {
 }
 
 module.exports = AdminManagementService;
+module.exports.adresseLiberee = adresseLiberee;
+module.exports.PREFIXE_LIBERE = PREFIXE_LIBERE;
