@@ -314,7 +314,7 @@ class AuthService {
         ...(isEmail
           ? { email: brut.toLowerCase() }
           : { telephone: variantesTelephone(brut) }),
-        role: ['Admin', 'SuperAdmin'],
+        role: 'Admin',
         statut: 'actif',
       },
       attributes: ['id'],

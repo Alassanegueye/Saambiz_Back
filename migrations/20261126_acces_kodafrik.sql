@@ -7,7 +7,7 @@ ALTER TABLE utilisateur
 -- Les administrateurs déjà en place conservent leur accès à Kodafrik.
 UPDATE utilisateur
   SET acces_kodafrik = true
-  WHERE role IN ('Admin', 'SuperAdmin')
+  WHERE role::text IN ('Admin', 'SuperAdmin')
     AND deleted_at IS NULL
     AND acces_kodafrik = false;
 
