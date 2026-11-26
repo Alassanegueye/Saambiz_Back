@@ -119,9 +119,30 @@ const encadre = (html, ton = 'info') => {
   return `<p style="margin:6px 0 18px;padding:12px 14px;background:${fond};color:${encre};border-radius:10px;font-size:13px;line-height:1.6">${html}</p>`;
 };
 
+const LOGOS_ESPACES = Object.freeze({
+  kodafrik: 'espace-kodafrik.png',
+  saambiz: 'espace-saambiz.png',
+  terangaloc: 'espace-terangaloc.png',
+  kerimmo: 'espace-terangaloc.png',
+  kaaylink: 'espace-kaaylink.png',
+  pro2link: 'espace-kaaylink.png',
+});
+
+function logoEspace(nom) {
+  const cle = String(nom || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const fichier = LOGOS_ESPACES[cle];
+  return fichier ? `${reglagesKodafrik().imagesEspaces}/${fichier}` : null;
+}
+
 function espacesEnPastilles(espaces) {
   if (!espaces.length) return '';
-  const pastilles = espaces.map((e) => `<span style="display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border:1px solid #D9E2F2;border-radius:999px;font-size:13px;font-weight:bold;color:${MARINE}">${echapper(e)}</span>`).join('');
+  const pastilles = espaces.map((e) => {
+    const logo = logoEspace(e);
+    const img = logo
+      ? `<img src="${echapper(logo)}" width="18" height="18" alt="" style="display:inline-block;vertical-align:middle;width:18px;height:18px;border:0;border-radius:4px;margin-right:6px" />`
+      : '';
+    return `<span style="display:inline-block;margin:0 6px 6px 0;padding:${logo ? '5px 12px 5px 8px' : '6px 12px'};border:1px solid #D9E2F2;border-radius:999px;font-size:13px;font-weight:bold;color:${MARINE};vertical-align:middle">${img}<span style="vertical-align:middle">${echapper(e)}</span></span>`;
+  }).join('');
   return `<div style="margin:0 0 16px"><div style="font-size:12px;color:${DISCRET};margin:0 0 6px">Vos espaces</div>${pastilles}</div>`;
 }
 

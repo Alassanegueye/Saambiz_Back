@@ -37,6 +37,12 @@ function siteConnu(id) {
 
 /** Réglages de Kodafrik, lus à chaque appel (les tests changent l'environnement). */
 function reglagesKodafrik() {
+  const basePublique = sansSlashFinal(
+    process.env.API_PUBLIC_URL
+    || process.env.RENDER_EXTERNAL_URL
+    || process.env.VITRINE_BASE_URL
+    || 'https://api.saambiz.com',
+  );
   return {
     // Où arrivent les demandes du formulaire.
     contact: process.env.KODAFRIK_CONTACT_EMAIL || 'contact@kodafrik.com',
@@ -50,6 +56,9 @@ function reglagesKodafrik() {
     // Les images des e-mails, servies par le site (fichiers statiques : LWS
     // les sert, seul le PHP est bloqué).
     images: sansSlashFinal(process.env.KODAFRIK_MAIL_IMAGES || 'https://kodafrik.com/email'),
+    // Logos des espaces (SaamBiz, Terangaloc, Kaaylink), servis publiquement
+    // par l'API sous /email/espace-*.png.
+    imagesEspaces: sansSlashFinal(process.env.KODAFRIK_ESPACES_IMAGES || `${basePublique}/email`),
   };
 }
 

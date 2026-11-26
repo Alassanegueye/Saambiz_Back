@@ -29,6 +29,13 @@ const formatUser = (utilisateur) => {
     dateSuppression: utilisateur.dateSuppression ?? null,
   };
 
+  // Première connexion (changement de mot de passe provisoire obligatoire sur
+  // le portail Kodafrik) et accès à Kodafrik : exposés aux administrateurs.
+  if (['Admin', 'SuperAdmin'].includes(utilisateur.role)) {
+    userFormatted.isFirstLogin = utilisateur.isFirstLogin === true;
+    userFormatted.accesKodafrik = utilisateur.role === 'SuperAdmin' || utilisateur.accesKodafrik === true;
+  }
+
   // LE PIÈGE DE CETTE FONCTION : c'est une liste blanche. Tout champ qu'elle
   // ne nomme pas est SILENCIEUSEMENT PERDU.
   //

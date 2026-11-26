@@ -36,7 +36,7 @@ class AdminManagementService {
   /**
    * Crée un nouvel administrateur avec permissions et envoi d'email
    */
-  static async creerAdmin({ nom, prenom, email, permissions = [] }) {
+  static async creerAdmin({ nom, prenom, email, permissions = [], motDePasse = null, envoyerIdentifiants = true, accesKodafrik = false }) {
     // Supprimés compris : un compte supprimé AVANT que la suppression ne
     // libère l'adresse la retient encore — on la libère ici.
     const existing = await Utilisateur.findOne({
@@ -49,7 +49,17 @@ class AdminManagementService {
       throw Object.assign(new Error('Un utilisateur avec cet email existe déjà.'), { status: 409 });
     }
 
-    const password = generatePassword();
+    let password;
+    if (motDePasse !== null && motDePasse !== undefined && String(motDePasse).trim() !== '') {
+      const { passwordSchema } = require('../validators/auth.validator');
+      const { error } = passwordSchema.validate(String(motDePasse));
+      if (error) {
+        throw Object.assign(new Error(error.message), { status: 400 });
+      }
+      password = String(motDePasse);
+    } else {
+      password = generatePassword();
+    }
     const hash = await bcrypt.hash(password, bcryptConfig.saltRounds);
 
     const transaction = await sequelize.transaction();
@@ -61,6 +71,7 @@ class AdminManagementService {
         mot_de_passe: hash,
         role: 'Admin',
         isFirstLogin: true,
+        accesKodafrik: Boolean(accesKodafrik),
         statut: 'actif',
         verifie: true,
       }, { transaction });
@@ -79,13 +90,15 @@ class AdminManagementService {
 
       await transaction.commit();
 
-      sendNewAdminEmail({
-        to: admin.email,
-        nom: admin.nom,
-        prenom: admin.prenom,
-        email: admin.email,
-        password,
-      }).catch((err) => logger.error('sendNewAdminEmail:failed', { error: err.message }));
+      if (envoyerIdentifiants !== false) {
+        sendNewAdminEmail({
+          to: admin.email,
+          nom: admin.nom,
+          prenom: admin.prenom,
+          email: admin.email,
+          password,
+        }).catch((err) => logger.error('sendNewAdminEmail:failed', { error: err.message }));
+      }
 
       return admin;
     } catch (err) {
@@ -97,13 +110,14 @@ class AdminManagementService {
   /**
    * Liste tous les admins actifs (non supprimés)
    */
-  /** Modifie l'identité d'un administrateur (nom, prénom, email). */
-  static async modifierAdmin(userId, { nom, prenom, email }) {
+  /** Modifie l'identité et l'accès Kodafrik d'un administrateur. */
+  static async modifierAdmin(userId, { nom, prenom, email, accesKodafrik }) {
     const admin = await Utilisateur.findOne({ where: { id: userId, role: 'Admin' } });
     if (!admin) throw Object.assign(new Error('Administrateur introuvable.'), { status: 404 });
     const champs = {};
     if (nom !== undefined) champs.nom = String(nom).trim();
     if (prenom !== undefined) champs.prenom = String(prenom).trim();
+    if (typeof accesKodafrik === 'boolean') champs.accesKodafrik = accesKodafrik;
     if (email !== undefined) {
       champs.email = String(email).trim().toLowerCase();
       const pris = await Utilisateur.findOne({ where: { email: champs.email } });
@@ -115,13 +129,13 @@ class AdminManagementService {
       throw Object.assign(new Error('Nom et prénom sont requis.'), { status: 400 });
     }
     await admin.update(champs);
-    return { id: admin.id, nom: admin.nom, prenom: admin.prenom, email: admin.email };
+    return { id: admin.id, nom: admin.nom, prenom: admin.prenom, email: admin.email, accesKodafrik: Boolean(admin.accesKodafrik) };
   }
 
   static async listerAdmins() {
     return Utilisateur.findAll({
       where: { role: 'Admin' },
-      attributes: ['id', 'nom', 'prenom', 'email', 'statut', 'isFirstLogin', 'premiereConnexion', 'derniereConnexion', 'createdAt'],
+      attributes: ['id', 'nom', 'prenom', 'email', 'statut', 'isFirstLogin', 'accesKodafrik', 'premiereConnexion', 'derniereConnexion', 'createdAt'],
       order: [['createdAt', 'DESC']],
     });
   }

@@ -178,3 +178,10 @@ exports.verifierCodeAcces = asyncHandler(async (req, res) => {
   const r = await CodeAccesService.verifier(req.user, code, { refreshToken });
   return res.status(200).json({ success: true, message: "Code d'accès vérifié.", data: { valide: true, token: r.token } });
 });
+
+/** Utilisé par le portail Kodafrik pour savoir si un administrateur existe dans SaamBiz. */
+exports.localiser = asyncHandler(async (req, res) => {
+  const { identifiant } = req.body || {};
+  const connu = await AuthService.localiserAdmin(identifiant);
+  return res.status(200).json({ connu });
+});

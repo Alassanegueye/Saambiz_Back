@@ -303,6 +303,26 @@ class AuthService {
   }
 
   // ==============================
+  // LOCALISER (Portail Kodafrik)
+  // ==============================
+  static async localiserAdmin(identifiant) {
+    const brut = String(identifiant || '').trim();
+    if (!brut) return false;
+    const isEmail = /\S+@\S+\.\S+/.test(brut);
+    const utilisateur = await Utilisateur.findOne({
+      where: {
+        ...(isEmail
+          ? { email: brut.toLowerCase() }
+          : { telephone: variantesTelephone(brut) }),
+        role: ['Admin', 'SuperAdmin'],
+        statut: 'actif',
+      },
+      attributes: ['id'],
+    });
+    return Boolean(utilisateur);
+  }
+
+  // ==============================
   // LOGIN
   // ==============================
   static async login({ identifiant, mot_de_passe }, contexte = {}) {

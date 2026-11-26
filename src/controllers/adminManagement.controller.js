@@ -20,7 +20,7 @@ const tracer = (req, action, cible, cibleId, details = {}) =>
 // ── Admins ────────────────────────────────────────────────────────────────
 
 exports.creerAdmin = asyncHandler(async (req, res) => {
-  const { nom, prenom, email, permissions, codeAcces } = req.body;
+  const { nom, prenom, email, permissions, codeAcces, motDePasse, envoyerIdentifiants, accesKodafrik } = req.body;
   if (!nom || !prenom || !email) {
     throw new BadRequestError('nom, prenom et email sont requis.');
   }
@@ -30,14 +30,28 @@ exports.creerAdmin = asyncHandler(async (req, res) => {
     throw new BadRequestError("Le code d'accès fait exactement quatre chiffres.");
   }
 
-  const admin = await AdminManagementService.creerAdmin({ nom, prenom, email, permissions });
+  const admin = await AdminManagementService.creerAdmin({
+    nom,
+    prenom,
+    email,
+    permissions,
+    motDePasse,
+    envoyerIdentifiants,
+    accesKodafrik,
+  });
   if (codeAcces !== undefined) {
     await CodeAccesService.definir(admin.id, String(codeAcces), { auteurId: req.user.id });
   }
   tracer(req, 'creer_admin', 'admin', admin.id, { nom: `${prenom} ${nom}`, email });
   res.status(201).json({
     message: 'Administrateur créé avec succès.',
-    admin: { id: admin.id, nom: admin.nom, prenom: admin.prenom, email: admin.email },
+    admin: {
+      id: admin.id,
+      nom: admin.nom,
+      prenom: admin.prenom,
+      email: admin.email,
+      accesKodafrik: Boolean(admin.accesKodafrik),
+    },
   });
 });
 

@@ -109,6 +109,12 @@ const User = sequelize.define('User', {
     defaultValue: true,
     allowNull: false,
   },
+  accesKodafrik: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    field: 'acces_kodafrik',
+  },
   // Première connexion réussie (jamais réécrite) et la plus récente.
   premiereConnexion: {
     type: DataTypes.DATE,

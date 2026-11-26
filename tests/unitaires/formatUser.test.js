@@ -78,4 +78,15 @@ describe('formatUser', () => {
     expect(formatUser(VENDEUR).boutiques).toHaveLength(1);
     expect(formatUser({ ...VENDEUR, role: 'Acheteur' }).boutiques).toBeUndefined();
   });
+
+  it('expose isFirstLogin et accesKodafrik aux administrateurs', () => {
+    const admin = formatUser({ ...VENDEUR, role: 'Admin', isFirstLogin: true, accesKodafrik: true });
+    expect(admin.isFirstLogin).toBe(true);
+    expect(admin.accesKodafrik).toBe(true);
+    const superAdmin = formatUser({ ...VENDEUR, role: 'SuperAdmin', isFirstLogin: false, accesKodafrik: false });
+    expect(superAdmin.isFirstLogin).toBe(false);
+    expect(superAdmin.accesKodafrik).toBe(true);
+    expect(formatUser(VENDEUR).isFirstLogin).toBeUndefined();
+    expect(formatUser(VENDEUR).accesKodafrik).toBeUndefined();
+  });
 });

@@ -52,6 +52,19 @@ describe('Les modèles', () => {
     const { html } = rendre('code_acces', { codeAcces: '0427' });
     for (const c of '0427') expect(html).toContain(`>${c}</td>`);
   });
+
+  it('affiche le logo de chaque espace autorisé dans les pastilles de bienvenue', () => {
+    const { html } = rendre('bienvenue', {
+      email: 'awa@kodafrik.com',
+      codeAcces: '0427',
+      motDePasse: 'Prov-1234',
+      espaces: ['Kodafrik', 'SaamBiz', 'Terangaloc', 'Kaaylink'],
+    });
+    expect(html).toContain('/email/espace-kodafrik.png');
+    expect(html).toContain('/email/espace-saambiz.png');
+    expect(html).toContain('/email/espace-terangaloc.png');
+    expect(html).toContain('/email/espace-kaaylink.png');
+  });
 });
 
 describe('L’envoi', () => {

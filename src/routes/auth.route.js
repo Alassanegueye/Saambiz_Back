@@ -164,6 +164,7 @@ router.post(
 );
 
 router.post('/login', limiteConnexion, validate(loginSchema), authController.login);
+router.post('/localiser', limiteConnexion, authController.localiser);
 
 /**
  * @swagger
