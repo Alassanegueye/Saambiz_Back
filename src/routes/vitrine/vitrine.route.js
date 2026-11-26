@@ -91,6 +91,45 @@ const limiteMessage = rateLimit({
 // Déclarée avant `/:slug` : sans cela, « commande » serait pris pour un slug.
 router.get('/commande/:reference', limiteSuivi, VitrineController.suivreCommande);
 
+// Modifier ou annuler une commande depuis saambiz.com : plus rare qu'une
+// consultation, plafond plus bas.
+const limiteModificationSuivi = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.VITRINE_SUIVI_MODIFICATION_RATE_LIMIT_MAX) || 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de modifications depuis cette connexion. Réessayez dans quelques minutes.',
+  },
+});
+
+/**
+ * @swagger
+ * /vitrine/suivi/{reference}:
+ *   get:
+ *     summary: Suivre une commande sans compte, avec son numéro seul (saambiz.com)
+ *     description: Le numéro CMD-XXXX-XXXX-XXXX est un secret de 60 bits. Un ancien numéro (CMD-2026-XXXXXX) demande aussi `telephone`.
+ *     tags: [Vitrine]
+ *     parameters:
+ *       - { in: path, name: reference, required: true, schema: { type: string } }
+ *       - { in: query, name: telephone, required: false, schema: { type: string } }
+ *     responses:
+ *       200: { description: La commande, son état et les actions possibles }
+ *       400: { description: Ancien numéro sans téléphone (TELEPHONE_REQUIS) }
+ *       404: { description: Aucune commande ne correspond }
+ *   patch:
+ *     summary: Modifier l'adresse, le téléphone ou la note (avant acceptation par la boutique)
+ *     tags: [Vitrine]
+ * /vitrine/suivi/{reference}/annuler:
+ *   post:
+ *     summary: Annuler la commande (avant sa préparation)
+ *     tags: [Vitrine]
+ */
+router.get('/suivi/:reference', limiteSuivi, VitrineController.suivreParNumero);
+router.patch('/suivi/:reference', limiteSuivi, limiteModificationSuivi, VitrineController.modifierParNumero);
+router.post('/suivi/:reference/annuler', limiteSuivi, limiteModificationSuivi, VitrineController.annulerParNumero);
+
 /**
  * @swagger
  * /vitrine/{slug}:

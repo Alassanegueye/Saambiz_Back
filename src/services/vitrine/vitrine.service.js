@@ -766,52 +766,68 @@ class VitrineService {
   }
 
   // ══════════════════════════════════════════════════════════════════
-  //  SUIVI DE COMMANDE — SANS COMPTE
+  //  SUIVI DE COMMANDE — SANS COMPTE (saambiz.com)
   // ══════════════════════════════════════════════════════════════════
+  //
+  // Le client qui n'a pas l'application suit sa commande sur saambiz.com
+  // avec son NUMÉRO seul : `CMD-XXXX-XXXX-XXXX`, 60 bits tirés au hasard
+  // (CommandeService._genererReference), impossible à deviner. Le numéro est
+  // donc le secret qui ouvre la commande : la voir, modifier l'adresse, le
+  // téléphone ou la note tant que le vendeur ne l'a pas acceptée, l'annuler
+  // tant qu'elle n'est pas en préparation.
+  //
+  // Les ANCIENS numéros (`CMD-2026-XXXXXX`, 31 bits) se devinent bien plus
+  // vite : ils demandent encore le téléphone, et restent en lecture seule.
+  //
+  // Une commande inconnue et un téléphone qui ne correspond pas donnent la
+  // même réponse : on ne doit pas apprendre, en tâtonnant, quels numéros
+  // existent.
 
-  /**
-   * Le client suit sa commande avec sa référence ET son téléphone.
-   *
-   * La référence seule ne suffit pas : elle transite par SMS et WhatsApp,
-   * elle est courte, et elle finit recopiée dans des conversations. Exiger
-   * le numéro du compte lie la consultation à la personne qui a commandé.
-   */
-  static async suivreCommande(reference, telephone) {
-    const ref = String(reference || '').trim().toUpperCase().slice(0, 40);
-    const tel = VitrineService.normaliserTelephone(telephone);
+  static _introuvable() {
+    return new NotFoundError('Aucune commande ne correspond à ce numéro. Vérifiez-le : il figure sur la page de confirmation de votre commande.');
+  }
 
-    if (!ref || !VitrineService.estTelephoneValide(tel)) {
-      throw new BadRequestError('Référence ou numéro de téléphone manquant.');
+  /** La commande d'un numéro, et si ce numéro est au format sûr. */
+  static async _commandeDuNumero(saisie, telephone = null) {
+    const inclure = [
+      { model: LigneCommande, as: 'lignes' },
+      { model: Utilisateur, as: 'acheteur', attributes: ['id', 'telephone'], required: false },
+    ];
+    const sur = CommandeService.normaliserReference(saisie);
+    if (sur) {
+      const commande = await Commande.findOne({ where: { referenceCommande: sur }, include: inclure });
+      if (!commande) throw VitrineService._introuvable();
+      return { commande, sur: true };
     }
 
-    const commande = await Commande.findOne({
-      where: { referenceCommande: ref },
-      include: [
-        { model: LigneCommande, as: 'lignes' },
-        // Facultatif : une commande venue du site n'a pas d'acheteur.
-        { model: Utilisateur, as: 'acheteur', attributes: ['id', 'telephone'], required: false },
-      ],
-    });
-
-    // Référence inconnue et téléphone qui ne correspond pas donnent la même
-    // réponse : sinon on saurait, en tâtonnant, quelles références existent.
-    // Trois sources possibles pour le numéro : le compte (commande passée
-    // dans l'application), les coordonnées du client (site), et le numéro de
-    // livraison saisi.
+    const ancien = String(saisie || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (!/^CMD-\d{4}-[0-9A-Z]{6}$/.test(ancien)) throw VitrineService._introuvable();
+    const tel = VitrineService.normaliserTelephone(telephone);
+    if (!VitrineService.estTelephoneValide(tel)) {
+      throw new BadRequestError(
+        'Pour une commande passée avant le 26 novembre 2026, indiquez aussi le numéro de téléphone utilisé.',
+        { code: 'TELEPHONE_REQUIS' },
+      );
+    }
+    const commande = await Commande.findOne({ where: { referenceCommande: ancien }, include: inclure });
     const correspond = commande && [
       commande.acheteur && commande.acheteur.telephone,
       commande.clientTelephone,
       commande.numeroTelephone,
     ].some((numero) => numero === tel);
-    if (!correspond) {
-      throw new NotFoundError('Aucune commande ne correspond à cette référence et à ce numéro.');
-    }
+    if (!correspond) throw VitrineService._introuvable();
+    return { commande, sur: false };
+  }
 
+  /** Ce que le client voit de sa commande, et ce qu'il peut y faire. */
+  static async _vueCommande(commande, { sur = true } = {}) {
     const boutique = await Boutique.findOne({
       where: { vendeurId: commande.vendeurId },
-      attributes: ['nom', 'slug', 'logo', 'telephone', 'whatsapp'],
+      attributes: ['nom', 'slug', 'logo', 'telephone', 'whatsapp', 'vitrineActive'],
     });
-
+    // Commande passée dans l'application : elle se gère dans l'application.
+    const sansCompte = !commande.acheteurId;
+    const ouverte = sur && sansCompte;
     return {
       reference: commande.referenceCommande,
       statut: commande.statut,
@@ -819,19 +835,147 @@ class VitrineService {
       modeLivraison: commande.modeLivraison,
       modePaiement: commande.modePaiement,
       adresseLivraison: commande.adresseLivraison,
+      telephone: commande.numeroTelephone || commande.clientTelephone || null,
+      note: commande.note || null,
+      client: sansCompte ? { prenom: commande.clientPrenom, nom: commande.clientNom } : null,
       montantProduits: commande.montantProduits,
       fraisLivraison: commande.fraisLivraison,
       montantTotal: commande.montantTotal,
       date: commande.createdAt,
-      lignes: commande.lignes.map((l) => ({
+      misAJour: commande.updatedAt,
+      annulationMotif: commande.statut === 'annulee' ? commande.annulationMotif || null : null,
+      lignes: (commande.lignes || []).map((l) => ({
         nom: l.nomProduit,
         image: l.imageProduit,
         prixUnitaire: l.prixUnitaire,
         quantite: l.quantite,
         sousTotal: l.sousTotal,
       })),
-      boutique: boutique ? boutique.get({ plain: true }) : null,
+      boutique: boutique ? {
+        nom: boutique.nom,
+        slug: boutique.vitrineActive ? boutique.slug : null,
+        logo: boutique.logo,
+        telephone: boutique.telephone,
+        whatsapp: boutique.whatsapp,
+      } : null,
+      actions: {
+        modifier: ouverte && commande.statut === 'en_attente',
+        annuler: ouverte && ['en_attente', 'acceptee', 'confirmee'].includes(commande.statut)
+          && commande.statutPaiement !== 'paye',
+        // Pourquoi rien n'est possible, quand c'est le cas.
+        raison: !sansCompte
+          ? "Cette commande a été passée dans l'application SaamBiz : gérez-la depuis l'application."
+          : !sur ? 'Ancien numéro de commande : consultation seulement.' : null,
+      },
     };
+  }
+
+  /** GET /vitrine/suivi/:reference — le numéro seul (ou ancien numéro + téléphone). */
+  static async suivreParNumero(saisie, telephone = null) {
+    const { commande, sur } = await VitrineService._commandeDuNumero(saisie, telephone);
+    return VitrineService._vueCommande(commande, { sur });
+  }
+
+  /** Les actions de modification exigent un numéro sûr et une commande sans compte. */
+  static async _commandeModifiable(saisie) {
+    const { commande, sur } = await VitrineService._commandeDuNumero(saisie);
+    if (!sur) throw new ForbiddenError('Ancien numéro de commande : contactez la boutique pour la modifier.');
+    if (commande.acheteurId) {
+      throw new ForbiddenError("Cette commande a été passée dans l'application SaamBiz : gérez-la depuis l'application.");
+    }
+    return commande;
+  }
+
+  /**
+   * PATCH /vitrine/suivi/:reference — adresse, téléphone, note. Seulement
+   * tant que le vendeur n'a pas accepté la commande : ensuite, il prépare
+   * sur la foi de ce qu'il a lu, et un changement silencieux le tromperait.
+   */
+  static async modifierParNumero(saisie, { adresseLivraison, telephone, note } = {}) {
+    const commande = await VitrineService._commandeModifiable(saisie);
+    if (commande.statut !== 'en_attente') {
+      throw new BadRequestError('La boutique a déjà pris en charge votre commande : contactez-la pour la modifier.');
+    }
+
+    const avant = {
+      adresseLivraison: commande.adresseLivraison,
+      telephone: commande.numeroTelephone,
+      note: commande.note,
+    };
+    const changes = {};
+    if (adresseLivraison !== undefined) {
+      const adresse = String(adresseLivraison || '').trim().slice(0, 240);
+      if (commande.modeLivraison === 'livraison' && !adresse) {
+        throw new BadRequestError('Indiquez une adresse de livraison.');
+      }
+      changes.adresseLivraison = adresse || null;
+    }
+    if (telephone !== undefined) {
+      const tel = VitrineService.normaliserTelephone(telephone);
+      if (!VitrineService.estTelephoneValide(tel)) {
+        throw new BadRequestError('Le numéro de téléphone est invalide. Exemple : 77 123 45 67.');
+      }
+      changes.numeroTelephone = tel;
+      changes.clientTelephone = tel;
+    }
+    if (note !== undefined) changes.note = String(note || '').trim().slice(0, 500) || null;
+
+    const modifies = Object.keys(changes).filter((k) => k !== 'clientTelephone'
+      && (k === 'numeroTelephone' ? avant.telephone : avant[k]) !== changes[k]);
+    if (modifies.length === 0) return VitrineService._vueCommande(commande);
+
+    await commande.update(changes);
+
+    CommandeService._historiser({
+      commandeId: commande.id,
+      auteurRole: 'acheteur',
+      operation: 'modification',
+      statutAvant: commande.statut,
+      statutApres: commande.statut,
+      details: { origine: 'suivi_site', champs: modifies },
+    });
+    const quoi = modifies.map((k) => ({ adresseLivraison: "l'adresse", numeroTelephone: 'le téléphone', note: 'la note' })[k]).join(', ');
+    CommandeService._notifierUtilisateur(
+      commande.vendeurId,
+      'Commande modifiée par le client',
+      `${commande.referenceCommande} : le client a changé ${quoi}.`,
+      { data: CommandeService._donneesNotification(commande, null, 'Client', { pourVendeur: true }) },
+    ).catch((err) => logger.warn('vitrine:modification_notification', { message: err.message }));
+    CommandeService._diffuserStatut(commande);
+
+    return VitrineService._vueCommande(commande);
+  }
+
+  /** POST /vitrine/suivi/:reference/annuler — avant la préparation seulement. */
+  static async annulerParNumero(saisie, { motif } = {}) {
+    const commande = await VitrineService._commandeModifiable(saisie);
+    if (commande.statut === 'annulee') return VitrineService._vueCommande(commande);
+    if (commande.statutPaiement === 'paye') {
+      throw new BadRequestError('Cette commande est payée : contactez la boutique pour l’annuler.');
+    }
+    if (!['en_attente', 'acceptee', 'confirmee'].includes(commande.statut)) {
+      throw new BadRequestError('Votre commande est déjà en préparation : contactez la boutique pour l’annuler.');
+    }
+    const raison = String(motif || '').trim().slice(0, 500) || 'Annulée par le client depuis saambiz.com';
+    await CommandeService._annuler(commande, 'acheteur', 'annulee', { motif: raison });
+    const recharge = await Commande.findByPk(commande.id, { include: [{ model: LigneCommande, as: 'lignes' }] });
+    return VitrineService._vueCommande(recharge);
+  }
+
+  /**
+   * Ancienne route (sites des boutiques, avant le 26/11/2026) : numéro ET
+   * téléphone. Gardée pour les liens déjà envoyés.
+   */
+  static async suivreCommande(reference, telephone) {
+    const { commande, sur } = await VitrineService._commandeDuNumero(reference, telephone);
+    if (sur) {
+      // Numéro sûr : le téléphone n'est plus exigé, mais s'il est donné il
+      // doit correspondre — l'ancienne route garde son contrat.
+      const tel = VitrineService.normaliserTelephone(telephone);
+      const numeros = [commande.acheteur && commande.acheteur.telephone, commande.clientTelephone, commande.numeroTelephone];
+      if (!numeros.includes(tel)) throw VitrineService._introuvable();
+    }
+    return VitrineService._vueCommande(commande, { sur });
   }
 }
 

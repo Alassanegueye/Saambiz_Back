@@ -77,6 +77,23 @@ exports.envoyerMessage = asyncHandler(async (req, res) => {
  * est un compromis assumé — il finit dans les journaux d'accès — mais un
  * suivi qui exige un POST n'est pas partageable, donc pas utilisé.
  */
+// Suivi sur saambiz.com : le numéro de commande seul.
+exports.suivreParNumero = asyncHandler(async (req, res) => {
+  const data = await VitrineService.suivreParNumero(req.params.reference, req.query.telephone);
+  return ok(res, data, 'Commande retrouvée.');
+});
+
+exports.modifierParNumero = asyncHandler(async (req, res) => {
+  const { adresseLivraison, telephone, note } = req.body || {};
+  const data = await VitrineService.modifierParNumero(req.params.reference, { adresseLivraison, telephone, note });
+  return ok(res, data, 'Commande modifiée.');
+});
+
+exports.annulerParNumero = asyncHandler(async (req, res) => {
+  const data = await VitrineService.annulerParNumero(req.params.reference, { motif: req.body?.motif });
+  return ok(res, data, 'Commande annulée.');
+});
+
 exports.suivreCommande = asyncHandler(async (req, res) => {
   const data = await VitrineService.suivreCommande(req.params.reference, req.query.telephone);
   return ok(res, data, 'Commande retrouvée.');

@@ -356,40 +356,45 @@ describe('T-04 — énumération de comptes', () => {
 describe('T-17 — référence de commande', () => {
   const CommandeService = require('../../src/services/commandes/commande.service');
 
-  it('fait exactement six caractères, et ne collisionne pas sur 10 000 tirages', () => {
+  it('fait douze caractères (60 bits) et ne collisionne pas sur 10 000 tirages', () => {
     const vues = new Set();
     for (let i = 0; i < 10000; i += 1) {
       const ref = CommandeService._genererReference();
-      // SIX caractères, pas « jusqu'à six ».
-      // `Math.random().toString(36)` en rendait entre 1 et 6 selon le
-      // tirage : un nombre un peu petit donnait « CMD-2026-ABC » et
-      // réduisait d'autant l'espace des références.
-      expect(ref).toMatch(/^CMD-\d{4}-[0-9A-Z]{6}$/);
+      // Le numéro suffit à suivre, modifier et annuler une commande sur
+      // saambiz.com : c'est un secret, 32¹² valeurs.
+      expect(ref).toMatch(/^CMD-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
       vues.add(ref);
     }
-    // Une collision ferait échouer l'insertion d'une commande légitime.
-    // 10 000 tirages sur 36⁶ ≈ 2,2 milliards : une collision reste possible
-    // mais très improbable, et ce seuil suffit à détecter un générateur
-    // cassé — qui se signalerait par des centaines de doublons.
-    expect(vues.size).toBeGreaterThan(9990);
+    expect(vues.size).toBe(10000);
   });
 
-  it('tire sur tout l\'alphabet, sans trou ni favori marqué', () => {
-    // Un générateur qui n'utiliserait qu'une partie de l'alphabet, ou qui
-    // favoriserait nettement certains caractères, réduirait l'espace réel
-    // des références sans que le format ne change.
+  it('tire sur tout l\'alphabet (base 32 sans I, L, O, U), sans favori marqué', () => {
     const comptes = new Map();
-    for (let i = 0; i < 20000; i += 1) {
-      for (const c of CommandeService._genererReference().slice(9)) {
+    for (let i = 0; i < 10000; i += 1) {
+      for (const c of CommandeService._genererReference().replace(/^CMD-|-/g, '')) {
         comptes.set(c, (comptes.get(c) || 0) + 1);
       }
     }
-    // 36 caractères attendus, 120 000 tirages : ~3 333 par caractère.
-    expect(comptes.size).toBe(36);
+    // 32 caractères attendus, 120 000 tirages : 3 750 par caractère.
+    expect(comptes.size).toBe(32);
+    for (const c of 'ILOU') expect(comptes.has(c)).toBe(false);
     for (const n of comptes.values()) {
-      expect(n).toBeGreaterThan(3333 * 0.8);
-      expect(n).toBeLessThan(3333 * 1.2);
+      expect(n).toBeGreaterThan(3750 * 0.8);
+      expect(n).toBeLessThan(3750 * 1.2);
     }
+  });
+
+  it('relit un numéro saisi à la main, et refuse ce qui n\'a pas le format sûr', () => {
+    const ref = CommandeService._genererReference();
+    expect(CommandeService.normaliserReference(ref.toLowerCase())).toBe(ref);
+    expect(CommandeService.normaliserReference(ref.replace(/-/g, ' '))).toBe(ref);
+    expect(CommandeService.normaliserReference('cmd 0a1b-2c3d-4e5f')).toBe('CMD-0A1B-2C3D-4E5F');
+    // O se lit 0, I et L se lisent 1.
+    expect(CommandeService.normaliserReference('CMD-OAIB-2C3D-4E5L')).toBe('CMD-0A1B-2C3D-4E51');
+    expect(CommandeService.normaliserReference('CMD-2026-ABC123')).toBeNull();
+    expect(CommandeService.normaliserReference('CMD-0A1B-2C3D-4E5')).toBeNull();
+    expect(CommandeService.normaliserReference('CMD-0A1B-2C3D-4E5U')).toBeNull();
+    expect(CommandeService.normaliserReference('')).toBeNull();
   });
 
   it('la référence n\'est pas tirée par Math.random', () => {

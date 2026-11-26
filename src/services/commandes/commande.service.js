@@ -61,10 +61,12 @@ const LIBELLES_STATUT = {
 
 const libelle = (statut) => LIBELLES_STATUT[statut] || statut;
 
-// Alphabet des références de commande : chiffres et majuscules, c'est-à-dire
-// base 36 — le même jeu de caractères qu'avant, pour que les références déjà
-// imprimées sur des reçus restent du même genre. Voir `_genererReference`.
-const ALPHABET_REFERENCE = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+// Alphabet des numéros de commande : base 32 de Crockford — chiffres et
+// majuscules SANS I, L, O, U, qu'on confond à la lecture ou en recopiant
+// (0/O, 1/I/L). À la saisie, O se lit 0, I et L se lisent 1. Voir
+// `_genererReference` et `normaliserReference`.
+const ALPHABET_REFERENCE = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const LONGUEUR_REFERENCE = 12;
 
 // Le vendeur, avec sa boutique : le client reconnaît une commande au nom de
 // la boutique, pas à celui de la personne qui la tient. Une fonction plutôt
@@ -81,39 +83,45 @@ class CommandeService {
   // -------------------- HELPERS --------------------
 
   /**
-   * Référence de commande : `CMD-<année>-<6 caractères>`.
+   * Numéro de commande : `CMD-XXXX-XXXX-XXXX`, douze caractères tirés au
+   * hasard (base 32 de Crockford), soit 32¹² ≈ 1,2 × 10¹⁸ valeurs — 60 bits.
    *
-   * Tirée par `crypto.randomInt` et non par `Math.random`, pour deux raisons.
+   * CE NUMÉRO SUFFIT À SUIVRE LA COMMANDE. Le client sans compte la retrouve
+   * sur saambiz.com avec ce seul numéro, la modifie ou l'annule : il est donc
+   * un SECRET, et doit être impossible à deviner. Avec 60 bits et la limite
+   * de 40 recherches par dix minutes, tomber sur une commande existante en
+   * essayant des numéros prendrait des milliards d'années.
    *
-   * LA PREMIÈRE est que cette référence est un FACTEUR D'AUTHENTIFICATION.
-   * Le suivi de commande sans compte (`GET /vitrine/commande/:reference`) la
-   * demande avec le numéro de téléphone du client, et rend la commande : nom,
-   * articles, adresse de livraison, montant. `Math.random` n'est pas
-   * cryptographique — l'état interne du générateur se reconstitue à partir de
-   * quelques tirages observés —, donc un vendeur qui collecte les références
-   * de ses propres commandes peut prédire celles qui suivent. Il resterait le
-   * téléphone à deviner, et le plafond de 40 essais par dix minutes ; mais on
-   * ne veut pas qu'un facteur d'authentification soit prédictible, même
-   * accompagné.
+   * Tiré par `crypto.randomInt` et non par `Math.random`, dont l'état interne
+   * se reconstitue à partir de quelques tirages observés : un vendeur qui
+   * collecte les numéros de ses propres commandes pourrait prédire les
+   * suivants. `randomInt` plutôt qu'un reste de division sur `randomBytes`
+   * (sans biais, même si 32 divise 256).
    *
-   * LA SECONDE est la régularité du format. `Math.random().toString(36)`
-   * rendait entre 1 et 6 caractères selon le tirage : un nombre un peu petit
-   * donnait « CMD-2026-ABC », et réduisait d'autant l'espace des références.
-   * Six caractères sont maintenant garantis, soit 36⁶ ≈ 2,2 milliards de
-   * valeurs à chaque fois.
-   *
-   * `randomInt` plutôt qu'un reste de division sur `randomBytes` : 256 n'est
-   * pas un multiple de 36, et le reste favoriserait les quatre premiers
-   * caractères de l'alphabet. Le biais serait faible et sans conséquence
-   * pratique — autant ne pas l'introduire.
+   * Plus d'année dans le numéro : elle n'apportait rien au secret et
+   * allongeait la saisie. Les anciens numéros (`CMD-2026-XXXXXX`, 31 bits)
+   * restent valables, mais leur suivi exige aussi le téléphone.
    */
   static _genererReference() {
-    const annee = new Date().getFullYear();
     let rand = '';
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < LONGUEUR_REFERENCE; i += 1) {
       rand += ALPHABET_REFERENCE[crypto.randomInt(ALPHABET_REFERENCE.length)];
     }
-    return `CMD-${annee}-${rand}`;
+    return `CMD-${rand.slice(0, 4)}-${rand.slice(4, 8)}-${rand.slice(8)}`;
+  }
+
+  /**
+   * Numéro saisi par un client → forme enregistrée, ou null s'il n'a pas le
+   * format sûr. Tolère les minuscules, les espaces, les tirets oubliés, et
+   * les confusions courantes (O → 0, I et L → 1).
+   */
+  static normaliserReference(saisie) {
+    const brut = String(saisie || '').toUpperCase().replace(/[\s\-_.]/g, '')
+      .replace(/O/g, '0').replace(/[IL]/g, '1');
+    const corps = brut.startsWith('CMD') ? brut.slice(3) : brut;
+    if (corps.length !== LONGUEUR_REFERENCE) return null;
+    if ([...corps].some((c) => !ALPHABET_REFERENCE.includes(c))) return null;
+    return `CMD-${corps.slice(0, 4)}-${corps.slice(4, 8)}-${corps.slice(8)}`;
   }
 
   static async _getFraisLivraison(modeLivraison) {
@@ -465,8 +473,12 @@ class CommandeService {
         paiementApres: commande.statutPaiement,
         details: { origine, montantTotal: commande.montantTotal },
       });
-      // Le client reçoit un accusé de réception au nom de la boutique.
-      CommandeService._emailClient(commande, 'recue').catch(echecIgnore('e-mail accusé de réception au client'));
+      // Le client AVEC COMPTE reçoit un accusé de réception au nom de la
+      // boutique. Sans compte (site de la boutique), aucun e-mail : il suit
+      // sa commande sur saambiz.com avec son numéro.
+      if (commande.acheteurId) {
+        CommandeService._emailClient(commande, 'recue').catch(echecIgnore('e-mail accusé de réception au client'));
+      }
 
       return await CommandeService.getCommandeComplete(commande.id);
 
@@ -1261,10 +1273,9 @@ class CommandeService {
    * tient maintenant en six notifications, que le client retrouve dans son
    * centre de notifications.
    *
-   * SEULE EXCEPTION, ET ELLE EST NÉCESSAIRE : la commande passée SANS COMPTE,
-   * depuis le site de la boutique. Ce client n'a pas l'application, donc aucun
-   * appareil enregistré : aucune notification ne peut l'atteindre, et lui
-   * retirer l'e-mail le laisserait sans nouvelle de sa commande.
+   * La commande passée SANS COMPTE, depuis le site de la boutique, ne reçoit
+   * ni e-mail ni notification : le client suit sa commande sur saambiz.com
+   * avec son numéro (secret, impossible à deviner — `_genererReference`).
    */
   static async _notifierAcheteurStatut(commande, messagePerso = null) {
     const libelles = {
@@ -1280,13 +1291,9 @@ class CommandeService {
     };
     const message = messagePerso || libelles[commande.statut] || `Statut : ${commande.statut}`;
 
-    // Commande passée sans compte : pas d'appareil à joindre, donc l'e-mail
-    // reste son seul canal. Avec un compte, c'est la notification qui porte
-    // la nouvelle — jamais les deux, pour ne pas prévenir deux fois.
-    if (!commande.acheteurId) {
-      CommandeService._emailClient(commande, commande.statut, messagePerso).catch(echecIgnore('e-mail de suivi au client'));
-      return;
-    }
+    // Commande passée sans compte : rien à envoyer, le client suit sa
+    // commande sur saambiz.com avec son numéro.
+    if (!commande.acheteurId) return;
 
     const boutique = await CommandeService._boutiqueDuVendeur(commande.vendeurId);
     await CommandeService._notifierUtilisateur(

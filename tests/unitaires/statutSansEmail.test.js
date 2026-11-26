@@ -11,11 +11,9 @@
  * l'application, et sur le téléphone. Pas d'e-mail en plus — prévenir deux
  * fois ne prévient pas mieux.
  *
- * L'EXCEPTION QUI RESTE : le client sans compte, qui a commandé depuis le
- * site de la boutique. Il n'a pas l'application, donc aucun appareil
- * enregistré : aucune notification ne peut l'atteindre. Lui retirer l'e-mail
- * le laisserait sans nouvelle de sa commande, et c'est pour cela que ce
- * fichier le vérifie aussi.
+ * Le client sans compte, qui a commandé depuis le site de la boutique, ne
+ * reçoit plus rien non plus (26/11/2026) : il suit sa commande sur
+ * saambiz.com avec son numéro, secret et impossible à deviner.
  */
 
 const mockCreerNotification = jest.fn();
@@ -139,12 +137,11 @@ describe('Le client qui a un compte', () => {
 });
 
 describe('Le client sans compte, qui a commandé depuis le site', () => {
-  test('reçoit toujours son e-mail : c’est son seul canal', async () => {
+  test('ne reçoit plus d’e-mail : il suit sa commande sur saambiz.com', async () => {
     await CommandeService._notifierAcheteurStatut(SANS_COMPTE);
     await vider();
 
-    expect(mockEmailClient).toHaveBeenCalledTimes(1);
-    expect(mockEmailClient.mock.calls[0][0].to).toBe('moussa@exemple.sn');
+    expect(mockEmailClient).not.toHaveBeenCalled();
   });
 
   test('et aucune notification, puisqu’il n’a pas de compte', async () => {
