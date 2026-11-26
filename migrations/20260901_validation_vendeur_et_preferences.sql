@@ -33,6 +33,7 @@ ALTER TABLE utilisateur
   ADD COLUMN IF NOT EXISTS statut_validation enum_utilisateur_statut_validation
   NOT NULL DEFAULT 'non_soumis';
 
+-- test deploiement
 -- Pièce justificative transmise par le vendeur (CNI, passeport, registre
 -- de commerce…). Stockée comme les autres médias : une URL.
 ALTER TABLE utilisateur ADD COLUMN IF NOT EXISTS piece_identite   TEXT;
