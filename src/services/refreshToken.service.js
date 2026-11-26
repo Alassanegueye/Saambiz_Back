@@ -160,7 +160,30 @@ class RefreshTokenService {
       remplacePar: ligne?.id ?? null,
     });
 
-    return { valide: true, utilisateurId: controle.utilisateurId, token: nouveau };
+    const codeAcces = await this._transmettreCodeAcces(controle.enregistrement.id, ligne?.id);
+    return { valide: true, utilisateurId: controle.utilisateurId, token: nouveau, codeAcces };
+  }
+
+  /**
+   * Le code d'accès vérifié (administrateurs) suit la session : la ligne
+   * remplaçante reprend le drapeau de l'ancienne. Renvoie vrai s'il est posé.
+   * Colonne absente (migration non passée) : faux, le code sera redemandé.
+   */
+  static async _transmettreCodeAcces(ancienId, nouveauId) {
+    if (!ancienId || !nouveauId) return false;
+    try {
+      const [lignes] = await RefreshToken.sequelize.query(
+        `UPDATE refresh_token n SET code_acces_verifie_le = a.code_acces_verifie_le
+         FROM refresh_token a
+         WHERE n.id = :nouveau AND a.id = :ancien AND a.code_acces_verifie_le IS NOT NULL
+         RETURNING n.id`,
+        { replacements: { nouveau: nouveauId, ancien: ancienId } },
+      );
+      return Array.isArray(lignes) && lignes.length > 0;
+    } catch (err) {
+      logger.warn('refresh_code_acces', { message: err.message });
+      return false;
+    }
   }
 
   /** Jeton remplacé par une rotation il y a moins de DELAI_GRACE_MS. */

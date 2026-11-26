@@ -4,6 +4,7 @@ const authController = require('../controllers/auth.controller');
 const { changerMotDePasse } = require('../controllers/authPassword.controller');
 const upload = require('../middlewares/upload.middleware');
 const authMiddleware = require('../middlewares/auth.middleware');
+const checkActiveUser = require('../middlewares/checkActiveUser.middleware');
 const validate = require('../middlewares/validate.middleware');
 const {
   registerSchema,
@@ -313,5 +314,32 @@ router.post('/resend-verification', limiteEnvoiCode, authController.renvoyerCode
 
 // RBAC : changement de mot de passe (première connexion ou volontaire)
 router.post('/changer-mot-de-passe', authMiddleware, changerMotDePasse);
+
+/**
+ * @swagger
+ * /auth/code-acces/verifier:
+ *   post:
+ *     summary: Vérifier le code d'accès à quatre chiffres d'un administrateur
+ *     description: Exigé par toutes les routes /admin. Le jeton renvoyé ouvre l'administration ; la session (refreshToken) garde le code vérifié.
+ *     tags: [Authentification]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code: { type: string, example: '0427' }
+ *               refreshToken: { type: string }
+ *     responses:
+ *       200: { description: Code correct, nouveau jeton d'accès }
+ *       401: { description: Code incorrect }
+ *       403: { description: Aucun code défini pour ce compte, ou compte non administrateur }
+ *       423: { description: Trop d'essais, compte bloqué 15 min }
+ */
+router.post('/code-acces/verifier', limiteSaisieCode, authMiddleware, checkActiveUser, authController.verifierCodeAcces);
 
 module.exports = router;

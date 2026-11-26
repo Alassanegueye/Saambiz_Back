@@ -120,14 +120,15 @@ describe('T-05 — garde-fou : chaque route d\'administration porte une permissi
     });
   }
 
-  it('le total des routes d\'administration est bien de 84', () => {
+  it('le total des routes d\'administration est bien de 85', () => {
     const total = FICHIERS_ADMIN.reduce((n, relatif) => {
       const source = fs.readFileSync(path.join(__dirname, '../..', relatif), 'utf8');
       return n + appelsDeRoutes(source).length;
     }, 0);
     // Ce nombre est documenté dans l'annexe de l'audit et sert de repère au
     // découpage « admin / mobile ». S'il change, l'annexe doit changer avec.
-    expect(total).toBe(84);
+    // 85 : + PUT /admin/rbac/admins/:userId/code-acces (code d'accès, 26/11/2026).
+    expect(total).toBe(85);
   });
 });
 

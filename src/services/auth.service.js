@@ -5,9 +5,9 @@ const logger = require('../utils/logger');
 const echecIgnore = require('../utils/echecIgnore');
 
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { randomInt } = require('crypto');
-const { jwtConfig, bcryptConfig } = require('../config/security');
+const { bcryptConfig } = require('../config/security');
+const { jetonAcces } = require('./jetonAcces');
 
 // Hash bcrypt d'une valeur arbitraire, calculé une fois au chargement du
 // module. Sert uniquement à égaliser le temps de réponse du login quand
@@ -449,13 +449,8 @@ class AuthService {
    * plus ancien.
    */
   static async ouvrirSession(utilisateur, contexte = {}) {
-    const token = jwt.sign({
-      id: utilisateur.id,
-      nom: utilisateur.nom,
-      prenom: utilisateur.prenom,
-      email: utilisateur.email,
-      role: utilisateur.role,
-    }, jwtConfig.secret, { expiresIn: jwtConfig.expiresIn });
+    // Sans code d'accès : un administrateur doit encore le saisir (portail).
+    const token = jetonAcces(utilisateur);
 
     // Dates de connexion : la première n'est écrite qu'une fois. Une panne
     // ici ne doit pas empêcher de se connecter.
@@ -473,6 +468,13 @@ class AuthService {
     } catch (err) {
       logger.warn('auth.login:dates-connexion', { message: err.message });
     }
+
+    // Chaque connexion réussie, une ligne (date, application ou navigateur) :
+    // l'activité des vendeurs dans l'administration (page « Site vitrine »).
+    // Détachée : son journal ne retarde ni n'empêche la connexion.
+    require('./sites/connexions.service')
+      .enregistrer({ utilisateurId: utilisateur.id, userAgent: contexte.userAgent, ip: contexte.ip })
+      .catch(echecIgnore('journal des connexions (utilisateur)'));
 
     // Les connexions au dashboard apparaissent dans l'activité des admins.
     if (['Admin', 'SuperAdmin'].includes(utilisateur.role)) {
@@ -633,13 +635,8 @@ class AuthService {
       };
     }
 
-    const newToken = jwt.sign({
-      id: utilisateur.id,
-      nom: utilisateur.nom,
-      prenom: utilisateur.prenom,
-      email: utilisateur.email,
-      role: utilisateur.role,
-    }, jwtConfig.secret, { expiresIn: jwtConfig.expiresIn });
+    // Le code d'accès vérifié suit la session d'une rotation à l'autre.
+    const newToken = jetonAcces(utilisateur, { codeAcces: rotation.codeAcces === true });
 
     return { success: true, token: newToken, refreshToken: rotation.token };
   }

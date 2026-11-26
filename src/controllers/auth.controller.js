@@ -166,3 +166,15 @@ exports.renvoyerCodeVerification = asyncHandler(async (req, res) => {
   const result = await AuthService.renvoyerCodeVerification(email);
   return res.status(200).json({ message: result.message });
 });
+
+/**
+ * Le code d'accès à quatre chiffres d'un administrateur (portail KODAFRIK).
+ * Corps : { code, refreshToken } — le refresh désigne la session à marquer.
+ * Réponse : un jeton d'accès qui ouvre l'administration.
+ */
+exports.verifierCodeAcces = asyncHandler(async (req, res) => {
+  const CodeAccesService = require('../services/codeAcces.service');
+  const { code, refreshToken } = req.body || {};
+  const r = await CodeAccesService.verifier(req.user, code, { refreshToken });
+  return res.status(200).json({ success: true, message: "Code d'accès vérifié.", data: { valide: true, token: r.token } });
+});

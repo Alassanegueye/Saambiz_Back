@@ -32,6 +32,10 @@ router.get('/admins/:userId/permissions',
 router.put('/admins/:userId/permissions',
   requirePermission('ADMINS', 'update'),
   ctrl.updatePermissions);
+// Code d'accès à quatre chiffres (portail KODAFRIK) : { codeAcces: "0427" }.
+router.put('/admins/:userId/code-acces',
+  requirePermission('ADMINS', 'update'),
+  ctrl.definirCodeAcces);
 
 // ── Menus ─────────────────────────────────────────────────────────────────
 //

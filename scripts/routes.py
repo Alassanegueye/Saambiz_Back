@@ -29,6 +29,8 @@ MONTAGE = {
     "signalement.route.js": "/signalements",
     "vendeur.route.js": "/vendeur",
     "vitrine.route.js": "/vitrine",
+    "sitesPublic.route.js": "/sites",
+    "sitesAdmin.route.js": "/admin/sites",
 }
 
 MOTIF = re.compile(

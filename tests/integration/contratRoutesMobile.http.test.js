@@ -21,7 +21,7 @@
  * Les deux adresses sont couvertes : `/saambiz/v1` (référence) et `/saambiz`
  * (alias historique, encore appelé par les applications installées).
  *
- * 135 routes, dont 109 protégées.
+ * 136 routes, dont 110 protégées.
  */
 
 const request = require('supertest');
@@ -60,6 +60,7 @@ const ROUTES = [
   { methode: 'GET', chemin: '/acheteurs/rechercher-produit-categorie', url: '/acheteurs/rechercher-produit-categorie', protegee: true },
   { methode: 'GET', chemin: '/app/config', url: '/app/config', protegee: false },
   { methode: 'POST', chemin: '/auth/changer-mot-de-passe', url: '/auth/changer-mot-de-passe', protegee: true },
+  { methode: 'POST', chemin: '/auth/code-acces/verifier', url: '/auth/code-acces/verifier', protegee: true },
   { methode: 'POST', chemin: '/auth/inscription/envoyer-code', url: '/auth/inscription/envoyer-code', protegee: false },
   { methode: 'POST', chemin: '/auth/inscription/verifier-code', url: '/auth/inscription/verifier-code', protegee: false },
   { methode: 'POST', chemin: '/auth/login', url: '/auth/login', protegee: false },
@@ -174,8 +175,8 @@ function appeler(base, route) {
 
 describe('Contrat des routes mobiles', () => {
   it('l\'inventaire couvre bien toutes les routes attendues', () => {
-    expect(ROUTES).toHaveLength(135);
-    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(109);
+    expect(ROUTES).toHaveLength(136);
+    expect(ROUTES.filter((r) => r.protegee)).toHaveLength(110);
   });
 
   describe.each(['/saambiz/v1', '/saambiz'])('adresse %s', (base) => {

@@ -42,6 +42,8 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
 
   // Ajouter l'utilisateur à la requête pour les prochains middlewares / contrôleurs
   req.user = utilisateur;
+  // Code d'accès vérifié pour cette session (administrateurs) : voir isAdmin.
+  req.codeAccesVerifie = decoded.ca === true;
 
   next();
 });

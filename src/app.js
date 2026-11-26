@@ -193,6 +193,8 @@ const commandeRoutes = require('./routes/commandes/commande.route');
 const avisRoutes = require('./routes/avis/avis.route');
 const vitrineRoutes = require('./routes/vitrine/vitrine.route');
 const configPubliqueRoutes = require('./routes/config/configPublique.route');
+const sitesPublicRoutes = require('./routes/sites/sitesPublic.route');
+const sitesAdminRoutes = require('./routes/sites/sitesAdmin.route');
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -217,6 +219,12 @@ apiRouter.use('/auth', authRoutes);
 // de la vitrine porte le plafond qui lui convient (voir vitrine.route.js).
 apiRouter.use('/vitrine', vitrineRoutes);
 
+// Les sites vitrines suivis par cette API — kodafrik.com et saambiz.com :
+// pages vues et formulaire de contact. Même raison que la vitrine : leurs
+// visiteurs n'ont pas de compte, chaque route porte son propre plafond
+// (voir sites/sitesPublic.route.js).
+apiRouter.use('/sites', sitesPublicRoutes);
+
 // Réglages publics (`/prix-abonnement`, `/app/config`). Montés sur le routeur
 // d'API : ils répondent sous `/saambiz/v1/…`, et sans version par l'alias
 // `/saambiz` plus bas.
@@ -231,6 +239,9 @@ const limiteParCompte = rateLimit(userRateLimitConfig);
 // La gestion RBAC est montée avant `/admin` : sinon `/admin` capterait
 // `/admin/rbac/*` avant qu'il n'y arrive.
 apiRouter.use('/admin/rbac', limiteParCompte, adminManagementRoutes);
+// Fréquentation et messages des sites vitrines, e-mails du back-office
+// Kodafrik, activité des vendeurs : avant `/admin`, pour la même raison.
+apiRouter.use('/admin/sites', limiteParCompte, sitesAdminRoutes);
 apiRouter.use('/vendeur', limiteParCompte, vendeurRoutes);
 apiRouter.use('/acheteurs', limiteParCompte, acheteursRoutes);
 apiRouter.use('/admin', limiteParCompte, adminRoutes);

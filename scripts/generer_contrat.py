@@ -17,6 +17,8 @@ SORTIE = os.path.join(RACINE, "tests/integration/contratRoutesMobile.http.test.j
 EXCLUS = (
     re.compile(r"^/admin"),
     re.compile(r"^/vitrine"),
+    # Les sites vitrines (kodafrik.com, saambiz.com) : leurs propres visiteurs.
+    re.compile(r"^/sites"),
     re.compile(r"webhook"),
 )
 
@@ -37,6 +39,8 @@ PREFIXES_PROTEGES = (
 PROTEGEES_UNITAIRES = {
     ("POST", "/auth/logout"),
     ("POST", "/auth/changer-mot-de-passe"),
+    # Code d'accès des administrateurs : sur la session ouverte.
+    ("POST", "/auth/code-acces/verifier"),
     ("POST", "/avis"),
     ("GET", "/avis/boutique/:boutiqueId/mon-avis"),
     ("DELETE", "/avis/boutique/:boutiqueId"),

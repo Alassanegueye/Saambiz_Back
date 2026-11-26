@@ -5,7 +5,7 @@
  * l'inventaire des routes Express. À régénérer avec
  * `bash scripts/regenerer-contrat-routes.sh` après tout ajout de route.
  *
- * Il vérifie deux choses, pour les 84 routes du back-office :
+ * Il vérifie deux choses, pour les 96 routes du back-office :
  *
  *  1. la route est montée — un chemin mal orthographié dans `app.js` ou un
  *     routeur monté après celui qui le capte produit un 404 que seule
@@ -87,6 +87,7 @@ const ROUTES = [
   { methode: 'POST', chemin: '/admin/rbac/admins', url: '/admin/rbac/admins' },
   { methode: 'DELETE', chemin: '/admin/rbac/admins/:userId', url: '/admin/rbac/admins/3f6c1c2e-0000-4000-8000-000000000000' },
   { methode: 'PUT', chemin: '/admin/rbac/admins/:userId', url: '/admin/rbac/admins/3f6c1c2e-0000-4000-8000-000000000000' },
+  { methode: 'PUT', chemin: '/admin/rbac/admins/:userId/code-acces', url: '/admin/rbac/admins/3f6c1c2e-0000-4000-8000-000000000000/code-acces' },
   { methode: 'GET', chemin: '/admin/rbac/admins/:userId/permissions', url: '/admin/rbac/admins/3f6c1c2e-0000-4000-8000-000000000000/permissions' },
   { methode: 'PUT', chemin: '/admin/rbac/admins/:userId/permissions', url: '/admin/rbac/admins/3f6c1c2e-0000-4000-8000-000000000000/permissions' },
   { methode: 'GET', chemin: '/admin/rbac/menus', url: '/admin/rbac/menus' },
@@ -97,6 +98,17 @@ const ROUTES = [
   { methode: 'PUT', chemin: '/admin/signalement/:id/rejeter', url: '/admin/signalement/3f6c1c2e-0000-4000-8000-000000000000/rejeter' },
   { methode: 'PUT', chemin: '/admin/signalement/:id/traiter', url: '/admin/signalement/3f6c1c2e-0000-4000-8000-000000000000/traiter' },
   { methode: 'GET', chemin: '/admin/signalements', url: '/admin/signalements' },
+  { methode: 'GET', chemin: '/admin/sites/:site/mails', url: '/admin/sites/3f6c1c2e-0000-4000-8000-000000000000/mails' },
+  { methode: 'POST', chemin: '/admin/sites/:site/mails', url: '/admin/sites/3f6c1c2e-0000-4000-8000-000000000000/mails' },
+  { methode: 'GET', chemin: '/admin/sites/:site/messages', url: '/admin/sites/3f6c1c2e-0000-4000-8000-000000000000/messages' },
+  { methode: 'PATCH', chemin: '/admin/sites/:site/messages/:id', url: '/admin/sites/3f6c1c2e-0000-4000-8000-000000000000/messages/3f6c1c2e-0000-4000-8000-000000000000' },
+  { methode: 'GET', chemin: '/admin/sites/:site/statistiques', url: '/admin/sites/3f6c1c2e-0000-4000-8000-000000000000/statistiques' },
+  { methode: 'GET', chemin: '/admin/sites/:site/visites', url: '/admin/sites/3f6c1c2e-0000-4000-8000-000000000000/visites' },
+  { methode: 'GET', chemin: '/admin/sites/saambiz/boutiques', url: '/admin/sites/saambiz/boutiques' },
+  { methode: 'GET', chemin: '/admin/sites/saambiz/statistiques', url: '/admin/sites/saambiz/statistiques' },
+  { methode: 'GET', chemin: '/admin/sites/saambiz/vendeurs', url: '/admin/sites/saambiz/vendeurs' },
+  { methode: 'GET', chemin: '/admin/sites/saambiz/vendeurs/:id/activites', url: '/admin/sites/saambiz/vendeurs/3f6c1c2e-0000-4000-8000-000000000000/activites' },
+  { methode: 'GET', chemin: '/admin/sites/saambiz/visites', url: '/admin/sites/saambiz/visites' },
   { methode: 'GET', chemin: '/admin/stats-ecommerce', url: '/admin/stats-ecommerce' },
   { methode: 'GET', chemin: '/admin/stats-globales', url: '/admin/stats-globales' },
   { methode: 'DELETE', chemin: '/admin/supprimer-utilisateur/:id', url: '/admin/supprimer-utilisateur/3f6c1c2e-0000-4000-8000-000000000000' },
@@ -118,7 +130,7 @@ function appeler(base, route) {
 
 describe('Contrat des routes d\'administration', () => {
   it('l\'inventaire couvre bien toutes les routes attendues', () => {
-    expect(ROUTES).toHaveLength(84);
+    expect(ROUTES).toHaveLength(96);
   });
 
   describe.each(['/saambiz/v1', '/saambiz'])('adresse %s', (base) => {

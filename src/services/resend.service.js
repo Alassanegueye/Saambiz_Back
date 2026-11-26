@@ -40,9 +40,17 @@ function versTexte(html) {
 
 /**
  * Envoi générique — base de tous les helpers.
- * @param {{ to: string|string[], subject: string, html: string, text?: string, attachments?: Array }} opts
+ *
+ * Pour un e-mail d'une autre marque (Kodafrik) :
+ *   - `from` : expéditeur complet « Nom <adresse> », pris tel quel — son
+ *     domaine doit être vérifié chez Resend ;
+ *   - `nomAffiche` : sinon, l'adresse de MAIL_FROM sous ce seul nom (sans
+ *     « via SaamBiz ») ;
+ *   - `replyTo` : l'adresse de réponse de cet e-mail.
+ * @param {{ to: string|string[], subject: string, html: string, text?: string, attachments?: Array,
+ *           nomExpediteur?: string, nomAffiche?: string, from?: string, replyTo?: string }} opts
  */
-async function sendEmail({ to, subject, html, text, attachments = [], nomExpediteur }) {
+async function sendEmail({ to, subject, html, text, attachments = [], nomExpediteur, nomAffiche, from: expediteur, replyTo }) {
   if (!resend) {
     // Pas de « succès » silencieux, même hors production : sur Render le
     // serveur tourne avec NODE_ENV=development, et une garde limitée à la
@@ -60,8 +68,16 @@ async function sendEmail({ to, subject, html, text, attachments = [], nomExpedit
   // Au nom d'une boutique : « Chez awa via SaamBiz <noreply@…> ». L'adresse
   // reste celle du domaine vérifié ; seul le nom affiché change.
   const adresse = (FROM.match(/<([^>]+)>/) || [null, FROM])[1];
-  const nomPropre = String(nomExpediteur || '').replace(/["<>\r\n]/g, '').trim().slice(0, 60);
-  const from = nomPropre ? `${nomPropre} via SaamBiz <${adresse}>` : FROM;
+  const propre = (v) => String(v || '').replace(/["<>\r\n]/g, '').trim().slice(0, 60);
+  const nomPropre = propre(nomExpediteur);
+  const nomSeul = propre(nomAffiche);
+  const expediteurComplet = /^[^\r\n<>]{1,60}<[^\s<>@]+@[^\s<>@]+>$/.test(String(expediteur || '').trim())
+    ? String(expediteur).trim()
+    : null;
+  const from = expediteurComplet
+    || (nomSeul ? `${nomSeul} <${adresse}>` : null)
+    || (nomPropre ? `${nomPropre} via SaamBiz <${adresse}>` : FROM);
+  const repondreA = String(replyTo || '').replace(/[\r\n]/g, '').trim() || REPLY_TO;
 
   const payload = {
     from,
@@ -69,7 +85,7 @@ async function sendEmail({ to, subject, html, text, attachments = [], nomExpedit
     subject,
     html,
     text: text || versTexte(html),
-    ...(REPLY_TO && { replyTo: REPLY_TO }),
+    ...(repondreA && { replyTo: repondreA }),
     ...(formattedAttachments.length > 0 && { attachments: formattedAttachments })
   };
 

@@ -4,6 +4,7 @@ const asyncHandler = require('../middlewares/asyncHandler');
 const { BadRequestError } = require('../errors/AppError');
 const AuditService = require('../services/audit.service');
 const echecIgnore = require('../utils/echecIgnore');
+const CodeAccesService = require('../services/codeAcces.service');
 
 /** Trace une action dans l'activité des admins, sans jamais faire échouer la requête. */
 const tracer = (req, action, cible, cibleId, details = {}) =>
@@ -19,17 +20,33 @@ const tracer = (req, action, cible, cibleId, details = {}) =>
 // ── Admins ────────────────────────────────────────────────────────────────
 
 exports.creerAdmin = asyncHandler(async (req, res) => {
-  const { nom, prenom, email, permissions } = req.body;
+  const { nom, prenom, email, permissions, codeAcces } = req.body;
   if (!nom || !prenom || !email) {
     throw new BadRequestError('nom, prenom et email sont requis.');
   }
+  // Le code d'accès (portail KODAFRIK), contrôlé AVANT la création : un
+  // compte créé sans son code ne pourrait pas ouvrir l'administration.
+  if (codeAcces !== undefined && !/^\d{4}$/.test(String(codeAcces))) {
+    throw new BadRequestError("Le code d'accès fait exactement quatre chiffres.");
+  }
 
   const admin = await AdminManagementService.creerAdmin({ nom, prenom, email, permissions });
+  if (codeAcces !== undefined) {
+    await CodeAccesService.definir(admin.id, String(codeAcces), { auteurId: req.user.id });
+  }
   tracer(req, 'creer_admin', 'admin', admin.id, { nom: `${prenom} ${nom}`, email });
   res.status(201).json({
     message: 'Administrateur créé avec succès.',
     admin: { id: admin.id, nom: admin.nom, prenom: admin.prenom, email: admin.email },
   });
+});
+
+/** Pose ou change le code d'accès d'un administrateur. Corps : { codeAcces }. */
+exports.definirCodeAcces = asyncHandler(async (req, res) => {
+  const code = req.body?.codeAcces ?? req.body?.code_acces;
+  await CodeAccesService.definir(req.params.userId, code === undefined ? '' : String(code), { auteurId: req.user.id });
+  tracer(req, 'changer_code_acces', 'admin', req.params.userId);
+  res.json({ success: true, message: "Code d'accès enregistré." });
 });
 
 exports.listerAdmins = asyncHandler(async (req, res) => {
