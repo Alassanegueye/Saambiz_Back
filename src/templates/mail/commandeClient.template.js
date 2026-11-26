@@ -1,7 +1,7 @@
 // Emails envoyés au client AU NOM de la boutique : commande reçue, puis
 // chaque étape (confirmée, prête, en livraison, livrée, annulée).
 // En-tête au logo et au nom de la boutique (voir miseEnPage, option boutique).
-const { miseEnPage, salutation, paragraphe, encadre, note, echapper } = require('./miseEnPage');
+const { miseEnPage, salutation, paragraphe, encadre, note, echapper, bouton } = require('./miseEnPage');
 
 const ETAPES = {
   recue: {
@@ -21,11 +21,27 @@ const ETAPES = {
 
 const montant = (v) => `${Number(v || 0).toLocaleString('fr-FR')} FCFA`;
 
-function commandeClientTemplate({ etape, boutique, nomClient, commande, lignes = [], messagePerso }) {
+/** « 9 décembre 2026 » : une date qu'on lit, pas un horodatage. */
+const jourLisible = (date) => new Date(date).toLocaleDateString('fr-FR', {
+  day: 'numeric', month: 'long', year: 'numeric',
+});
+
+function commandeClientTemplate({ etape, boutique, nomClient, commande, lignes = [], messagePerso, lien, expireLe }) {
   const e = ETAPES[etape] || ETAPES.recue;
   const articles = lignes.length
     ? lignes.map((l) => [`${echapper(l.nomProduit)} × ${echapper(l.quantite)}`, montant(l.sousTotal)])
     : [];
+
+  // Le lien de suivi, quand il y en a un. Le client n'a pas de compte : c'est
+  // sa seule porte vers l'état de sa commande, et elle doit être évidente.
+  // L'adresse est répétée en clair sous le bouton — une messagerie qui bloque
+  // les liens laisserait sinon le lecteur sans recours.
+  const blocSuivi = lien
+    ? `${bouton('Suivre ma commande', lien)}
+       ${note(`Si le bouton ne fonctionne pas, copiez cette adresse dans votre navigateur :<br><span style="word-break:break-all;color:#48597A">${echapper(lien)}</span>`)}
+       ${expireLe ? note(`Ce lien vous est personnel et reste valable jusqu'au ${jourLisible(expireLe)}. Passé cette date, vous pourrez en redemander un avec votre adresse email.`) : ''}`
+    : '';
+
   const html = miseEnPage(
     `${salutation(nomClient)}
       ${paragraphe(echapper(messagePerso || e.texte))}
@@ -35,6 +51,7 @@ function commandeClientTemplate({ etape, boutique, nomClient, commande, lignes =
         ...(Number(commande.fraisLivraison) > 0 ? [['Livraison', montant(commande.fraisLivraison)]] : []),
         ['Total', montant(commande.montantTotal)],
       ])}
+      ${blocSuivi}
       ${note(`Une question ? Contactez directement ${echapper(boutique.nom)}${boutique.telephone ? ` au ${echapper(boutique.telephone)}` : ''}.`)}`,
     { titre: `${e.objet} — ${boutique.nom}`, apercu: `${e.objet} ${commande.referenceCommande}`, boutique }
   );

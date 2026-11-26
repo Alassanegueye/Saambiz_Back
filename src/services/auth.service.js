@@ -320,6 +320,17 @@ class AuthService {
             model: Abonnement,
             as: 'abonnements',
             required: false
+          },
+          // La boutique du vendeur part avec la session. L'application la
+          // montre sur son écran de choix de compte : deux vendeurs peuvent
+          // porter le même nom, et on ne les distinguait qu'en lisant deux
+          // adresses presque identiques. Elle lisait déjà ce champ — il
+          // n'était simplement jamais rempli.
+          {
+            model: Boutique,
+            as: 'boutiques',
+            attributes: ['id', 'nom', 'slug', 'logo'],
+            required: false
           }
         ],
         order: [[{ model: Abonnement, as: 'abonnements' }, 'createdAt', 'DESC']]

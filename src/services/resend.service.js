@@ -201,10 +201,21 @@ async function sendNouvelleCommandeEmail({ to, nom, referenceCommande, montantTo
  * Email au client d'une boutique (commande reçue, puis chaque étape), au
  * logo et au nom de la boutique.
  */
-async function sendCommandeClientEmail({ to, etape, boutique, nomClient, commande, lignes, messagePerso }) {
+async function sendCommandeClientEmail({ to, etape, boutique, nomClient, commande, lignes, messagePerso, lien, expireLe }) {
   const template = require('../templates/mail/commandeClient.template');
-  const { objet, html } = template({ etape, boutique, nomClient, commande, lignes, messagePerso });
+  const { objet, html } = template({ etape, boutique, nomClient, commande, lignes, messagePerso, lien, expireLe });
   return sendEmail({ to, subject: objet, html, nomExpediteur: boutique.nom });
+}
+
+/**
+ * Le lien de suivi, renvoyé à un client qui a perdu le sien. Expéditeur
+ * SaamBiz et non la boutique : la demande ne vient pas d'elle, et le client
+ * peut avoir commandé dans plusieurs boutiques avec la même adresse.
+ */
+async function sendLienSuiviEmail({ to, lien, expireLe, jours, nomClient }) {
+  const template = require('../templates/mail/lienSuivi.template');
+  const { objet, html } = template({ lien, expireLe, jours, nomClient });
+  return sendEmail({ to, subject: objet, html });
 }
 
 /** État du service, pour /health : des indications, jamais la clé. */
@@ -238,6 +249,7 @@ async function sendCertificationEmail({ to, prenom, boutique, approuvee, motif }
 module.exports = {
   sendCertificationEmail,
   sendCommandeClientEmail,
+  sendLienSuiviEmail,
   sendAccesUtilisateurEmail,
   etatEmail,
   sendEmail,

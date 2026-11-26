@@ -29,8 +29,51 @@ const formatUser = (utilisateur) => {
     dateSuppression: utilisateur.dateSuppression ?? null,
   };
 
+  // LE PIÈGE DE CETTE FONCTION : c'est une liste blanche. Tout champ qu'elle
+  // ne nomme pas est SILENCIEUSEMENT PERDU.
+  //
+  // `ouvrirSession` allait chercher la boutique du vendeur et la joignait à
+  // la session — avec un commentaire expliquant pourquoi l'écran de choix de
+  // compte en a besoin. Le contrôleur passait ensuite la réponse par ici, qui
+  // la jetait : elle n'était pas dans la liste. Le travail était fait des deux
+  // côtés, et rien n'arrivait sur le téléphone.
+  //
+  // On reprend donc la boutique où qu'elle soit : déjà posée par
+  // `ouvrirSession`, ou à tirer de la liste `boutiques` quand la requête l'a
+  // chargée.
+  if (utilisateur.role === 'Vendeur' && utilisateur.boutique) {
+    const b = utilisateur.boutique;
+    userFormatted.boutique = {
+      id: b.id ?? null,
+      nom: b.nom,
+      slug: b.slug ?? null,
+      logo: b.logo ?? null,
+    };
+  }
+
   if (utilisateur.role === 'Vendeur' && utilisateur.boutiques) {
     userFormatted.boutiques = utilisateur.boutiques;
+
+    // `boutique` au singulier, en plus de la liste : c'est ce que
+    // l'application mobile lit pour afficher la boutique sous le nom du
+    // vendeur, sur son écran de choix de compte. Son lecteur existait déjà
+    // et tolère les deux formes (objet ou chaîne) — le champ n'était
+    // simplement jamais envoyé, et la ligne restait sans boutique.
+    //
+    // Ajouté plutôt que substitué à `boutiques` : une application déjà
+    // installée lit peut-être la liste, et la lui retirer la casserait.
+    const premiere = Array.isArray(utilisateur.boutiques)
+      ? utilisateur.boutiques[0]
+      : utilisateur.boutiques;
+    const nom = premiere?.nom || premiere?.dataValues?.nom;
+    if (nom && !userFormatted.boutique) {
+      userFormatted.boutique = {
+        id: premiere.id ?? null,
+        nom,
+        slug: premiere.slug ?? null,
+        logo: premiere.logo ?? null,
+      };
+    }
   }
 
   return userFormatted;

@@ -64,9 +64,13 @@ describe('formatUser', () => {
     const formate = formatUser(VENDEUR);
     expect(formate.motDePasse).toBeUndefined();
     expect(Object.keys(formate).sort()).toEqual([
-      'adresse', 'boutiques', 'compteSupprime', 'createdAt', 'dateSuppression',
-      'email', 'id', 'nom', 'photoProfil', 'prenom', 'role', 'statut',
-      'telephone', 'verifie',
+      // `boutique` au singulier s'ajoute à `boutiques` : c'est la forme que
+      // lit l'application mobile pour afficher la boutique sous le nom du
+      // vendeur, sur son écran de choix de compte. La liste reste, une
+      // application déjà installée la lit peut-être.
+      'adresse', 'boutique', 'boutiques', 'compteSupprime', 'createdAt',
+      'dateSuppression', 'email', 'id', 'nom', 'photoProfil', 'prenom',
+      'role', 'statut', 'telephone', 'verifie',
     ]);
   });
 
