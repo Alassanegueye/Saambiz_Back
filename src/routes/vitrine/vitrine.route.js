@@ -108,15 +108,16 @@ const limiteModificationSuivi = rateLimit({
  * @swagger
  * /vitrine/suivi/{reference}:
  *   get:
- *     summary: Suivre une commande sans compte, avec son numéro seul (saambiz.com)
- *     description: Le numéro CMD-XXXX-XXXX-XXXX est un secret de 60 bits. Un ancien numéro (CMD-2026-XXXXXX) demande aussi `telephone`.
+ *     summary: Suivre une commande sans compte (saambiz.com) — numéro de commande ET téléphone
+ *     description: Le téléphone doit être celui donné en commandant (403 TELEPHONE_INCORRECT sinon). PATCH et annulation demandent `telephoneClient` dans le corps.
  *     tags: [Vitrine]
  *     parameters:
  *       - { in: path, name: reference, required: true, schema: { type: string } }
- *       - { in: query, name: telephone, required: false, schema: { type: string } }
+ *       - { in: query, name: telephone, required: true, schema: { type: string } }
  *     responses:
  *       200: { description: La commande, son état et les actions possibles }
- *       400: { description: Ancien numéro sans téléphone (TELEPHONE_REQUIS) }
+ *       400: { description: Téléphone absent ou invalide (TELEPHONE_REQUIS) }
+ *       403: { description: Le téléphone ne correspond pas à la commande (TELEPHONE_INCORRECT) }
  *       404: { description: Aucune commande ne correspond }
  *   patch:
  *     summary: Modifier l'adresse, le téléphone ou la note (avant acceptation par la boutique)
